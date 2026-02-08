@@ -1,0 +1,490 @@
+{
+    "schemaVersion": 1,
+    "events": [
+        {
+            "id": "ev_0025",
+            "userUniqueId": "lana143",
+            "ts": "2025-09-14T19:36:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 1647
+        },
+        {
+            "id": "ev_0023",
+            "userUniqueId": "lana143",
+            "ts": "2025-09-12T11:01:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0016",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-09-10T19:56:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+            "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0017",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-09-10T08:03:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 1090
+        },
+        {
+            "id": "ev_0015",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-09-07T16:21:00+05:30",
+            "sender": "me",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+            "durationSec": 85,
+            "title": "Quick update"
+        },
+        {
+            "id": "ev_0052",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-09-06T20:23:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 1265
+        },
+        {
+            "id": "ev_0040",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-09-06T08:41:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 981
+        },
+        {
+            "id": "ev_0020",
+            "userUniqueId": "lana143",
+            "ts": "2025-09-03T22:45:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Feeling blessed 🙏"
+        },
+        {
+            "id": "ev_0004",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-03T14:59:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=300&h=300&fit=crop",
+            "durationSec": 22
+        },
+        {
+            "id": "ev_0037",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-08-28T19:23:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 1357
+        },
+        {
+            "id": "ev_0008",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-24T03:49:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 933
+        },
+        {
+            "id": "ev_0034",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-08-24T00:41:00+05:30",
+            "sender": "them",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "durationSec": 94,
+            "title": "Audio message"
+        },
+        {
+            "id": "ev_0041",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-08-18T00:53:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?w=300&h=300&fit=crop",
+            "durationSec": 35,
+            "caption": "Miss you 💕"
+        },
+        {
+            "id": "ev_0054",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-08-15T22:38:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop",
+            "durationSec": 39
+        },
+        {
+            "id": "ev_0001",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-14T02:18:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0011",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-08-13T22:26:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 330
+        },
+        {
+            "id": "ev_0014",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-08-12T20:32:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 1217
+        },
+        {
+            "id": "ev_0013",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-08-11T20:54:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+            "thumbUri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop",
+            "caption": "Feeling grateful"
+        },
+        {
+            "id": "ev_0033",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-08-10T16:04:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 3117
+        },
+        {
+            "id": "ev_0038",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-08-09T18:33:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop",
+            "durationSec": 41
+        },
+        {
+            "id": "ev_0051",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-07-12T16:50:00+05:30",
+            "sender": "me",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "durationSec": 120,
+            "title": "Quick update"
+        },
+        {
+            "id": "ev_0021",
+            "userUniqueId": "lana143",
+            "ts": "2025-07-11T14:30:00+05:30",
+            "sender": "them",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "durationSec": 99,
+            "title": "Quick update"
+        },
+        {
+            "id": "ev_0035",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-07-08T23:33:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Work mode 💻"
+        },
+        {
+            "id": "ev_0009",
+            "userUniqueId": "rohit123",
+            "ts": "2025-07-08T05:27:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1426604966848-d7adac402bff",
+            "thumbUri": "https://images.unsplash.com/photo-1426604966848-d7adac402bff?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0048",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-07-02T16:00:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 3457
+        },
+        {
+            "id": "ev_0049",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-07-01T20:18:00+05:30",
+            "sender": "me",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+            "durationSec": 105,
+            "title": "Singing 🎵"
+        },
+        {
+            "id": "ev_0022",
+            "userUniqueId": "lana143",
+            "ts": "2025-06-30T04:12:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Late night thoughts"
+        },
+        {
+            "id": "ev_0039",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-06-26T00:21:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 736
+        },
+        {
+            "id": "ev_0032",
+            "userUniqueId": "lana143",
+            "ts": "2025-06-25T19:58:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 2435
+        },
+        {
+            "id": "ev_0027",
+            "userUniqueId": "lana143",
+            "ts": "2025-06-20T19:16:00+05:30",
+            "sender": "me",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "durationSec": 54,
+            "title": "Audio message"
+        },
+        {
+            "id": "ev_0007",
+            "userUniqueId": "rohit123",
+            "ts": "2025-06-14T07:23:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0036",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-06-08T22:07:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 1492
+        },
+        {
+            "id": "ev_0050",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-06-08T12:22:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 1033
+        },
+        {
+            "id": "ev_0053",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-06-06T06:39:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05",
+            "thumbUri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop",
+            "caption": "Check this out"
+        },
+        {
+            "id": "ev_0003",
+            "userUniqueId": "rohit123",
+            "ts": "2025-05-31T07:50:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 1294
+        },
+        {
+            "id": "ev_0044",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-05-26T19:43:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop",
+            "durationSec": 26
+        },
+        {
+            "id": "ev_0055",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-05-22T23:19:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop",
+            "durationSec": 5
+        },
+        {
+            "id": "ev_0047",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-05-20T20:38:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 843
+        },
+        {
+            "id": "ev_0026",
+            "userUniqueId": "lana143",
+            "ts": "2025-05-11T15:14:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "ev_0043",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-05-10T12:09:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 500
+        },
+        {
+            "id": "ev_0002",
+            "userUniqueId": "rohit123",
+            "ts": "2025-05-09T15:03:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 2118
+        },
+        {
+            "id": "ev_0030",
+            "userUniqueId": "lana143",
+            "ts": "2025-05-06T12:48:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 2544
+        },
+        {
+            "id": "ev_0045",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-05-06T06:59:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop",
+            "durationSec": 38
+        },
+        {
+            "id": "ev_0012",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-05-01T07:10:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 412
+        },
+        {
+            "id": "ev_0010",
+            "userUniqueId": "rohit123",
+            "ts": "2025-04-30T18:49:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Work mode 💻"
+        },
+        {
+            "id": "ev_0018",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-04-22T21:31:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Work mode 💻"
+        },
+        {
+            "id": "ev_0042",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-04-22T19:34:00+05:30",
+            "sender": "me",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop",
+            "durationSec": 45
+        },
+        {
+            "id": "ev_0031",
+            "userUniqueId": "lana143",
+            "ts": "2025-04-14T13:31:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 713
+        },
+        {
+            "id": "ev_0006",
+            "userUniqueId": "rohit123",
+            "ts": "2025-04-14T05:09:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Lunch break vibes"
+        },
+        {
+            "id": "ev_0024",
+            "userUniqueId": "lana143",
+            "ts": "2025-04-13T23:44:00+05:30",
+            "sender": "me",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop",
+            "durationSec": 39
+        },
+        {
+            "id": "ev_0019",
+            "userUniqueId": "lana143",
+            "ts": "2025-04-10T22:27:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Can't wait to see you"
+        },
+        {
+            "id": "ev_0005",
+            "userUniqueId": "rohit123",
+            "ts": "2025-04-08T22:46:00+05:30",
+            "sender": "them",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+            "durationSec": 55,
+            "title": "Audio message"
+        },
+        {
+            "id": "ev_0028",
+            "userUniqueId": "lana143",
+            "ts": "2025-04-08T19:45:00+05:30",
+            "sender": "them",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+            "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop",
+            "durationSec": 13
+        },
+        {
+            "id": "ev_0029",
+            "userUniqueId": "lana143",
+            "ts": "2025-03-29T21:08:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Feeling blessed 🙏"
+        },
+        {
+            "id": "ev_0046",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-03-24T13:35:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Missing you ❤️"
+        }
+    ]
+}
