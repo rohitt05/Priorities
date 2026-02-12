@@ -13,7 +13,7 @@ import {
     FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '@/constants/theme';
+import { COLORS, FONTS } from '@/constants/theme';
 import usersData from '../data/users.json';
 
 const { width } = Dimensions.get('window');
@@ -124,7 +124,6 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const handleSearch = (text: string) => {
         setSearchQuery(text);
         if (text.length > 0) {
-            // Support both object and array style imports if needed, but here it's an array
             const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
             const filtered = data.filter((user: User) =>
                 user.uniqueUserId.toLowerCase().includes(text.toLowerCase())
@@ -214,7 +213,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                         styles.resultsContainer,
                         {
                             opacity: resultsAnim,
-                            width: width - 40, // Ensure fixed width so it doesn't clip
+                            width: width - 40,
                             transform: [{
                                 translateY: resultsAnim.interpolate({
                                     inputRange: [0, 1],
@@ -282,7 +281,8 @@ const styles = StyleSheet.create({
     container: {
         position: 'absolute',
         right: 20,
-        backgroundColor: COLORS.primary, // Charcoal Ink
+        backgroundColor: COLORS.primary,
+        // ✅ Adjusted Z-Index to be high, but typically Modals (9999) should beat this (1000)
         zIndex: 1000,
         elevation: 8,
         shadowColor: '#433D35',
@@ -315,8 +315,8 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 70,
         left: 0,
-        backgroundColor: COLORS.secondary, // Kraft Paper
-        borderRadius: 2, // Sharper cut
+        backgroundColor: COLORS.secondary,
+        borderRadius: 2,
         maxHeight: 320,
         borderWidth: 1,
         borderColor: 'rgba(0, 0, 0, 0.05)',
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         width: width - 40,
-        backgroundColor: COLORS.secondary, // Kraft Paper
+        backgroundColor: COLORS.secondary,
         borderRadius: 2,
         padding: 24,
         borderWidth: 1,

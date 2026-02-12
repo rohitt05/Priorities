@@ -8,10 +8,11 @@ module.exports = function(api) {
         {
           root: ['./'],
           alias: {
-            '@': './src',
+            '@': './src', // Ensure this matches your actual folder structure (src vs app)
           },
         },
       ],
+      'react-native-reanimated/plugin', // 👈 Add this line last!
     ],
   };
 };
