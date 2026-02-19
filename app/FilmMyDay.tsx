@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     StyleSheet,
     View,
@@ -8,360 +8,645 @@ import {
     Alert,
     Dimensions,
     ActivityIndicator,
-    SafeAreaView,
-    StatusBar
+    StatusBar,
+    Platform,
 } from 'react-native';
-import { CameraView, CameraType, FlashMode, useCameraPermissions } from 'expo-camera';
+import {
+    CameraView,
+    CameraType,
+    FlashMode,
+    useCameraPermissions,
+    useMicrophonePermissions,
+} from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useRouter } from 'expo-router';
-import { Feather, Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/constants/theme';
+import MediaPreview from '@/components/MediaPreview';
 
-const { width, height } = Dimensions.get('window');
+import {
+    Gesture,
+    GestureDetector,
+    GestureHandlerRootView,
+} from 'react-native-gesture-handler';
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming,
+    runOnJS,
+} from 'react-native-reanimated';
 
-const FilmMyDayScreen = () => {
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
+
+type CapturedMedia = { uri: string; type: 'image' | 'video'; facing: CameraType };
+
+const ZOOM_SENSITIVITY = 300;
+const MAX_ZOOM = 1.0;
+const MIN_ZOOM = 0;
+const MIN_RECORDING_DURATION = 1000; // Minimum 1 second video
+
+const FilmMyDayContent = () => {
     const router = useRouter();
     const cameraRef = useRef<CameraView>(null);
 
-    // State
+    // --- CAMERA STATE ---
     const [facing, setFacing] = useState<CameraType>('back');
     const [flash, setFlash] = useState<FlashMode>('off');
-    const [image, setImage] = useState<string | null>(null);
-    const [isCapturing, setIsCapturing] = useState(false);
+    const [cameraMode, setCameraMode] = useState<'picture' | 'video'>('picture');
+    const [zoom, setZoom] = useState(0);
 
-    // Permissions
+    // --- CAPTURE STATE ---
+    const [capturedMedia, setCapturedMedia] = useState<CapturedMedia | null>(null);
+    const [isCapturing, setIsCapturing] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+
+    // --- LOGIC REFS ---
+    const recordingTimer = useRef<NodeJS.Timeout | null>(null);
+    const recordingStartTime = useRef<number>(0); // Track start time to enforce min duration
+    const isPressingButton = useRef(false);
+    const isRecordingRef = useRef(false); // Ref for synchronous access in gestures
+
+    // --- GALLERY STATE ---
+    const [recentAssets, setRecentAssets] = useState<MediaLibrary.Asset[]>([]);
+
+    // --- FOCUS STATE (Visual) ---
+    const [focusCoords, setFocusCoords] = useState<{ x: number; y: number } | null>(null);
+
+    // --- PERMISSIONS ---
     const [permission, requestPermission] = useCameraPermissions();
+    const [micPermission, requestMicPermission] = useMicrophonePermissions();
     const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions();
 
+    // --- ANIMATED VALUES ---
+    const buttonScale = useSharedValue(1);
+    const currentZoom = useSharedValue(0);
+    const startZoom = useSharedValue(0);
+    const focusOpacity = useSharedValue(0);
+    const focusScale = useSharedValue(1.5);
+
+    // --- LIFECYCLE ---
+
     useEffect(() => {
-        // Request permissions on mount if not determined
-        if (!permission) {
-            requestPermission();
+        let mounted = true;
+        (async () => {
+            try {
+                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+            } catch (e) { }
+        })();
+        return () => {
+            mounted = false;
+            ScreenOrientation.unlockAsync().catch(() => { });
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!permission) requestPermission();
+        if (!micPermission) requestMicPermission();
+        if (!mediaPermission) requestMediaPermission();
+
+        if (mediaPermission?.status === 'granted') {
+            loadRecentAssets();
         }
-        if (!mediaPermission) {
-            requestMediaPermission();
+    }, [mediaPermission?.status]);
+
+    useEffect(() => {
+        if (isRecording) {
+            setRecordingDuration(0);
+            recordingTimer.current = setInterval(() => {
+                setRecordingDuration((prev) => prev + 1);
+            }, 1000);
+        } else {
+            if (recordingTimer.current) clearInterval(recordingTimer.current);
+            setRecordingDuration(0);
+        }
+        return () => {
+            if (recordingTimer.current) clearInterval(recordingTimer.current);
+        };
+    }, [isRecording]);
+
+    useEffect(() => {
+        currentZoom.value = zoom;
+    }, [zoom]);
+
+    // --- FUNCTIONS ---
+
+    const loadRecentAssets = useCallback(async () => {
+        try {
+            const { assets } = await MediaLibrary.getAssetsAsync({
+                first: 3,
+                sortBy: [MediaLibrary.SortBy.creationTime],
+                mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+            });
+            setRecentAssets(assets);
+        } catch (e) {
+            console.log('Failed to load recent assets', e);
         }
     }, []);
 
-    // 1. Loading State
-    if (!permission || !mediaPermission) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+    const getCurrentDate = () => {
+        const now = new Date();
+        const dayShort = now.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+        const date = now.getDate();
+        const monthShort = now.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+        const yearShort = now.getFullYear().toString().slice(-2);
+        return { dayShort, date, monthShort, yearShort };
+    };
+
+    const formatDuration = (seconds: number) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    };
+
+    const toggleCameraFacing = useCallback(() => setFacing((c) => (c === 'back' ? 'front' : 'back')), []);
+    const toggleFlash = useCallback(() => setFlash((c) => (c === 'off' ? 'on' : 'off')), []);
+
+    // --- CAPTURE ---
+
+    const takePicture = async () => {
+        if (!cameraRef.current || isCapturing || isRecordingRef.current) return;
+
+        // Ensure we are in picture mode before capturing
+        if (cameraMode !== 'picture') {
+            setCameraMode('picture');
+            // Give a tiny delay for the mode switch to propagate if needed
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        try {
+            setIsCapturing(true);
+            const photo = await cameraRef.current.takePictureAsync({
+                quality: 0.8, // Reduced from 1 to 0.8 to save memory
+                base64: false, // Ensure base64 is false to avoid OOM
+                exif: true,
+                skipProcessing: true, // Faster capture
+            });
+
+            let uri = photo?.uri;
+            // Mirror front camera photo manually if needed
+            if (uri && facing === 'front') {
+                const manipulated = await ImageManipulator.manipulateAsync(
+                    uri,
+                    [{ flip: ImageManipulator.FlipType.Horizontal }],
+                    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+                );
+                uri = manipulated.uri;
+            }
+
+            if (uri) setCapturedMedia({ uri, type: 'image', facing });
+        } catch (e) {
+            console.log('Photo Error:', e);
+            Alert.alert('Error', 'Failed to capture image.');
+        } finally {
+            setIsCapturing(false);
+        }
+    };
+
+    // --- ROBUST RECORDING LOGIC ---
+
+    const startRecordingProcess = useCallback(async () => {
+        if (!isPressingButton.current || isRecordingRef.current || isCapturing || !cameraRef.current) return;
+
+        // Switch mode first
+        setCameraMode('video');
+
+        // Wait for mode switch (crucial for some devices)
+        setTimeout(async () => {
+            if (!isPressingButton.current || !cameraRef.current) {
+                // User released button during mode switch
+                setCameraMode('picture');
+                return;
+            }
+
+            try {
+                setIsRecording(true);
+                isRecordingRef.current = true;
+                recordingStartTime.current = Date.now();
+
+                const video = await cameraRef.current.recordAsync({
+                    maxDuration: 60,
+                    mirror: facing === 'front', // Try native mirror first
+                });
+
+                if (video?.uri) {
+                    setCapturedMedia({ uri: video.uri, type: 'video', facing });
+                }
+            } catch (e) {
+                console.log('Recording Error:', e);
+                // Don't alert if it's just the "stopped before data" error, just reset
+            } finally {
+                setIsRecording(false);
+                isRecordingRef.current = false;
+                setCameraMode('picture');
+                setZoom(0);
+            }
+        }, 200); // Increased delay to 200ms to ensure stability
+    }, [facing, isCapturing]); // Removed cameraMode from dep to avoid re-creation
+
+
+    const stopRecording = useCallback(async () => {
+        if (!cameraRef.current || !isRecordingRef.current) return;
+
+        const elapsedTime = Date.now() - recordingStartTime.current;
+
+        if (elapsedTime < MIN_RECORDING_DURATION) {
+            // If recording is too short, wait until min duration is met
+            const remainingTime = MIN_RECORDING_DURATION - elapsedTime;
+            setTimeout(() => {
+                if (cameraRef.current) cameraRef.current.stopRecording();
+            }, remainingTime);
+        } else {
+            cameraRef.current.stopRecording();
+        }
+    }, []);
+
+    // --- GESTURES ---
+
+    const updateZoomFromShutterDrag = useCallback((translationY: number) => {
+        const dragDistance = -translationY;
+        const rawZoom = dragDistance / ZOOM_SENSITIVITY;
+        const newZoom = Math.min(Math.max(rawZoom, 0), MAX_ZOOM);
+        setZoom(newZoom);
+        currentZoom.value = newZoom;
+    }, []);
+
+    const shutterGesture = Gesture.Pan()
+        .runOnJS(true)
+        .onBegin(() => {
+            isPressingButton.current = true;
+            buttonScale.value = withSpring(1.2);
+
+            // Start recording only after a clear long-press duration (300ms)
+            // This differentiates tap from hold cleanly
+            setTimeout(() => {
+                if (isPressingButton.current && !isRecordingRef.current) {
+                    startRecordingProcess();
+                }
+            }, 300);
+        })
+        .onUpdate((e) => {
+            if (isRecordingRef.current || isPressingButton.current) {
+                updateZoomFromShutterDrag(e.translationY);
+            }
+        })
+        .onFinalize(() => {
+            isPressingButton.current = false;
+            buttonScale.value = withSpring(1.0);
+
+            if (isRecordingRef.current) {
+                stopRecording();
+            } else {
+                // Only take picture if we never started recording
+                takePicture();
+            }
+        });
+
+    const doubleTapGesture = Gesture.Tap()
+        .numberOfTaps(2)
+        .runOnJS(true)
+        .onEnd(() => {
+            toggleCameraFacing();
+        });
+
+    const singleTapGesture = Gesture.Tap()
+        .runOnJS(true)
+        .onEnd((e) => {
+            setFocusCoords({ x: e.x, y: e.y });
+            focusOpacity.value = 1;
+            focusScale.value = 1.3;
+            focusScale.value = withSpring(1.0);
+            setTimeout(() => {
+                focusOpacity.value = withTiming(0, { duration: 500 });
+            }, 1000);
+        });
+
+    const pinchGesture = Gesture.Pinch()
+        .runOnJS(true)
+        .onStart(() => {
+            startZoom.value = currentZoom.value;
+        })
+        .onUpdate((e) => {
+            const scaleChange = e.scale - 1;
+            const newZoom = startZoom.value + (scaleChange * 0.7);
+            const clamped = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+            setZoom(clamped);
+            currentZoom.value = clamped;
+        });
+
+    const tapGestures = Gesture.Exclusive(doubleTapGesture, singleTapGesture);
+    const cameraAreaGesture = Gesture.Simultaneous(pinchGesture, tapGestures);
+
+    // --- ANIMATED STYLES ---
+
+    const animatedButtonStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: buttonScale.value }],
+    }));
+
+    const animatedFocusStyle = useAnimatedStyle(() => ({
+        opacity: focusOpacity.value,
+        transform: [{ scale: focusScale.value }],
+        left: (focusCoords?.x || 0) - 30,
+        top: (focusCoords?.y || 0) - 30,
+    }));
+
+    // --- HELPERS ---
+
+    const pickImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.All,
+                allowsEditing: false,
+                quality: 1,
+            });
+            if (!result.canceled) {
+                const type = result.assets[0].type === 'video' ? 'video' : 'image';
+                setCapturedMedia({ uri: result.assets[0].uri, type, facing: 'back' });
+            }
+        } catch (e) {
+            Alert.alert('Error', 'Could not open gallery');
+        }
+    };
+
+    const saveMedia = async () => {
+        if (!capturedMedia) return;
+        try {
+            await MediaLibrary.saveToLibraryAsync(capturedMedia.uri);
+            Alert.alert('Saved!', 'Media saved to your gallery.');
+            setCapturedMedia(null);
+            loadRecentAssets();
+        } catch (e) {
+            Alert.alert('Error', 'Could not save media.');
+        }
+    };
+
+    const handleDiscard = () => setCapturedMedia(null);
+    const { dayShort, date, monthShort, yearShort } = getCurrentDate();
+
+    // --- RENDERS ---
+
+    if (!permission || !mediaPermission || !micPermission) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
     }
 
-    // 2. Permission Denied State
-    if (!permission.granted) {
+    if (!permission.granted || !micPermission.granted) {
         return (
             <View style={styles.permissionContainer}>
-                <Text style={styles.permissionText}>We need your permission to show the camera</Text>
-                <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
+                <Text style={styles.permissionText}>We need camera and microphone permissions</Text>
+                <TouchableOpacity
+                    onPress={() => {
+                        requestPermission();
+                        requestMicPermission();
+                    }}
+                    style={styles.permissionButton}
+                >
                     <Text style={styles.permissionButtonText}>Grant Permission</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
-                    <Text style={{ color: COLORS.primary, fontSize: 16 }}>Go Back</Text>
-                </TouchableOpacity>
             </View>
         );
     }
 
-    // 🔹 FUNCTION: Toggle Camera Facing
-    const toggleCameraFacing = () => {
-        setFacing(current => (current === 'back' ? 'front' : 'back'));
-    };
-
-    // 🔹 FUNCTION: Toggle Flash
-    const toggleFlash = () => {
-        setFlash(current => (current === 'off' ? 'on' : 'off'));
-    };
-
-    // 🔹 FUNCTION: Take Picture
-    const takePicture = async () => {
-        if (cameraRef.current && !isCapturing) {
-            try {
-                setIsCapturing(true);
-                const photo = await cameraRef.current.takePictureAsync({
-                    quality: 1,
-                    base64: false,
-                    exif: false,
-                    skipProcessing: true, // Faster capture
-                });
-                setImage(photo?.uri || null);
-            } catch (error) {
-                Alert.alert("Error", "Failed to take photo");
-            } finally {
-                setIsCapturing(false);
-            }
-        }
-    };
-
-    // 🔹 FUNCTION: Save Picture
-    const savePicture = async () => {
-        if (image) {
-            try {
-                if (mediaPermission?.status !== 'granted') {
-                    await requestMediaPermission();
-                }
-
-                await MediaLibrary.saveToLibraryAsync(image);
-                Alert.alert("Saved!", "Photo saved to your gallery.");
-                setImage(null); // Return to camera
-            } catch (error) {
-                Alert.alert("Error", "Could not save photo.");
-            }
-        }
-    };
-
-    // ---------------------------------------------------------
-    // RENDER: Preview Mode (After taking photo)
-    // ---------------------------------------------------------
-    if (image) {
-        return (
-            <View style={styles.container}>
-                <StatusBar barStyle="light-content" />
-                <Image source={{ uri: image }} style={styles.previewImage} />
-
-                {/* Preview Overlay Controls */}
-                <View style={styles.previewOverlay}>
-                    <View style={styles.previewButtonsContainer}>
-                        {/* Retake Button */}
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.retakeButton]}
-                            onPress={() => setImage(null)}
-                        >
-                            <Feather name="trash-2" size={24} color="#FFF" />
-                            <Text style={styles.actionText}>Retake</Text>
-                        </TouchableOpacity>
-
-                        {/* Save Button */}
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.saveButton]}
-                            onPress={savePicture}
-                        >
-                            <Feather name="download" size={24} color="#FFF" />
-                            <Text style={styles.actionText}>Save</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        );
+    if (capturedMedia) {
+        return <MediaPreview
+            capturedMedia={capturedMedia}
+            isFrontCamera={capturedMedia.facing === 'front'}
+            onDiscard={handleDiscard}
+            onSave={saveMedia}
+        />;
     }
 
-    // ---------------------------------------------------------
-    // RENDER: Camera Mode
-    // ---------------------------------------------------------
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" />
-            <CameraView
-                style={styles.camera}
-                facing={facing}
-                flash={flash}
-                ref={cameraRef}
-            >
-                {/* TOP BAR: Controls */}
-                <SafeAreaView style={styles.topBar}>
-                    {/* Back Button */}
-                    <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
-                        <Feather name="x" size={28} color="#FFF" />
+            <View style={styles.blackOverlay} />
+
+            <View style={[styles.contentArea, { paddingTop: STATUS_BAR_HEIGHT }]}>
+
+                {/* Header */}
+                <View style={styles.topHeader}>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.transparentButton}>
+                        <Ionicons name="chevron-back-outline" size={28} color="#FFF" />
                     </TouchableOpacity>
 
-                    {/* Flash Toggle */}
-                    <TouchableOpacity onPress={toggleFlash} style={styles.iconButton}>
+                    <View style={styles.dateContainer}>
+                        <View style={styles.dateLeftColumn}>
+                            <Text style={styles.dateDayText}>{dayShort}</Text>
+                            <Text style={styles.dateMonthYearText}>{monthShort} {yearShort}</Text>
+                        </View>
+                        <Text style={styles.dateNumberText}>{date}</Text>
+                    </View>
+
+                    <TouchableOpacity onPress={toggleFlash} style={styles.transparentButton}>
                         <Ionicons
-                            name={flash === 'on' ? "flash" : "flash-off"}
-                            size={26}
-                            color={flash === 'on' ? "#FFD700" : "#FFF"}
+                            name={flash === 'on' ? 'flash' : 'flash-off'}
+                            size={24}
+                            color={flash === 'on' ? '#FFD700' : '#FFF'}
                         />
                     </TouchableOpacity>
-                </SafeAreaView>
+                </View>
 
-                {/* BOTTOM BAR: Shutter & Flip */}
-                <View style={styles.bottomBar}>
-                    <View style={styles.bottomControls}>
-                        {/* Spacer to center the shutter button */}
-                        <View style={styles.sideControl}>
-                            <TouchableOpacity style={styles.galleryButtonPlaceholder}>
-                                <MaterialIcons name="photo-library" size={24} color="#FFF" />
-                            </TouchableOpacity>
+                {/* Camera View */}
+                <View style={styles.cameraArea}>
+                    <View style={styles.cameraFrame}>
+                        <View style={styles.cameraCard}>
+                            <GestureDetector gesture={cameraAreaGesture}>
+                                <View style={styles.cameraTouchArea}>
+                                    <CameraView
+                                        ref={cameraRef}
+                                        style={StyleSheet.absoluteFill}
+                                        facing={facing}
+                                        enableTorch={isRecording && flash === 'on'}
+                                        flash={flash}
+                                        mode={cameraMode}
+                                        animateShutter={false}
+                                        zoom={zoom}
+                                        videoStabilizationMode="auto"
+                                        videoQuality="720p" // Reduced from 1080p to 720p for memory safety
+                                        responsiveOrientationWhenOrientationLocked
+                                    />
+
+                                    {/* Focus Square */}
+                                    <Animated.View style={[styles.focusFrame, animatedFocusStyle]} />
+
+                                    {/* Zoom Indicator */}
+                                    {zoom > 0 && (
+                                        <View style={styles.zoomIndicator}>
+                                            <Text style={styles.zoomText}>{(zoom * 3 + 1).toFixed(1)}x</Text>
+                                        </View>
+                                    )}
+
+                                    {/* Recording Timer (Top Center) */}
+                                    {isRecording && (
+                                        <View style={styles.recordingTimerBadge}>
+                                            <View style={styles.recordingDot} />
+                                            <Text style={styles.recordingText}>{formatDuration(recordingDuration)}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                            </GestureDetector>
                         </View>
 
-                        {/* Shutter Button */}
-                        <TouchableOpacity
-                            style={styles.shutterButtonOuter}
-                            onPress={takePicture}
-                            disabled={isCapturing}
-                        >
-                            <View style={[
-                                styles.shutterButtonInner,
-                                isCapturing && { backgroundColor: '#ccc' } // Visual feedback
-                            ]} />
-                        </TouchableOpacity>
-
-                        {/* Flip Camera */}
-                        <View style={styles.sideControl}>
-                            <TouchableOpacity onPress={toggleCameraFacing} style={styles.iconButtonBlur}>
-                                <Ionicons name="camera-reverse-outline" size={28} color="#FFF" />
-                            </TouchableOpacity>
+                        {/* Shutter Button (Floating) */}
+                        <View style={styles.shutterContainerFloating}>
+                            <GestureDetector gesture={shutterGesture}>
+                                <Animated.View
+                                    style={[
+                                        styles.shutterButtonOuter,
+                                        isRecording && styles.shutterRecordingOuter,
+                                        animatedButtonStyle,
+                                    ]}
+                                >
+                                    <View
+                                        style={[
+                                            styles.shutterButtonInner,
+                                            isRecording && styles.shutterRecordingInner,
+                                            isCapturing && { backgroundColor: '#ccc' },
+                                        ]}
+                                    />
+                                </Animated.View>
+                            </GestureDetector>
                         </View>
                     </View>
+
+                    {/* Bottom Controls */}
+                    <View style={styles.controlsBelow}>
+                        <TouchableOpacity style={styles.galleryStackContainer} onPress={pickImage} activeOpacity={0.7}>
+                            {recentAssets.length > 0 ? (
+                                <>
+                                    {recentAssets[2] && (
+                                        <View style={[styles.stackLayer, styles.stackLayerBottom]}>
+                                            <Image source={{ uri: recentAssets[2].uri }} style={styles.stackImage} />
+                                        </View>
+                                    )}
+                                    {recentAssets[1] && (
+                                        <View style={[styles.stackLayer, styles.stackLayerMiddle]}>
+                                            <Image source={{ uri: recentAssets[1].uri }} style={styles.stackImage} />
+                                        </View>
+                                    )}
+                                    <View style={styles.stackLayerTop}>
+                                        <Image source={{ uri: recentAssets[0].uri }} style={styles.stackImage} />
+                                    </View>
+                                </>
+                            ) : (
+                                <View style={styles.galleryPlaceholder}>
+                                    <MaterialIcons name="photo-library" size={24} color="#FFF" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+
+                        <View style={{ width: 44, height: 44 }} />
+
+                        <TouchableOpacity onPress={toggleCameraFacing} style={styles.iconButtonBlur}>
+                            <MaterialCommunityIcons name="rotate-360" size={24} color="#FFF" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </CameraView>
+            </View>
         </View>
     );
 };
 
+export default function FilmMyDayScreen() {
+    return (
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <FilmMyDayContent />
+        </GestureHandlerRootView>
+    );
+}
+
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000',
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#000',
-    },
-    permissionContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#000',
-        padding: 20,
-    },
-    permissionText: {
-        color: '#FFF',
-        fontSize: 18,
-        textAlign: 'center',
-        marginBottom: 20,
-        fontFamily: FONTS.medium,
-    },
-    permissionButton: {
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 8,
-        marginBottom: 20,
-    },
-    permissionButtonText: {
-        color: '#FFF',
-        fontSize: 16,
-        fontFamily: FONTS.bold,
-    },
-    closeButton: {
-        padding: 10,
-    },
+    container: { flex: 1, backgroundColor: '#000' },
+    blackOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.85)' },
+    contentArea: { flex: 1 },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+    permissionContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000', padding: 20 },
+    permissionText: { color: '#FFF', fontSize: 18, textAlign: 'center', marginBottom: 20, fontFamily: FONTS.medium },
+    permissionButton: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
+    permissionButtonText: { color: '#FFF', fontSize: 16, fontFamily: FONTS.bold },
 
-    // Camera Styles
-    camera: {
-        flex: 1,
+    topHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
+    transparentButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+    dateContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
+    dateLeftColumn: { alignItems: 'flex-end', justifyContent: 'center', marginRight: 8, paddingTop: 6 },
+    dateDayText: {
+        fontSize: 26, fontFamily: FONTS.bold, fontWeight: '900', color: '#FFF',
+        letterSpacing: 0.5, textTransform: 'uppercase', lineHeight: 26, marginBottom: -4,
     },
-    topBar: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingTop: 10, // Adjust for Status Bar
-    },
-    iconButton: {
-        width: 44,
-        height: 44,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-    },
+    dateMonthYearText: { fontSize: 10, fontFamily: FONTS.medium, color: 'rgba(255,255,255,0.7)', letterSpacing: 2, marginTop: 4 },
+    dateNumberText: { fontSize: 48, fontFamily: FONTS.bold, fontWeight: '800', color: '#FFF', letterSpacing: -1, marginLeft: 2 },
 
-    // Bottom Controls
-    bottomBar: {
+    cameraArea: { flex: 1, marginBottom: 50 },
+    cameraFrame: { flex: 1, position: 'relative' },
+    cameraCard: { flex: 1, width: '100%', borderRadius: 20, overflow: 'hidden', backgroundColor: '#1a1a1a', position: 'relative' },
+    cameraTouchArea: { flex: 1, width: '100%', height: '100%' },
+
+    focusFrame: {
         position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingBottom: 40,
-        paddingTop: 20,
-        backgroundColor: 'rgba(0,0,0,0.2)', // Subtle gradient effect area
+        width: 60,
+        height: 60,
+        borderWidth: 1.5,
+        borderColor: '#FFD700',
+        borderRadius: 4,
+        zIndex: 99,
+        shadowColor: '#000',
+        shadowOpacity: 0.3,
+        shadowOffset: { width: 0, height: 1 },
+        shadowRadius: 2,
     },
-    bottomControls: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 40,
+
+    zoomIndicator: {
+        position: 'absolute', top: 60, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, zIndex: 5,
     },
-    sideControl: {
-        width: 50,
-        alignItems: 'center',
-    },
-    galleryButtonPlaceholder: {
-        width: 44,
-        height: 44,
-        borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.3)',
-    },
-    iconButtonBlur: {
-        width: 44,
-        height: 44,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+    zoomText: { color: '#FFF', fontFamily: FONTS.bold, fontSize: 12 },
+
+    shutterContainerFloating: {
+        position: 'absolute', alignSelf: 'center', bottom: -60, zIndex: 10,
+        width: 120, height: 120, justifyContent: 'center', alignItems: 'center',
     },
     shutterButtonOuter: {
-        width: 76,
-        height: 76,
-        borderRadius: 38,
-        borderWidth: 4,
-        borderColor: '#FFF',
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: 84, height: 84, borderRadius: 42, borderWidth: 4, borderColor: '#FFF',
+        justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)',
     },
-    shutterButtonInner: {
-        width: 62,
-        height: 62,
-        borderRadius: 31,
-        backgroundColor: '#FFF',
+    shutterRecordingOuter: { borderColor: '#FF4040' },
+    shutterButtonInner: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#FFF' },
+    shutterRecordingInner: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#FF4040' },
+
+    controlsBelow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 36, paddingTop: 50 },
+    galleryStackContainer: { width: 60, height: 60, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+    stackLayer: { position: 'absolute', width: 48, height: 48, borderRadius: 10, borderWidth: 1, borderColor: '#FFF', backgroundColor: '#222', overflow: 'hidden' },
+    stackLayerBottom: { transform: [{ rotate: '-12deg' }, { translateX: -4 }], opacity: 0.8, zIndex: 1 },
+    stackLayerMiddle: { transform: [{ rotate: '12deg' }, { translateX: 4 }], opacity: 0.9, zIndex: 2 },
+    stackLayerTop: { width: 50, height: 50, borderRadius: 10, borderWidth: 2, borderColor: '#FFF', backgroundColor: '#000', zIndex: 3, overflow: 'hidden' },
+    stackImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+    galleryPlaceholder: {
+        width: 48, height: 48, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
     },
 
-    // Preview Styles
-    previewImage: {
-        width: width,
-        height: height,
-        resizeMode: 'cover',
-    },
-    previewOverlay: {
+    recordingTimerBadge: {
         position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingBottom: 50,
-        paddingHorizontal: 30,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-    },
-    previewButtonsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    actionButton: {
+        top: 20,
+        alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderRadius: 30,
+        backgroundColor: 'rgba(255, 0, 0, 0.6)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        zIndex: 20,
     },
-    retakeButton: {
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    },
-    saveButton: {
-        backgroundColor: COLORS.primary,
-    },
-    actionText: {
-        color: '#FFF',
-        fontSize: 16,
-        fontFamily: FONTS.bold,
-        marginLeft: 8,
-    }
-});
+    recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF', marginRight: 6 },
+    recordingText: { color: '#FFF', fontSize: 12, fontFamily: FONTS.bold },
 
-export default FilmMyDayScreen;
+    iconButtonBlur: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
+});

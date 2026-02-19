@@ -6,13 +6,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 // FIXED IMPORT PATH
 import { BaseMediaProps, formatTime } from '../../types/mediaTypes';
 
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 
 export default function AudioPlayer({ mediaItem }: BaseMediaProps) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [position, setPosition] = useState(0);
     const [duration, setDuration] = useState(0);
     const soundRef = useRef<Audio.Sound | null>(null);
+
 
     useEffect(() => {
         return () => {
@@ -22,6 +25,7 @@ export default function AudioPlayer({ mediaItem }: BaseMediaProps) {
             }
         };
     }, []);
+
 
     const handlePlayPause = async () => {
         try {
@@ -57,6 +61,7 @@ export default function AudioPlayer({ mediaItem }: BaseMediaProps) {
         } catch (error) { console.error(error); }
     };
 
+
     return (
         <View style={styles.container}>
             <LinearGradient colors={['#667eea', '#764ba2']} style={styles.gradient}>
@@ -70,6 +75,7 @@ export default function AudioPlayer({ mediaItem }: BaseMediaProps) {
         </View>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: { width: SCREEN_WIDTH * 0.85, height: 400, borderRadius: 20, overflow: 'hidden' },

@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // Import Context
 import { TabBarVisibilityProvider, useTabBarVisibility } from '@/context/TabBarVisibilityContext';
+import { UserTimelineProvider } from '@/context/UserTimelineContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 export const MaterialTopTabs = withLayoutContext(Navigator);
@@ -217,7 +218,9 @@ export default function TabLayout() {
     return (
         <BackgroundProvider>
             <TabBarVisibilityProvider>
-                <TabLayoutContent />
+                <UserTimelineProvider>
+                    <TabLayoutContent />
+                </UserTimelineProvider>
             </TabBarVisibilityProvider>
         </BackgroundProvider>
     );

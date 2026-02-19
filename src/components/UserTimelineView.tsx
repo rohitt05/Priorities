@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
     Text,
@@ -8,20 +8,24 @@ import {
     Animated,
     Pressable,
     LayoutRectangle,
-    Modal
+    BackHandler,
+    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useBackground } from '@/context/BackgroundContext';
+import { SPACING, COLORS } from '@/constants/theme';
 import TimelineCalendar from './TimelineCalendar';
 import MediaViewer from './MediaViewer';
 import { MediaItem } from '../../types/mediaTypes';
 import { TimelineEvent } from './timelineCalendarLogic';
 
+
 // ==========================================
 // TIMELINE DATA
 // ==========================================
+
 
 const TIMELINE_EVENTS: TimelineEvent[] = [
     {
@@ -288,6 +292,7 @@ const TIMELINE_EVENTS: TimelineEvent[] = [
     }
 ];
 
+
 const hexToRgba = (hex: string, opacity: number): string => {
     if (!hex) return `rgba(255, 255, 255, ${opacity})`;
     const cleanHex = hex.replace('#', '');
@@ -304,6 +309,7 @@ const hexToRgba = (hex: string, opacity: number): string => {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 };
 
+
 const formatTimestamp = (isoTs: string): string => {
     const date = new Date(isoTs);
     return date.toLocaleDateString(undefined, {
@@ -315,6 +321,7 @@ const formatTimestamp = (isoTs: string): string => {
     });
 };
 
+
 interface User {
     id: string;
     uniqueUserId: string;
@@ -324,6 +331,7 @@ interface User {
     dominantColor: string;
 }
 
+
 interface UserTimelineViewProps {
     user: User | null;
     originLayout: LayoutRectangle | null;
@@ -331,6 +339,7 @@ interface UserTimelineViewProps {
     onClose: () => void;
     topInset: number;
 }
+
 
 export default function UserTimelineView({
     user,
@@ -342,6 +351,26 @@ export default function UserTimelineView({
     const { bgColor, prevBgColor, colorAnim } = useBackground();
     const [mediaViewerVisible, setMediaViewerVisible] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+
+
+    // Hardware back button handler
+    useEffect(() => {
+        if (!user) return;
+
+
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (mediaViewerVisible) {
+                handleCloseMediaViewer();
+                return true;
+            }
+            onClose();
+            return true;
+        });
+
+
+        return () => backHandler.remove();
+    }, [user, mediaViewerVisible, onClose]);
+
 
     const allUserMedia = useMemo(() => {
         if (!user) return [];
@@ -364,6 +393,7 @@ export default function UserTimelineView({
         } as MediaItem));
     }, [user]);
 
+
     const handleMediaPress = (event: TimelineEvent) => {
         const mediaItem = allUserMedia.find(item => item.id === event.id);
         if (mediaItem) {
@@ -384,168 +414,185 @@ export default function UserTimelineView({
         }
     };
 
+
     const handleCloseMediaViewer = () => {
         setMediaViewerVisible(false);
         setTimeout(() => setSelectedMedia(null), 300);
     };
 
+
     if (!user || !originLayout) return null;
 
-    const TARGET_TOP = Math.max(topInset, 20) + 40;
-    const CLIPPING_START_Y = Math.max(topInset, 20) + 10;
+
+    const HEADER_HEIGHT = Math.max(topInset, SPACING.xl) + 40 + SPACING.xl;
+    const TARGET_TOP = HEADER_HEIGHT + 10;
+    const CLIPPING_START_Y = HEADER_HEIGHT;
     const TARGET_LEFT = 20;
     const TARGET_SIZE = 50;
+
 
     const topAnim = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [originLayout.y, TARGET_TOP]
     });
 
+
     const leftAnim = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [originLayout.x, TARGET_LEFT]
     });
+
 
     const widthAnim = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [originLayout.width, TARGET_SIZE]
     });
 
+
     const heightAnim = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [originLayout.height, TARGET_SIZE]
     });
+
 
     const radiusAnim = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [Math.min(originLayout.width, originLayout.height) / 2, TARGET_SIZE / 2]
     });
 
+
     const contentOpacity = expandAnim.interpolate({
         inputRange: [0, 0.8, 1],
         outputRange: [0, 0, 1]
     });
+
 
     const contentTranslateY = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [50, 0]
     });
 
+
     return (
-        <>
-            <Modal transparent visible={true} animationType="none" onRequestClose={onClose}>
-                <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                    <Animated.View style={[
-                        styles.clippingContainer,
-                        {
-                            top: CLIPPING_START_Y,
-                            opacity: contentOpacity,
-                            transform: [{ translateY: contentTranslateY }]
-                        }
-                    ]}>
-                        <TimelineCalendar
-                            userUniqueId={user.uniqueUserId}
-                            timelineEvents={TIMELINE_EVENTS}
-                            contentPaddingTop={(TARGET_TOP - CLIPPING_START_Y) + TARGET_SIZE + 20}
-                            onMediaPress={handleMediaPress}
-                        />
-                        <View style={styles.floatingCloseContainer}>
-                            <View style={styles.closeBtnShadowWrapper}>
-                                <BlurView intensity={80} tint="light" style={styles.closeBtnBlur}>
-                                    <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor, opacity: 0.25 }]} />
-                                    <Animated.View
-                                        style={[
-                                            StyleSheet.absoluteFill,
-                                            {
-                                                backgroundColor: prevBgColor,
-                                                opacity: colorAnim.interpolate({
-                                                    inputRange: [0, 1],
-                                                    outputRange: [0.25, 0]
-                                                })
-                                            }
-                                        ]}
-                                    />
-                                    <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtnContent}>
-                                        <Ionicons name="close" size={24} color="#000" />
-                                        <Text style={styles.closeText}>Close Timeline</Text>
-                                    </TouchableOpacity>
-                                </BlurView>
-                            </View>
+        <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
+            <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+                <Animated.View style={[
+                    styles.clippingContainer,
+                    {
+                        top: CLIPPING_START_Y,
+                        opacity: contentOpacity,
+                        backgroundColor: COLORS.background,
+                        transform: [{ translateY: contentTranslateY }]
+                    }
+                ]}>
+
+
+                    <TimelineCalendar
+                        userUniqueId={user!.uniqueUserId}
+                        timelineEvents={TIMELINE_EVENTS}
+                        contentPaddingTop={(TARGET_TOP - CLIPPING_START_Y) + TARGET_SIZE + 20}
+                        onMediaPress={handleMediaPress}
+                    />
+                    <View style={styles.floatingCloseContainer}>
+                        <View style={styles.closeBtnShadowWrapper}>
+                            <BlurView intensity={80} tint="light" style={styles.closeBtnBlur}>
+                                <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor, opacity: 0.25 }]} />
+                                <Animated.View
+                                    style={[
+                                        StyleSheet.absoluteFill,
+                                        {
+                                            backgroundColor: prevBgColor,
+                                            opacity: colorAnim.interpolate({
+                                                inputRange: [0, 1],
+                                                outputRange: [0.25, 0]
+                                            })
+                                        }
+                                    ]}
+                                />
+                                <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtnContent}>
+                                    <Ionicons name="close" size={28} color="#000" />
+                                </TouchableOpacity>
+                            </BlurView>
                         </View>
-                    </Animated.View>
+                    </View>
+                </Animated.View>
 
-                    <Animated.View
-                        pointerEvents="none"
-                        style={{
-                            position: 'absolute',
-                            top: CLIPPING_START_Y,
-                            left: 0,
-                            right: 0,
-                            height: TARGET_SIZE + 60,
-                            opacity: contentOpacity,
-                            zIndex: 90,
-                        }}
-                    >
-                        <LinearGradient
-                            colors={[
-                                hexToRgba(bgColor, 1),
-                                hexToRgba(bgColor, 0.8),
-                                hexToRgba(bgColor, 0)
-                            ]}
-                            locations={[0, 0.4, 1]}
-                            style={{ flex: 1 }}
+
+                <Animated.View
+                    pointerEvents="none"
+                    style={{
+                        position: 'absolute',
+                        top: CLIPPING_START_Y,
+                        left: 0,
+                        right: 0,
+                        height: TARGET_SIZE + 60,
+                        opacity: contentOpacity,
+                        zIndex: 90,
+                    }}
+                >
+                    <LinearGradient
+                        colors={[
+                            hexToRgba(bgColor, 1),
+                            hexToRgba(bgColor, 0.8),
+                            hexToRgba(bgColor, 0)
+                        ]}
+                        locations={[0, 0.4, 1]}
+                        style={{ flex: 1 }}
+                    />
+                </Animated.View>
+
+
+                <Animated.View
+                    style={{
+                        position: 'absolute',
+                        top: topAnim,
+                        left: leftAnim,
+                        width: widthAnim,
+                        height: heightAnim,
+                        borderRadius: radiusAnim,
+                        backgroundColor: user!.dominantColor,
+                        overflow: 'hidden',
+                        zIndex: 100,
+                        elevation: 10
+                    }}
+                >
+                    <Pressable onPress={onClose} style={{ flex: 1 }}>
+                        <Image
+                            source={{ uri: user!.profilePicture }}
+                            style={{ width: '100%', height: '100%' }}
+                            resizeMode="cover"
                         />
-                    </Animated.View>
+                    </Pressable>
+                </Animated.View>
 
-                    <Animated.View
+
+                <Animated.View
+                    style={{
+                        position: 'absolute',
+                        top: TARGET_TOP,
+                        left: TARGET_LEFT + TARGET_SIZE + 15,
+                        right: 60,
+                        height: TARGET_SIZE,
+                        justifyContent: 'center',
+                        opacity: contentOpacity,
+                        zIndex: 100
+                    }}
+                >
+                    <Text
                         style={{
-                            position: 'absolute',
-                            top: topAnim,
-                            left: leftAnim,
-                            width: widthAnim,
-                            height: heightAnim,
-                            borderRadius: radiusAnim,
-                            backgroundColor: user.dominantColor,
-                            overflow: 'hidden',
-                            zIndex: 100,
-                            elevation: 10
+                            fontSize: 28,
+                            fontFamily: 'DancingScript-Bold',
+                            color: '#000'
                         }}
+                        numberOfLines={1}
                     >
-                        <Pressable onPress={onClose} style={{ flex: 1 }}>
-                            <Image
-                                source={{ uri: user.profilePicture }}
-                                style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
-                            />
-                        </Pressable>
-                    </Animated.View>
+                        {user!.name}
+                    </Text>
+                </Animated.View>
 
-                    <Animated.View
-                        style={{
-                            position: 'absolute',
-                            top: TARGET_TOP,
-                            left: TARGET_LEFT + TARGET_SIZE + 15,
-                            right: 60,
-                            height: TARGET_SIZE,
-                            justifyContent: 'center',
-                            opacity: contentOpacity,
-                            zIndex: 100
-                        }}
-                    >
-                        <Text
-                            style={{
-                                fontSize: 28,
-                                fontFamily: 'DancingScript-Bold',
-                                color: '#000'
-                            }}
-                            numberOfLines={1}
-                        >
-                            {user.name}
-                        </Text>
-                    </Animated.View>
 
-                </View>
-            </Modal>
+            </View>
+
 
             <MediaViewer
                 visible={mediaViewerVisible}
@@ -553,9 +600,13 @@ export default function UserTimelineView({
                 allMediaItems={allUserMedia}
                 onClose={handleCloseMediaViewer}
             />
-        </>
+        </View>
     );
 }
+
+
+const BUTTON_SIZE = 56;
+
 
 const styles = StyleSheet.create({
     clippingContainer: {
@@ -575,28 +626,26 @@ const styles = StyleSheet.create({
         zIndex: 200
     },
     closeBtnShadowWrapper: {
+        width: BUTTON_SIZE,
+        height: BUTTON_SIZE,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 10,
-        elevation: 6,
-        borderRadius: 30,
+        elevation: 0, // Removed elevation to prevent Android ring artifact
+        borderRadius: BUTTON_SIZE / 2,
         backgroundColor: 'transparent',
     },
     closeBtnBlur: {
-        borderRadius: 30,
-        overflow: 'hidden'
+        width: BUTTON_SIZE,
+        height: BUTTON_SIZE,
+        borderRadius: BUTTON_SIZE / 2,
+        overflow: 'hidden',
+        borderWidth: 0, // Explicitly no border
     },
     closeBtnContent: {
-        flexDirection: 'row',
+        flex: 1,
         alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 14
-    },
-    closeText: {
-        marginLeft: 8,
-        fontWeight: '600',
-        fontSize: 16,
-        color: '#000'
+        justifyContent: 'center',
     }
 });

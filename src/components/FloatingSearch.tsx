@@ -16,7 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/constants/theme';
 import usersData from '../data/users.json';
 
+
 const { width } = Dimensions.get('window');
+
 
 interface User {
     id: string;
@@ -27,13 +29,16 @@ interface User {
     dominantColor: string;
 }
 
+
 export interface PriorityUser extends User {
     relationship: string;
 }
 
+
 interface FloatingSearchProps {
     onAddPriority?: (user: PriorityUser) => void;
 }
+
 
 const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -42,6 +47,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [relationship, setRelationship] = useState('');
 
+
     const expandAnim = useRef(new Animated.Value(0)).current;
     const keyboardOffset = useRef(new Animated.Value(0)).current;
     const resultsAnim = useRef(new Animated.Value(0)).current;
@@ -49,9 +55,11 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const inputRef = useRef<TextInput>(null);
     const relInputRef = useRef<TextInput>(null);
 
+
     useEffect(() => {
         const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
         const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
 
         const showSubscription = Keyboard.addListener(showEvent, (e) => {
             Animated.spring(keyboardOffset, {
@@ -62,6 +70,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
             }).start();
         });
 
+
         const hideSubscription = Keyboard.addListener(hideEvent, () => {
             Animated.spring(keyboardOffset, {
                 toValue: 0,
@@ -71,11 +80,13 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
             }).start();
         });
 
+
         return () => {
             showSubscription.remove();
             hideSubscription.remove();
         };
     }, []);
+
 
     useEffect(() => {
         Animated.spring(expandAnim, {
@@ -85,6 +96,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
             useNativeDriver: false,
         }).start();
 
+
         if (isExpanded) {
             setTimeout(() => inputRef.current?.focus(), 100);
         } else {
@@ -93,12 +105,14 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }
     }, [isExpanded]);
 
+
     const resetSearch = () => {
         setSearchQuery('');
         setFilteredUsers([]);
         setSelectedUser(null);
         setRelationship('');
     };
+
 
     useEffect(() => {
         Animated.timing(resultsAnim, {
@@ -108,6 +122,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }).start();
     }, [filteredUsers, selectedUser]);
 
+
     useEffect(() => {
         Animated.spring(relationshipAnim, {
             toValue: selectedUser ? 1 : 0,
@@ -116,10 +131,12 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
             useNativeDriver: true,
         }).start();
 
+
         if (selectedUser) {
             setTimeout(() => relInputRef.current?.focus(), 100);
         }
     }, [selectedUser]);
+
 
     const handleSearch = (text: string) => {
         setSearchQuery(text);
@@ -134,9 +151,11 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }
     };
 
+
     const handleAddPress = (user: User) => {
         setSelectedUser(user);
     };
+
 
     const handleSavePriority = () => {
         if (selectedUser && relationship) {
@@ -149,17 +168,21 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         resetSearch();
     };
 
+
     const searchBarWidth = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [60, width - 40],
     });
+
 
     const borderRadius = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [30, 20],
     });
 
+
     const bottomPosition = Animated.add(new Animated.Value(30), keyboardOffset);
+
 
     return (
         <Animated.View
@@ -206,6 +229,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                 </Animated.View>
             )}
 
+
             {/* Results List */}
             {filteredUsers.length > 0 && !selectedUser && (
                 <Animated.View
@@ -246,6 +270,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                 </Animated.View>
             )}
 
+
             <View style={styles.searchBar}>
                 {isExpanded && (
                     <TextInput
@@ -260,6 +285,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                         editable={!selectedUser}
                     />
                 )}
+
 
                 <TouchableOpacity
                     style={styles.iconButton}
@@ -276,6 +302,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         </Animated.View>
     );
 };
+
 
 const styles = StyleSheet.create({
     container: {
@@ -415,5 +442,6 @@ const styles = StyleSheet.create({
         padding: 5,
     },
 });
+
 
 export default FloatingSearch;

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { useEvent } from 'expo';
 
 interface SmartVideoTileProps {
     uri: string;
@@ -11,39 +12,38 @@ interface SmartVideoTileProps {
 }
 
 const SmartVideoTile = React.memo(({ uri, thumbUri, isVisible, style }: SmartVideoTileProps) => {
-    const videoRef = useRef<Video>(null);
-    const [status, setStatus] = useState<any>({});
-    const [isLoaded, setIsLoaded] = useState(false);
+    // Initialize the player with the source
+    const player = useVideoPlayer(uri, (player) => {
+        player.loop = true;
+        player.muted = true;
+    });
 
+    // Listen to the 'playing' status change
+    const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+
+    // Manage playback based on visibility
     useEffect(() => {
-        if (videoRef.current) {
-            if (isVisible) {
-                // Try to play silently
-                videoRef.current.playAsync().catch(e => console.log("Play error", e));
-            } else {
-                // Pause and reset
-                videoRef.current.pauseAsync().catch(e => console.log("Pause error", e));
-            }
+        if (isVisible) {
+            player.play();
+        } else {
+            player.pause();
         }
-    }, [isVisible]);
+    }, [isVisible, player]);
 
     return (
         <View style={[styles.container, style]}>
-            <Video
-                ref={videoRef}
+            <VideoView
                 style={StyleSheet.absoluteFill}
-                source={{ uri }}
-                resizeMode={ResizeMode.COVER}
-                isLooping
-                isMuted={true}
-                shouldPlay={isVisible} // Double insurance
-                onLoad={() => setIsLoaded(true)}
-                onError={(e) => console.log("Video Load Error:", e)}
+                player={player}
+                nativeControls={false}
+                allowsFullscreen={false}
+                allowsPictureInPicture={false}
+                contentFit="cover" // Replaces resizeMode="cover"
             />
 
-            {/* Thumbnail Overlay - Fades out when video is ready */}
-            {(!isLoaded) && (
-                <View style={StyleSheet.absoluteFill}>
+            {/* Thumbnail Overlay - Fades out when video starts playing */}
+            {(!isPlaying) && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
                     <Image
                         source={{ uri: thumbUri || uri }}
                         style={StyleSheet.absoluteFill}
@@ -61,7 +61,7 @@ const SmartVideoTile = React.memo(({ uri, thumbUri, isVisible, style }: SmartVid
 const styles = StyleSheet.create({
     container: {
         overflow: 'hidden',
-        backgroundColor: '#000', // Black background
+        backgroundColor: '#000',
     },
     iconOverlay: {
         position: 'absolute',
