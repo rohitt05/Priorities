@@ -3,8 +3,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { useEffect } from 'react';
 import { View } from 'react-native';
-// ✅ IMPORT THIS
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+// ✅ ADD THIS IMPORT
+import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -28,13 +30,15 @@ export default function Layout() {
     }
 
     return (
-        // ✅ WRAP EVERYTHING HERE with flex: 1
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <Stack
-                screenOptions={{
-                    headerShown: false,
-                }}
-            />
+            {/* ✅ WRAP THE STACK — sits at root so blur covers the entire app */}
+            <VoiceNoteRecordingProvider>
+                <Stack
+                    screenOptions={{
+                        headerShown: false,
+                    }}
+                />
+            </VoiceNoteRecordingProvider>
         </GestureHandlerRootView>
     );
 }

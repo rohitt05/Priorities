@@ -1,18 +1,26 @@
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FontAwesome6 } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS } from '@/constants/theme';
-import { FloatingSearch, PriorityList } from '@/components';
-import { PriorityUser } from '@/components/FloatingSearch';
-import { useBackground } from '@/context/BackgroundContext';
+import { COLORS } from '@/theme/theme';
+import FloatingSearch from '@/components/ui/FloatingSearch';
+import PriorityList from '@/features/partners/components/PriorityList';
+import { PriorityUser, PriorityUserWithPost } from '@/types/userTypes';
+import { useBackground } from '@/contexts/BackgroundContext';
 import usersData from '@/data/users.json';
+import FilmSwiperBlob from '@/features/film-my-day/components/FilmSwiperBlob';
+import FilmMyDay from '@/features/film-my-day/components/FilmMyDayContent';
+import { useRouter } from 'expo-router';
+import { useSharedValue } from 'react-native-reanimated';
 
 const PRIORITIES_KEY = '@priorities_list';
 
 export default function HomeScreen() {
-    const [priorities, setPriorities] = useState<PriorityUser[]>([]);
+    const router = useRouter();
+    const [priorities, setPriorities] = useState<PriorityUserWithPost[]>([]);
+    const [activeUser, setActiveUser] = useState<PriorityUserWithPost | null>(null);
+    const scrollX = useSharedValue(0);
     const { handleColorChange } = useBackground();
 
     // Load priorities on mount
@@ -58,8 +66,29 @@ export default function HomeScreen() {
                 <PriorityList
                     priorities={priorities}
                     onColorChange={handleColorChange}
+                    onActiveUserChange={setActiveUser}
+                    scrollX={scrollX}
                 />
             </View>
+
+            {hasPriorities && (
+                <FilmSwiperBlob
+                    activeUser={activeUser}
+                    scrollX={scrollX}
+                    onReveal={() => {
+                        if (activeUser) {
+                            router.push({
+                                pathname: '/UserFilms',
+                                params: {
+                                    userId: (activeUser as any).uniqueUserId || activeUser.id,
+                                    userName: activeUser.name,
+                                    dominantColor: activeUser.dominantColor
+                                }
+                            });
+                        }
+                    }}
+                />
+            )}
 
             {!hasPriorities && (
                 <View style={styles.pointerContainer}>
@@ -71,8 +100,9 @@ export default function HomeScreen() {
                     />
                 </View>
             )}
-
+            <FilmMyDay />
             <FloatingSearch onAddPriority={handleAddPriority} />
+
             <StatusBar style="auto" />
         </View>
     );

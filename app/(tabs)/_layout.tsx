@@ -3,13 +3,14 @@ import { withLayoutContext } from 'expo-router';
 import { View, Animated, StyleSheet, Dimensions, Text } from 'react-native';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Header } from '@/components';
-import { COLORS, SPACING, FONTS } from '@/constants/theme';
-import { BackgroundProvider, useBackground } from '@/context/BackgroundContext';
+import { COLORS, FONTS } from '@/theme/theme';
+import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Import Context
-import { TabBarVisibilityProvider, useTabBarVisibility } from '@/context/TabBarVisibilityContext';
-import { UserTimelineProvider } from '@/context/UserTimelineContext';
+// Import Contexts
+import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
+import { UserTimelineProvider } from '@/contexts/UserTimelineContext';
+import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 export const MaterialTopTabs = withLayoutContext(Navigator);
@@ -22,7 +23,6 @@ const TransparentTheme = {
     },
 };
 
-// ... (ZigzagScribble & ScribbleIndicator logic remains the same) ...
 const ZigzagScribble = ({ color, opacity, style }: any) => (
     <View style={[{ flexDirection: 'row', height: 14, alignItems: 'center' }, style]}>
         {[...Array(10)].map((_, i) => (
@@ -46,7 +46,6 @@ const ZigzagScribble = ({ color, opacity, style }: any) => (
 );
 
 const ScribbleIndicator = ({ state, position, layout }: any) => {
-    // ... same code ...
     const tabCount = state.routes.length || 2;
     const tabWidth = layout.width / tabCount;
     const scribbleWidth = 60;
@@ -88,8 +87,6 @@ const ScribbleIndicator = ({ state, position, layout }: any) => {
 function TabLayoutContent() {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
     const { width } = Dimensions.get('window');
-
-    // Consume Visibility Context
     const { tabBarAnim } = useTabBarVisibility();
 
     const TAB_BAR_WIDTH = 200;
@@ -114,8 +111,6 @@ function TabLayoutContent() {
 
             <ThemeProvider value={TransparentTheme}>
                 <View style={styles.content}>
-
-                    {/* ✅ HEADER IS NOW STATIC (No Animated.View wrapper) */}
                     <Header />
 
                     <View style={{ flex: 1 }}>
@@ -130,7 +125,6 @@ function TabLayoutContent() {
                             // @ts-ignore
                             sceneContainerStyle={{ backgroundColor: 'transparent' }}
                             screenOptions={{
-                                // ✅ ANIMATED TAB BAR STYLE (Only Tabs Hide)
                                 tabBarStyle: {
                                     position: 'absolute',
                                     top: 0,
@@ -143,7 +137,6 @@ function TabLayoutContent() {
                                     borderBottomWidth: 0,
                                     height: 50,
                                     justifyContent: 'center',
-                                    // Animate Opacity and Slide
                                     opacity: tabBarAnim as any,
                                     transform: [{
                                         translateY: tabBarAnim.interpolate({
@@ -170,6 +163,7 @@ function TabLayoutContent() {
                                 tabBarActiveTintColor: '#000000',
                                 tabBarInactiveTintColor: COLORS.textSecondary,
                                 tabBarPressColor: 'transparent',
+                                swipeEnabled: true,
                             }}
                         >
                             <MaterialTopTabs.Screen
@@ -219,7 +213,9 @@ export default function TabLayout() {
         <BackgroundProvider>
             <TabBarVisibilityProvider>
                 <UserTimelineProvider>
-                    <TabLayoutContent />
+                    <VoiceNoteRecordingProvider>
+                        <TabLayoutContent />
+                    </VoiceNoteRecordingProvider>
                 </UserTimelineProvider>
             </TabBarVisibilityProvider>
         </BackgroundProvider>
@@ -227,18 +223,7 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    content: {
-        flex: 1,
-    },
-    fadeMask: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 60,
-        zIndex: 50,
-    }
+    container: { flex: 1 },
+    content: { flex: 1 },
+    fadeMask: { position: 'absolute', top: 0, left: 0, right: 0, height: 60, zIndex: 50 }
 });

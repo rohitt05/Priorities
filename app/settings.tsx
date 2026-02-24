@@ -16,8 +16,8 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/constants/theme';
-import { BackgroundProvider, useBackground } from '@/context/BackgroundContext';
+import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
+import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
 import usersData from '@/data/users.json';
 
 const { width } = Dimensions.get('window');
@@ -92,7 +92,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
                 <View style={styles.cardInner}>{children}</View>
             </View>
         </View>
-    );
+    ); 
 }
 
 function SettingsScreenContent() {

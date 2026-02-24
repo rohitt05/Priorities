@@ -8,7 +8,18 @@
         "dominantColor": "#b6e3f4",
         "relationship": "Taken",
         "partnerId": "lana143",
-        "prioritiesCount": 4
+        "prioritiesCount": 9,
+        "priorities": [
+            "lana143",
+            "grace_p",
+            "leo_sun",
+            "priya_des",
+            "jane_doe",
+            "bob_builder",
+            "charlie_brown",
+            "sofia_art",
+            "liam_travels"
+        ]
     },
     {
         "id": "3",
@@ -19,7 +30,16 @@
         "dominantColor": "#c0aede",
         "relationship": "Partner",
         "partnerId": "rohit123",
-        "prioritiesCount": 10
+        "prioritiesCount": 7,
+        "priorities": [
+            "rohit123",
+            "grace_p",
+            "leo_sun",
+            "jane_doe",
+            "ruby_rose",
+            "jasper_j",
+            "ivy_green"
+        ]
     },
     {
         "id": "2",
@@ -29,7 +49,13 @@
         "birthday": "22 Jan",
         "dominantColor": "#ffdfbf",
         "relationship": "Best Friend",
-        "prioritiesCount": 7
+        "prioritiesCount": 4,
+        "priorities": [
+            "rohit123",
+            "chloe_b",
+            "lana143",
+            "sofia_art"
+        ]
     },
     {
         "id": "4",
@@ -39,7 +65,11 @@
         "birthday": "12 Dec",
         "dominantColor": "#d1d4f9",
         "relationship": "Colleague",
-        "prioritiesCount": 2
+        "prioritiesCount": 2,
+        "priorities": [
+            "rohit123",
+            "oscar_wild"
+        ]
     },
     {
         "id": "5",
@@ -49,7 +79,12 @@
         "birthday": "30 Jun",
         "dominantColor": "#ffd5dc",
         "relationship": "Brother",
-        "prioritiesCount": 5
+        "prioritiesCount": 3,
+        "priorities": [
+            "priya_des",
+            "zara_fash",
+            "rohit123"
+        ]
     },
     {
         "id": "6",
@@ -59,7 +94,12 @@
         "birthday": "14 Feb",
         "dominantColor": "#f8c8dc",
         "relationship": "Friend",
-        "prioritiesCount": 6
+        "prioritiesCount": 3,
+        "priorities": [
+            "nina_sky",
+            "rohit123",
+            "jane_doe"
+        ]
     },
     {
         "id": "7",
@@ -69,7 +109,12 @@
         "birthday": "03 Nov",
         "dominantColor": "#a8d8ea",
         "relationship": "Friend",
-        "prioritiesCount": 3
+        "prioritiesCount": 3,
+        "priorities": [
+            "ethan_tech",
+            "rohit123",
+            "marco_polo"
+        ]
     },
     {
         "id": "8",
@@ -79,7 +124,14 @@
         "birthday": "19 Aug",
         "dominantColor": "#e0bbe4",
         "relationship": "Sister",
-        "prioritiesCount": 6
+        "prioritiesCount": 5,
+        "priorities": [
+            "rohit123",
+            "charlie_brown",
+            "zara_fash",
+            "grace_p",
+            "leo_sun"
+        ]
     },
     {
         "id": "9",
@@ -89,7 +141,10 @@
         "birthday": "25 May",
         "dominantColor": "#957dad",
         "relationship": "Cousin",
-        "prioritiesCount": 1
+        "prioritiesCount": 1,
+        "priorities": [
+            "liam_travels"
+        ]
     },
     {
         "id": "10",
@@ -99,7 +154,12 @@
         "birthday": "09 Sep",
         "dominantColor": "#ff9a9e",
         "relationship": "Friend",
-        "prioritiesCount": 8
+        "prioritiesCount": 3,
+        "priorities": [
+            "sofia_art",
+            "aria_music",
+            "ruby_rose"
+        ]
     },
     {
         "id": "11",
@@ -109,7 +169,11 @@
         "birthday": "12 Jan",
         "dominantColor": "#a2d2ff",
         "relationship": "Classmate",
-        "prioritiesCount": 4
+        "prioritiesCount": 2,
+        "priorities": [
+            "noah_w",
+            "kai_zen"
+        ]
     },
     {
         "id": "12",
@@ -119,7 +183,11 @@
         "birthday": "27 Jul",
         "dominantColor": "#fec8d8",
         "relationship": "Friend",
-        "prioritiesCount": 5
+        "prioritiesCount": 2,
+        "priorities": [
+            "jane_doe",
+            "mia_dance"
+        ]
     },
     {
         "id": "13",
@@ -129,7 +197,11 @@
         "birthday": "02 Apr",
         "dominantColor": "#d291bc",
         "relationship": "Friend",
-        "prioritiesCount": 9
+        "prioritiesCount": 2,
+        "priorities": [
+            "kai_zen",
+            "zayn_m"
+        ]
     },
     {
         "id": "14",
@@ -139,7 +211,10 @@
         "birthday": "11 Nov",
         "dominantColor": "#fff2cc",
         "relationship": "Friend",
-        "prioritiesCount": 2
+        "prioritiesCount": 1,
+        "priorities": [
+            "nina_sky"
+        ]
     },
     {
         "id": "15",
@@ -149,7 +224,10 @@
         "birthday": "29 Dec",
         "dominantColor": "#b9fbc0",
         "relationship": "Roommate",
-        "prioritiesCount": 3
+        "prioritiesCount": 1,
+        "priorities": [
+            "liam_travels"
+        ]
     },
     {
         "id": "16",
@@ -159,7 +237,13 @@
         "birthday": "08 Oct",
         "dominantColor": "#ffc6ff",
         "relationship": "Mother",
-        "prioritiesCount": 10
+        "prioritiesCount": 4,
+        "priorities": [
+            "rohit123",
+            "priya_des",
+            "leo_sun",
+            "lana143"
+        ]
     },
     {
         "id": "17",
@@ -169,7 +253,13 @@
         "birthday": "16 Aug",
         "dominantColor": "#fdffb6",
         "relationship": "Father",
-        "prioritiesCount": 6
+        "prioritiesCount": 4,
+        "priorities": [
+            "rohit123",
+            "priya_des",
+            "grace_p",
+            "lana143"
+        ]
     },
     {
         "id": "18",
@@ -179,7 +269,10 @@
         "birthday": "04 Feb",
         "dominantColor": "#bdb2ff",
         "relationship": "Friend",
-        "prioritiesCount": 8
+        "prioritiesCount": 1,
+        "priorities": [
+            "chloe_b"
+        ]
     },
     {
         "id": "19",
@@ -189,7 +282,10 @@
         "birthday": "21 Mar",
         "dominantColor": "#a0c4ff",
         "relationship": "Colleague",
-        "prioritiesCount": 4
+        "prioritiesCount": 1,
+        "priorities": [
+            "bob_builder"
+        ]
     },
     {
         "id": "20",
@@ -199,7 +295,11 @@
         "birthday": "30 Sep",
         "dominantColor": "#ffadad",
         "relationship": "Sister",
-        "prioritiesCount": 7
+        "prioritiesCount": 2,
+        "priorities": [
+            "priya_des",
+            "charlie_brown"
+        ]
     },
     {
         "id": "21",
@@ -209,7 +309,11 @@
         "birthday": "07 Jul",
         "dominantColor": "#caffbf",
         "relationship": "Gym Buddy",
-        "prioritiesCount": 5
+        "prioritiesCount": 2,
+        "priorities": [
+            "noah_w",
+            "zayn_m"
+        ]
     },
     {
         "id": "22",
@@ -219,7 +323,8 @@
         "birthday": "13 Dec",
         "dominantColor": "#9bf6ff",
         "relationship": "Niece",
-        "prioritiesCount": 3
+        "prioritiesCount": 0,
+        "priorities": []
     },
     {
         "id": "23",
@@ -229,7 +334,11 @@
         "birthday": "01 May",
         "dominantColor": "#ffc8dd",
         "relationship": "Friend",
-        "prioritiesCount": 9
+        "prioritiesCount": 2,
+        "priorities": [
+            "lana143",
+            "nina_sky"
+        ]
     },
     {
         "id": "24",
@@ -239,7 +348,10 @@
         "birthday": "18 Nov",
         "dominantColor": "#d0f4de",
         "relationship": "Friend",
-        "prioritiesCount": 10
+        "prioritiesCount": 1,
+        "priorities": [
+            "lana143"
+        ]
     },
     {
         "id": "25",
@@ -249,6 +361,9 @@
         "birthday": "23 Jun",
         "dominantColor": "#e4c1f9",
         "relationship": "Friend",
-        "prioritiesCount": 10
+        "prioritiesCount": 1,
+        "priorities": [
+            "lana143"
+        ]
     }
 ]

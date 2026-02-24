@@ -22,10 +22,11 @@ import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics'; // Added for better UX
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, FONTS } from '@/constants/theme';
-import MediaPreview from '@/components/MediaPreview';
+import { COLORS, FONTS } from '@/theme/theme';
+import MediaPreview from '@/components/ui/MediaPreview';
 
 import {
     Gesture,
@@ -40,18 +41,20 @@ import Animated, {
     runOnJS,
 } from 'react-native-reanimated';
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
+// Optimized Types
 type CapturedMedia = { uri: string; type: 'image' | 'video'; facing: CameraType };
 
-const ZOOM_SENSITIVITY = 300;
-const MAX_ZOOM = 1.0;
+const ZOOM_SENSITIVITY = 150; // Adjusted for smoother zoom
+const MAX_ZOOM = 0.8; // Capped at 0.8 for stability
 const MIN_ZOOM = 0;
 const MIN_RECORDING_DURATION = 1000; // Minimum 1 second video
 
 const FilmMyDayContent = () => {
     const router = useRouter();
+    const { recipient } = useLocalSearchParams<{ recipient?: string }>();
     const cameraRef = useRef<CameraView>(null);
 
     // --- CAMERA STATE ---
@@ -68,9 +71,9 @@ const FilmMyDayContent = () => {
 
     // --- LOGIC REFS ---
     const recordingTimer = useRef<NodeJS.Timeout | null>(null);
-    const recordingStartTime = useRef<number>(0); // Track start time to enforce min duration
+    const recordingStartTime = useRef<number>(0);
     const isPressingButton = useRef(false);
-    const isRecordingRef = useRef(false); // Ref for synchronous access in gestures
+    const isRecordingRef = useRef(false);
 
     // --- GALLERY STATE ---
     const [recentAssets, setRecentAssets] = useState<MediaLibrary.Asset[]>([]);
@@ -130,9 +133,10 @@ const FilmMyDayContent = () => {
         };
     }, [isRecording]);
 
+    // Sync Reanimated value with State (only on mount/reset)
     useEffect(() => {
         currentZoom.value = zoom;
-    }, [zoom]);
+    }, []);
 
     // --- FUNCTIONS ---
 
@@ -164,42 +168,42 @@ const FilmMyDayContent = () => {
         return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
     };
 
-    const toggleCameraFacing = useCallback(() => setFacing((c) => (c === 'back' ? 'front' : 'back')), []);
-    const toggleFlash = useCallback(() => setFlash((c) => (c === 'off' ? 'on' : 'off')), []);
+    const toggleCameraFacing = useCallback(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setFacing((c) => (c === 'back' ? 'front' : 'back'));
+    }, []);
+
+    const toggleFlash = useCallback(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setFlash((c) => (c === 'off' ? 'on' : 'off'));
+    }, []);
 
     // --- CAPTURE ---
 
     const takePicture = async () => {
         if (!cameraRef.current || isCapturing || isRecordingRef.current) return;
 
-        // Ensure we are in picture mode before capturing
+        // Ensure we are in picture mode
         if (cameraMode !== 'picture') {
             setCameraMode('picture');
-            // Give a tiny delay for the mode switch to propagate if needed
             await new Promise(r => setTimeout(r, 50));
         }
 
         try {
             setIsCapturing(true);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
             const photo = await cameraRef.current.takePictureAsync({
-                quality: 0.8, // Reduced from 1 to 0.8 to save memory
-                base64: false, // Ensure base64 is false to avoid OOM
+                quality: 0.8,
+                base64: false,
                 exif: true,
-                skipProcessing: true, // Faster capture
+                skipProcessing: true, // Key for performance
             });
 
-            let uri = photo?.uri;
-            // Mirror front camera photo manually if needed
-            if (uri && facing === 'front') {
-                const manipulated = await ImageManipulator.manipulateAsync(
-                    uri,
-                    [{ flip: ImageManipulator.FlipType.Horizontal }],
-                    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-                );
-                uri = manipulated.uri;
+            // Directly set captured media. Mirroring happens visually in preview or during save.
+            if (photo?.uri) {
+                setCapturedMedia({ uri: photo.uri, type: 'image', facing });
             }
-
-            if (uri) setCapturedMedia({ uri, type: 'image', facing });
         } catch (e) {
             console.log('Photo Error:', e);
             Alert.alert('Error', 'Failed to capture image.');
@@ -213,13 +217,12 @@ const FilmMyDayContent = () => {
     const startRecordingProcess = useCallback(async () => {
         if (!isPressingButton.current || isRecordingRef.current || isCapturing || !cameraRef.current) return;
 
-        // Switch mode first
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setCameraMode('video');
 
-        // Wait for mode switch (crucial for some devices)
+        // Wait for mode switch
         setTimeout(async () => {
             if (!isPressingButton.current || !cameraRef.current) {
-                // User released button during mode switch
                 setCameraMode('picture');
                 return;
             }
@@ -231,7 +234,7 @@ const FilmMyDayContent = () => {
 
                 const video = await cameraRef.current.recordAsync({
                     maxDuration: 60,
-                    mirror: facing === 'front', // Try native mirror first
+                    mirror: facing === 'front',
                 });
 
                 if (video?.uri) {
@@ -239,16 +242,15 @@ const FilmMyDayContent = () => {
                 }
             } catch (e) {
                 console.log('Recording Error:', e);
-                // Don't alert if it's just the "stopped before data" error, just reset
             } finally {
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 setCameraMode('picture');
                 setZoom(0);
+                currentZoom.value = 0;
             }
-        }, 200); // Increased delay to 200ms to ensure stability
-    }, [facing, isCapturing]); // Removed cameraMode from dep to avoid re-creation
-
+        }, 200);
+    }, [facing, isCapturing]);
 
     const stopRecording = useCallback(async () => {
         if (!cameraRef.current || !isRecordingRef.current) return;
@@ -256,7 +258,6 @@ const FilmMyDayContent = () => {
         const elapsedTime = Date.now() - recordingStartTime.current;
 
         if (elapsedTime < MIN_RECORDING_DURATION) {
-            // If recording is too short, wait until min duration is met
             const remainingTime = MIN_RECORDING_DURATION - elapsedTime;
             setTimeout(() => {
                 if (cameraRef.current) cameraRef.current.stopRecording();
@@ -264,17 +265,23 @@ const FilmMyDayContent = () => {
         } else {
             cameraRef.current.stopRecording();
         }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }, []);
 
     // --- GESTURES ---
 
-    const updateZoomFromShutterDrag = useCallback((translationY: number) => {
-        const dragDistance = -translationY;
-        const rawZoom = dragDistance / ZOOM_SENSITIVITY;
-        const newZoom = Math.min(Math.max(rawZoom, 0), MAX_ZOOM);
+    // Optimized Zoom Handler
+    const updateZoom = (newZoom: number) => {
         setZoom(newZoom);
+    };
+
+    const updateZoomFromGesture = (delta: number) => {
+        'worklet';
+        const rawZoom = delta / ZOOM_SENSITIVITY;
+        const newZoom = Math.min(Math.max(rawZoom, 0), MAX_ZOOM);
         currentZoom.value = newZoom;
-    }, []);
+        runOnJS(updateZoom)(newZoom);
+    };
 
     const shutterGesture = Gesture.Pan()
         .runOnJS(true)
@@ -282,8 +289,6 @@ const FilmMyDayContent = () => {
             isPressingButton.current = true;
             buttonScale.value = withSpring(1.2);
 
-            // Start recording only after a clear long-press duration (300ms)
-            // This differentiates tap from hold cleanly
             setTimeout(() => {
                 if (isPressingButton.current && !isRecordingRef.current) {
                     startRecordingProcess();
@@ -292,7 +297,9 @@ const FilmMyDayContent = () => {
         })
         .onUpdate((e) => {
             if (isRecordingRef.current || isPressingButton.current) {
-                updateZoomFromShutterDrag(e.translationY);
+                // Dragging up (negative Y) increases zoom
+                const dragDistance = -e.translationY;
+                runOnJS(updateZoomFromGesture)(dragDistance);
             }
         })
         .onFinalize(() => {
@@ -302,7 +309,6 @@ const FilmMyDayContent = () => {
             if (isRecordingRef.current) {
                 stopRecording();
             } else {
-                // Only take picture if we never started recording
                 takePicture();
             }
         });
@@ -333,7 +339,7 @@ const FilmMyDayContent = () => {
         })
         .onUpdate((e) => {
             const scaleChange = e.scale - 1;
-            const newZoom = startZoom.value + (scaleChange * 0.7);
+            const newZoom = startZoom.value + (scaleChange * 0.5);
             const clamped = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
             setZoom(clamped);
             currentZoom.value = clamped;
@@ -376,7 +382,19 @@ const FilmMyDayContent = () => {
     const saveMedia = async () => {
         if (!capturedMedia) return;
         try {
-            await MediaLibrary.saveToLibraryAsync(capturedMedia.uri);
+            let uriToSave = capturedMedia.uri;
+
+            // Perform manipulation ONLY when saving (keeps capture fast)
+            if (capturedMedia.type === 'image' && capturedMedia.facing === 'front') {
+                const manipulated = await ImageManipulator.manipulateAsync(
+                    capturedMedia.uri,
+                    [{ flip: ImageManipulator.FlipType.Horizontal }],
+                    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+                );
+                uriToSave = manipulated.uri;
+            }
+
+            await MediaLibrary.saveToLibraryAsync(uriToSave);
             Alert.alert('Saved!', 'Media saved to your gallery.');
             setCapturedMedia(null);
             loadRecentAssets();
@@ -445,6 +463,13 @@ const FilmMyDayContent = () => {
                         <Text style={styles.dateNumberText}>{date}</Text>
                     </View>
 
+                    {recipient && (
+                        <View style={styles.recipientContainer}>
+                            <Text style={styles.sendingToText}>SENDING TO</Text>
+                            <Text style={styles.recipientNameText}>{recipient.toUpperCase()}</Text>
+                        </View>
+                    )}
+
                     <TouchableOpacity onPress={toggleFlash} style={styles.transparentButton}>
                         <Ionicons
                             name={flash === 'on' ? 'flash' : 'flash-off'}
@@ -470,7 +495,7 @@ const FilmMyDayContent = () => {
                                         animateShutter={false}
                                         zoom={zoom}
                                         videoStabilizationMode="auto"
-                                        videoQuality="720p" // Reduced from 1080p to 720p for memory safety
+                                        videoQuality="720p" // Good balance of quality/performance
                                         responsiveOrientationWhenOrientationLocked
                                     />
 
@@ -583,6 +608,27 @@ const styles = StyleSheet.create({
     },
     dateMonthYearText: { fontSize: 10, fontFamily: FONTS.medium, color: 'rgba(255,255,255,0.7)', letterSpacing: 2, marginTop: 4 },
     dateNumberText: { fontSize: 48, fontFamily: FONTS.bold, fontWeight: '800', color: '#FFF', letterSpacing: -1, marginLeft: 2 },
+
+    recipientContainer: {
+        flex: 1,
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingHorizontal: 10,
+        marginLeft: 20,
+    },
+    sendingToText: {
+        fontSize: 8,
+        fontFamily: FONTS.medium,
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 2,
+        marginBottom: 2,
+    },
+    recipientNameText: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: '#FFF',
+        letterSpacing: 3,
+    },
 
     cameraArea: { flex: 1, marginBottom: 50 },
     cameraFrame: { flex: 1, position: 'relative' },
