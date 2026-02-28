@@ -12,7 +12,7 @@ export const useProfilePull = (onTrigger: () => void) => {
     };
 
     const panGesture = Gesture.Pan()
-        .activeOffsetY([0, 20])
+        .activeOffsetY([-5, 5])
         .failOffsetX([-20, 20])
         .onUpdate((event) => {
             if (event.translationY > 0) {

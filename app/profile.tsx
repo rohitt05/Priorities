@@ -1,3 +1,5 @@
+// app/profile.tsx
+
 import React, { useMemo, useEffect, useState } from 'react';
 import {
     View,
@@ -5,10 +7,17 @@ import {
     StatusBar,
     Animated as RNAnimated,
     BackHandler,
+    Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated from 'react-native-reanimated';
+import Reanimated, {
+    useSharedValue,
+    useAnimatedStyle,
+    useAnimatedScrollHandler,
+    interpolate,
+    Extrapolation,
+} from 'react-native-reanimated';
 
 import { useLocalSearchParams } from 'expo-router';
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
@@ -16,13 +25,15 @@ import usersData from '@/data/users.json';
 import { User } from '@/types/userTypes';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import AddPartnerModal from '@/features/partners/components/AddPartnerModal';
-
-import { CURRENT_USER_ID, PARTNER_KEY, BG_OPACITY } from '@/features/profile/utils/profileConstants';
+import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
+import { CURRENT_USER_ID, PARTNER_KEY, BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
 import { useProfilePull } from '@/features/profile/hooks/useProfilePull';
 import { ProfileHeader } from '@/features/profile/components/ProfileHeader';
 import { PartnerSection } from '@/features/profile/components/PartnerSection';
 import YourPriorities from '@/features/profile/components/yourpriorities';
+import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
+import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -34,9 +45,10 @@ function ProfileScreenContent() {
     const [isAddPartnerVisible, setIsAddPartnerVisible] = useState(false);
     const [savedPartnerUniqueUserId, setSavedPartnerUniqueUserId] = useState<string | null>(null);
 
-    const triggerEditMode = () => {
-        setIsEditing(true);
-    };
+    const scrollY = useSharedValue(0);
+
+    const triggerEditMode = () => setIsEditing(true);
+    const handleCloseEdit = () => setIsEditing(false);
 
     const {
         pullY,
@@ -46,9 +58,54 @@ function ProfileScreenContent() {
         partnerContainerStyle,
     } = useProfilePull(isOwner ? triggerEditMode : () => { });
 
-    const handleCloseEdit = () => {
-        setIsEditing(false);
-    };
+    const scrollHandler = useAnimatedScrollHandler({
+        onScroll: (event) => {
+            scrollY.value = event.contentOffset.y;
+        },
+    });
+
+    // Capsule fades out + floats up slightly as user scrolls — iOS native feel
+    const capsuleFadeStyle = useAnimatedStyle(() => {
+        const opacity = interpolate(
+            scrollY.value,
+            [0, 70],
+            [1, 0],
+            Extrapolation.CLAMP
+        );
+        const translateY = interpolate(
+            scrollY.value,
+            [0, 100],
+            [0, -80],
+            Extrapolation.CLAMP
+        );
+        return {
+            opacity,
+            transform: [{ translateY }],
+            display: scrollY.value > 120 ? 'none' : 'flex'
+        };
+    });
+
+    // Priorities fade out as you scroll down
+    const prioritiesFadeStyle = useAnimatedStyle(() => {
+        const opacity = interpolate(
+            scrollY.value,
+            [40, 120],
+            [1, 0],
+            Extrapolation.CLAMP
+        );
+        return { opacity };
+    });
+
+    // Films section slides up to take the space of the faded priorities
+    const filmsSlideUpStyle = useAnimatedStyle(() => {
+        const translateY = interpolate(
+            scrollY.value,
+            [40, 140],
+            [0, -130], // Approximate height of the YourPriorities section
+            Extrapolation.CLAMP
+        );
+        return { transform: [{ translateY }] };
+    });
 
     useEffect(() => {
         const onBackPress = () => {
@@ -92,14 +149,12 @@ function ProfileScreenContent() {
     }, [savedPartnerUniqueUserId]);
 
     const lightDominantColor = useMemo(
-        () =>
-            currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)',
+        () => (currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)'),
         [currentUser]
     );
 
     const solidDominantColor = useMemo(
-        () =>
-            currentUser ? hexToRgba(currentUser.dominantColor, 0.85) : 'rgba(255,255,255,0.85)',
+        () => (currentUser ? hexToRgba(currentUser.dominantColor, 0.85) : 'rgba(255,255,255,0.85)'),
         [currentUser]
     );
 
@@ -122,28 +177,60 @@ function ProfileScreenContent() {
 
     if (!currentUser) return null;
 
-    const relationshipLabel = (currentUser.relationship || '').trim() || 'My person';
+    const relationshipLabel = isOwner
+        ? 'Mine'
+        : (currentUser.gender === 'male' ? 'His' : (currentUser.gender === 'female' ? 'Hers' : 'Theirs'));
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <StatusBar barStyle="dark-content" />
-            <RNAnimated.View style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]} />
 
-            <GestureDetector gesture={panGesture}>
-                <Reanimated.View style={styles.container}>
-                    <ProfileHeader
-                        user={currentUser}
-                        isOwner={isOwner}
-                        headerAnimatedStyle={headerAnimatedStyle}
-                        imageScaleStyle={imageScaleStyle}
-                    />
+            {/* Animated background wash */}
+            <RNAnimated.View
+                style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]}
+                pointerEvents="none"
+            />
 
-                    {/* New priorities stats section */}
-                    <YourPriorities user={currentUser} />
+            {/* Sticky Top Bar that appears on scroll */}
+            <ProfileStickyBar
+                user={currentUser}
+                isOwner={isOwner}
+                scrollY={scrollY}
+                animatedBarColor={animatedCapsuleColor}
+            />
 
-                    {isOwner && (
+            <Reanimated.ScrollView
+                style={styles.container}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { minHeight: Dimensions.get('window').height + HEADER_HEIGHT }
+                ]}
+                showsVerticalScrollIndicator={false}
+                bounces={true}
+                scrollEventThrottle={16}
+                onScroll={scrollHandler}
+            >
+                {/* Pull gesture only wraps the header */}
+                <GestureDetector gesture={panGesture}>
+                    <View>
+                        <ProfileHeader
+                            user={currentUser}
+                            isOwner={isOwner}
+                            headerAnimatedStyle={headerAnimatedStyle}
+                            imageScaleStyle={imageScaleStyle}
+                        />
+                    </View>
+                </GestureDetector>
+
+                {/*
+                    When NO partner: show the "+ partner" capsule in normal scroll flow.
+                    When partner EXISTS: capsule row is hidden — FloatingPartnerIcon
+                    renders outside the ScrollView below (absolute, screen-relative).
+                */}
+                {isOwner && !partnerUser && (
+                    <Reanimated.View style={[styles.capsuleRow, capsuleFadeStyle]}>
                         <PartnerSection
-                            partnerUser={partnerUser}
+                            partnerUser={null}
                             relationshipLabel={relationshipLabel}
                             animatedBgColor={animatedBgColor}
                             animatedCapsuleColor={animatedCapsuleColor}
@@ -152,21 +239,53 @@ function ProfileScreenContent() {
                             onAddPartner={() => setIsAddPartnerVisible(true)}
                             onRemovePartner={handleRemovePartner}
                         />
-                    )}
+                    </Reanimated.View>
+                )}
 
-                    <View style={styles.contentBody} />
+                <Reanimated.View style={prioritiesFadeStyle}>
+                    <YourPriorities user={currentUser} />
                 </Reanimated.View>
-            </GestureDetector>
 
-            {isEditing && <EditProfileScreen user={currentUser} onBack={handleCloseEdit} />}
+                {/* Wrapper to slide up the rest of the content */}
+                <Reanimated.View style={filmsSlideUpStyle}>
+                    <FilmsInProfile
+                        userId={currentUser.uniqueUserId}
+                        dominantColor={currentUser.dominantColor}
+                    />
+                    <View style={styles.bottomPad} />
+                </Reanimated.View>
+            </Reanimated.ScrollView>
+
+            {/*
+                FloatingPartnerIcon MUST live outside the ScrollView.
+                Its style uses position: 'absolute', top: HEADER_HEIGHT which
+                must be measured from the screen root — not from a scroll container.
+                Placing it here (sibling to ScrollView, inside GestureHandlerRootView)
+                gives it correct screen-relative positioning.
+            */}
+            {isOwner && partnerUser && (
+                <FloatingPartnerIcon
+                    partnerUser={partnerUser}
+                    relationshipLabel={relationshipLabel}
+                    animatedBgColor={animatedBgColor}
+                    pullY={pullY}
+                    scrollY={scrollY}
+                    capsuleFadeStyle={capsuleFadeStyle}
+                    onRemove={handleRemovePartner}
+                />
+            )}
+
+            {isEditing && (
+                <EditProfileScreen user={currentUser} onBack={handleCloseEdit} />
+            )}
 
             <AddPartnerModal
                 visible={isAddPartnerVisible}
                 onClose={() => setIsAddPartnerVisible(false)}
                 currentUserUniqueUserId={CURRENT_USER_ID}
-                onSelectPartner={(userId) => {
-                    setSavedPartnerUniqueUserId(userId);
-                    AsyncStorage.setItem(PARTNER_KEY, userId).catch(() => { });
+                onSelectPartner={(selectedUserId) => {
+                    setSavedPartnerUniqueUserId(selectedUserId);
+                    AsyncStorage.setItem(PARTNER_KEY, selectedUserId).catch(() => { });
                 }}
             />
         </GestureHandlerRootView>
@@ -182,10 +301,20 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    contentBody: {
+    container: {
         flex: 1,
-        paddingTop: 35,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        paddingBottom: 20,
+    },
+    capsuleRow: {
+        // Only shown when no partner — "+ partner" capsule in scroll flow
+        marginTop: -15,
         paddingHorizontal: 24,
+        alignItems: 'flex-end',
+    },
+    bottomPad: {
+        height: 60,
     },
 });

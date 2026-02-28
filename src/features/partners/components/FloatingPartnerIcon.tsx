@@ -1,11 +1,24 @@
+// src/features/partners/components/FloatingPartnerIcon.tsx
+
 import React, { useEffect } from 'react';
-import { View, StyleSheet, Image, Text, Dimensions, Animated as RNAnimated, TouchableOpacity, Modal, TouchableWithoutFeedback } from 'react-native';
+import {
+    View,
+    StyleSheet,
+    Image,
+    Text,
+    Dimensions,
+    Animated as RNAnimated,
+    TouchableOpacity,
+    Modal,
+    TouchableWithoutFeedback,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
 import Reanimated, {
     useSharedValue,
     useAnimatedStyle,
+    useAnimatedProps,
     withRepeat,
     withTiming,
     withSequence,
@@ -14,8 +27,10 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-const { height, width } = Dimensions.get('window');
-const HEADER_HEIGHT = height * 0.55;
+// Shared constant — always in sync with actual header height
+import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
+
+const { width } = Dimensions.get('window');
 const BUBBLE_BORDER_COLOR = 'rgba(0,0,0,0.08)';
 
 const AnimatedPath = RNAnimated.createAnimatedComponent(Path);
@@ -30,14 +45,25 @@ interface FloatingPartnerIconProps {
     relationshipLabel: string;
     animatedBgColor: any;
     pullY: SharedValue<number>;
+    scrollY?: SharedValue<number>;
+    capsuleFadeStyle?: any; // Added for scroll fade
     onRemove?: () => void;
 }
 
-export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, animatedBgColor, pullY, onRemove }: FloatingPartnerIconProps) {
+export default function FloatingPartnerIcon({
+    partnerUser,
+    relationshipLabel,
+    animatedBgColor,
+    pullY,
+    scrollY,
+    capsuleFadeStyle,
+    onRemove,
+}: FloatingPartnerIconProps) {
     const router = useRouter();
     const translateY = useSharedValue(0);
     const [showRemovalMenu, setShowRemovalMenu] = React.useState(false);
 
+    // Continuous breathing float on the speech bubble
     useEffect(() => {
         translateY.value = withRepeat(
             withSequence(
@@ -49,21 +75,29 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
         );
     }, [translateY]);
 
+    // Speech bubble breathes up/down
     const floatingStyle = useAnimatedStyle(() => {
         return { transform: [{ translateY: translateY.value }] };
     });
 
+    // Whole container moves with pull-to-edit gesture
     const partnerContainerStyle = useAnimatedStyle(() => {
         return {
             transform: [{ translateY: pullY.value }],
         };
     });
 
+    const animatedProps = useAnimatedProps(() => {
+        return {
+            pointerEvents: (scrollY?.value ?? 0) > 40 ? 'none' : 'auto'
+        } as any;
+    });
+
     const handlePress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push({
             pathname: '/profile',
-            params: { userId: partnerUser.uniqueUserId }
+            params: { userId: partnerUser.uniqueUserId },
         });
     };
 
@@ -74,7 +108,10 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
 
     return (
         <>
-            <Reanimated.View style={[styles.floatingPartnerContainer, partnerContainerStyle]}>
+            <Reanimated.View
+                style={[styles.floatingPartnerContainer, partnerContainerStyle, capsuleFadeStyle]}
+                animatedProps={animatedProps}
+            >
                 <TouchableOpacity
                     activeOpacity={0.9}
                     onPress={handlePress}
@@ -82,23 +119,42 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
                     delayLongPress={400}
                 >
                     <View style={styles.partnerContent}>
-                        <Image source={{ uri: partnerUser.profilePicture }} style={styles.partnerImage} />
+                        <Image
+                            source={{ uri: partnerUser.profilePicture }}
+                            style={styles.partnerImage}
+                        />
                         <View style={styles.heartBadge}>
                             <Ionicons name="heart" size={16} color="#f30808ff" />
                         </View>
                         <Reanimated.View style={[styles.dialogueWrapper, floatingStyle]}>
                             <View style={styles.solidBacking}>
-                                <RNAnimated.View style={[styles.dialogueBox, { backgroundColor: animatedBgColor }]}>
-                                    <Text style={styles.dialogueText} numberOfLines={1} ellipsizeMode="tail">
+                                <RNAnimated.View
+                                    style={[styles.dialogueBox, { backgroundColor: animatedBgColor }]}
+                                >
+                                    <Text
+                                        style={styles.dialogueText}
+                                        numberOfLines={1}
+                                        ellipsizeMode="tail"
+                                    >
                                         {relationshipLabel}
                                     </Text>
                                 </RNAnimated.View>
                             </View>
                             <View style={styles.curvedTailContainer}>
-                                <Svg width={24} height={24} viewBox="0 0 24 24" style={styles.tailSvgBacking}>
+                                <Svg
+                                    width={24}
+                                    height={24}
+                                    viewBox="0 0 24 24"
+                                    style={styles.tailSvgBacking}
+                                >
                                     <Path d="M0,0 Q12,0 20,20 Q4,12 0,0 Z" fill="white" />
                                 </Svg>
-                                <Svg width={24} height={24} viewBox="0 0 24 24" style={styles.tailSvgOverlay}>
+                                <Svg
+                                    width={24}
+                                    height={24}
+                                    viewBox="0 0 24 24"
+                                    style={styles.tailSvgOverlay}
+                                >
                                     {/* @ts-ignore */}
                                     <AnimatedPath
                                         d="M0,0 Q12,0 20,20 Q4,12 0,0 Z"
@@ -107,7 +163,12 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
                                         strokeWidth={1}
                                     />
                                 </Svg>
-                                <RNAnimated.View style={[styles.tailHiderPatch, { backgroundColor: animatedBgColor }]} />
+                                <RNAnimated.View
+                                    style={[
+                                        styles.tailHiderPatch,
+                                        { backgroundColor: animatedBgColor },
+                                    ]}
+                                />
                             </View>
                         </Reanimated.View>
                     </View>
@@ -128,12 +189,18 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
                                     style={styles.menuItem}
                                     onPress={() => {
                                         setShowRemovalMenu(false);
-                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        Haptics.notificationAsync(
+                                            Haptics.NotificationFeedbackType.Success
+                                        );
                                         onRemove?.();
                                     }}
                                 >
                                     <View style={styles.menuIconBox}>
-                                        <MaterialCommunityIcons name="heart-broken" size={20} color="#FF6B6B" />
+                                        <MaterialCommunityIcons
+                                            name="heart-broken"
+                                            size={20}
+                                            color="#FF6B6B"
+                                        />
                                     </View>
                                     <Text style={styles.menuItemText}>Remove as Partner</Text>
                                 </TouchableOpacity>
@@ -149,10 +216,16 @@ export default function FloatingPartnerIcon({ partnerUser, relationshipLabel, an
 const styles = StyleSheet.create({
     floatingPartnerContainer: {
         position: 'absolute',
+        /*
+         * HEADER_HEIGHT is imported from profileConstants (height * 0.63).
+         * marginTop: -36 pulls the avatar up to straddle the header's
+         * bottom rounded edge — half the avatar (56/2 = 28) plus 8px
+         * extra overlap so it sits naturally on the curve.
+         */
         top: HEADER_HEIGHT,
         right: 24,
         zIndex: 20,
-        marginTop: -28,
+        marginTop: -32,
     },
     partnerContent: {
         position: 'relative',
@@ -230,7 +303,6 @@ const styles = StyleSheet.create({
         height: 6,
         zIndex: 5,
     },
-    // Modal Styles
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.4)',

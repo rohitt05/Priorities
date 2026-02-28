@@ -8,6 +8,7 @@ export interface User {
     relationship?: string;
     partnerId?: string;
     prioritiesCount?: number;
+    gender?: 'male' | 'female' | string;
 }
 
 export interface PriorityUser extends User {

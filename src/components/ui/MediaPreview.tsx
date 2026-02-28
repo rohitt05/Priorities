@@ -23,6 +23,7 @@ interface MediaPreviewProps {
     isFrontCamera: boolean;
     onDiscard: () => void;
     onSave: () => void;
+    recipient?: string; // ✅ ADDED: Optional recipient prop
 }
 
 const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
@@ -30,8 +31,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     isFrontCamera,
     onDiscard,
     onSave,
+    recipient, // ✅ ADDED: Destructured recipient
 }) => {
-    // REMOVED: showSelectPriorities state
     const [isSaving, setIsSaving] = useState(false);
     const [permissionResponse, requestPermission] = MediaLibrary.usePermissions();
     const [isMuted, setIsMuted] = useState(false);
@@ -134,7 +135,6 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
 
     useEffect(() => {
         const backAction = () => {
-            // REMOVED: Check for showSelectPriorities
             onDiscard();
             return true;
         };
@@ -187,8 +187,6 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
 
     const mirrorStyle = isFrontCamera ? { transform: [{ scaleX: -1 }] } : {};
     const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-    // REMOVED: SelectPriorities render block
 
     return (
         <View style={styles.container}>
@@ -263,7 +261,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                         <Feather name="trash-2" size={24} color="#FF4040" />
                     </TouchableOpacity>
 
-                    {/* RIGHT GROUP: Download + Film of the Day Button */}
+                    {/* RIGHT GROUP: Download + Send/Film Button */}
                     <View style={styles.rightGroup}>
                         {/* Download Button */}
                         <TouchableOpacity
@@ -279,13 +277,15 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             )}
                         </TouchableOpacity>
 
-                        {/* ADDED: Film of the Day Capsule Button (Replaced Forward Button) */}
+                        {/* ✅ UPDATED: Dynamic Text Capsule Button */}
                         <TouchableOpacity
                             style={styles.capsuleButton}
-                            onPress={onSave} // Calls onSave directly now
+                            onPress={onSave}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.capsuleButtonText}>+ Film of the Day</Text>
+                            <Text style={styles.capsuleButtonText}>
+                                {recipient ? 'Send them' : '+ Film of the Day'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
         height: '100%'
     },
 
-    // Video Controls Overlay (Minimal Design - No Background Capsules)
+    // Video Controls Overlay
     videoControlsOverlay: {
         position: 'absolute',
         bottom: 16,
@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
     rightGroup: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12, // Reduced gap slightly for capsule spacing
+        gap: 12,
     },
 
     // Button Styles
@@ -410,14 +410,13 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: '#333',
     },
-    // NEW: Capsule Button Styles
     capsuleButton: {
         height: 56,
         paddingHorizontal: 24,
-        borderRadius: 28, // Fully rounded ends
-        borderWidth: 1.5, // Visible border
-        borderColor: '#FFF', // White border
-        backgroundColor: 'transparent', // Transparent background as requested
+        borderRadius: 28,
+        borderWidth: 1.5,
+        borderColor: '#FFF',
+        backgroundColor: 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
     },

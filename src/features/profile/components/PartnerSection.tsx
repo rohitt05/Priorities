@@ -1,10 +1,9 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, Animated as RNAnimated } from 'react-native';
-import Reanimated, { SharedValue } from 'react-native-reanimated';
+import { SharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { User } from '@/types/userTypes';
 import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
-import { HEADER_HEIGHT } from '../utils/profileConstants';
 
 const AnimatedTouchableOpacity = RNAnimated.createAnimatedComponent(TouchableOpacity);
 
@@ -25,7 +24,6 @@ export const PartnerSection: React.FC<PartnerSectionProps> = ({
     animatedBgColor,
     animatedCapsuleColor,
     pullY,
-    partnerContainerStyle,
     onAddPartner,
     onRemovePartner,
 }) => {
@@ -42,29 +40,20 @@ export const PartnerSection: React.FC<PartnerSectionProps> = ({
     }
 
     return (
-        <Reanimated.View style={[styles.floatingPartnerContainer, partnerContainerStyle]}>
-            <AnimatedTouchableOpacity
-                activeOpacity={0.85}
-                style={[styles.addPartnerCapsule, { backgroundColor: animatedCapsuleColor }]}
-                onPress={() => {
-                    Haptics.selectionAsync();
-                    onAddPartner();
-                }}
-            >
-                <Text style={styles.addPartnerText}>+ partner</Text>
-            </AnimatedTouchableOpacity>
-        </Reanimated.View>
+        <AnimatedTouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.addPartnerCapsule, { backgroundColor: animatedCapsuleColor }]}
+            onPress={() => {
+                Haptics.selectionAsync();
+                onAddPartner();
+            }}
+        >
+            <Text style={styles.addPartnerText}>+ partner</Text>
+        </AnimatedTouchableOpacity>
     );
 };
 
 const styles = StyleSheet.create({
-    floatingPartnerContainer: {
-        position: 'absolute',
-        top: HEADER_HEIGHT,
-        right: 24,
-        zIndex: 20,
-        marginTop: -16,
-    },
     addPartnerCapsule: {
         height: 28,
         paddingHorizontal: 10,

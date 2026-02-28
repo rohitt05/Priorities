@@ -1,3 +1,5 @@
+// src/features/profile/components/ProfileHeader.tsx
+
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import Reanimated from 'react-native-reanimated';
@@ -8,12 +10,14 @@ import { Link, useRouter } from 'expo-router';
 import { COLORS } from '@/theme/theme';
 import { User } from '@/types/userTypes';
 
+
 interface ProfileHeaderProps {
     user: User;
     isOwner?: boolean;
     headerAnimatedStyle: any;
     imageScaleStyle: any;
 }
+
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     user,
@@ -30,35 +34,20 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 style={[styles.profileImage, imageScaleStyle]}
                 resizeMode="cover"
             />
+
+            {/* Top gradient — dark → transparent behind the icon bar */}
             <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.5)']}
-                locations={[0, 0.9]}
-                style={styles.gradientOverlay}
+                colors={['rgba(0,0,0,0.65)', 'transparent']}
+                locations={[0, 1]}
+                style={styles.gradientTop}
+                pointerEvents="none"
             />
-            <SafeAreaView style={styles.headerSafeOverlay}>
-                <View style={styles.headerRow}>
-                    <TouchableOpacity style={styles.iconButton} hitSlop={12} onPress={() => router.back()}>
-                        <Ionicons name="chevron-back" size={24} color="white" />
-                    </TouchableOpacity>
 
-                    {isOwner ? (
-                        <Link href="/settings" asChild>
-                            <TouchableOpacity style={styles.iconButton} hitSlop={12}>
-                                <Ionicons name="settings-outline" size={24} color="white" />
-                            </TouchableOpacity>
-                        </Link>
-                    ) : (
-                        <View style={{ width: 40 }} />
-                    )}
-                </View>
-            </SafeAreaView>
 
-            <View style={styles.textOverlay}>
-                <Text style={styles.name}>{user.name}</Text>
-            </View>
         </Reanimated.View>
     );
 };
+
 
 const styles = StyleSheet.create({
     imageHeader: {
@@ -70,15 +59,25 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         backgroundColor: '#000',
     },
-    profileImage: { width: '100%', height: '100%' },
-    gradientOverlay: {
+    profileImage: {
+        width: '100%',
+        height: '100%',
+    },
+
+    /*
+     * Top gradient — rgba(0,0,0,0.65) at top edge fading to transparent.
+     * Covers 30% of header height for a deeper shadow behind the icon bar.
+     * zIndex 2 keeps it below the SafeAreaView (zIndex 10) so icons stay tappable.
+     */
+    gradientTop: {
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
-        height: '25%',
+        top: 0,
+        height: '30%',
         zIndex: 2,
     },
+
     headerSafeOverlay: {
         position: 'absolute',
         top: 0,
@@ -89,6 +88,7 @@ const styles = StyleSheet.create({
     headerRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
+        alignItems: 'center',
         paddingHorizontal: 20,
         marginTop: 10,
     },
@@ -97,19 +97,24 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    textOverlay: {
+
+    /*
+     * Name centered absolutely between icons.
+     * left/right 60 = icon width (40) + horizontal padding (20).
+     */
+    nameCenterSlot: {
         position: 'absolute',
-        bottom: 15,
-        left: 24,
-        right: 100,
-        zIndex: 3,
+        left: 60,
+        right: 60,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     name: {
-        fontSize: 24,
-        fontWeight: '800',
+        fontSize: 17,
+        fontWeight: '700',
         color: COLORS.surfaceLight,
-        textShadowColor: 'rgba(0, 0, 0, 0.3)',
-        textShadowOffset: { width: 0, height: 2 },
+        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+        textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 4,
         letterSpacing: -0.2,
     },

@@ -19,7 +19,8 @@
             "charlie_brown",
             "sofia_art",
             "liam_travels"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "3",
@@ -39,7 +40,8 @@
             "ruby_rose",
             "jasper_j",
             "ivy_green"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "2",
@@ -55,7 +57,8 @@
             "chloe_b",
             "lana143",
             "sofia_art"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "4",
@@ -69,7 +72,8 @@
         "priorities": [
             "rohit123",
             "oscar_wild"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "5",
@@ -84,7 +88,8 @@
             "priya_des",
             "zara_fash",
             "rohit123"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "6",
@@ -99,7 +104,8 @@
             "nina_sky",
             "rohit123",
             "jane_doe"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "7",
@@ -114,7 +120,8 @@
             "ethan_tech",
             "rohit123",
             "marco_polo"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "8",
@@ -131,7 +138,8 @@
             "zara_fash",
             "grace_p",
             "leo_sun"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "9",
@@ -144,7 +152,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "liam_travels"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "10",
@@ -159,7 +168,8 @@
             "sofia_art",
             "aria_music",
             "ruby_rose"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "11",
@@ -173,7 +183,8 @@
         "priorities": [
             "noah_w",
             "kai_zen"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "12",
@@ -187,7 +198,8 @@
         "priorities": [
             "jane_doe",
             "mia_dance"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "13",
@@ -201,7 +213,8 @@
         "priorities": [
             "kai_zen",
             "zayn_m"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "14",
@@ -214,7 +227,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "nina_sky"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "15",
@@ -227,7 +241,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "liam_travels"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "16",
@@ -243,7 +258,8 @@
             "priya_des",
             "leo_sun",
             "lana143"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "17",
@@ -259,7 +275,8 @@
             "priya_des",
             "grace_p",
             "lana143"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "18",
@@ -272,7 +289,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "chloe_b"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "19",
@@ -285,7 +303,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "bob_builder"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "20",
@@ -299,7 +318,8 @@
         "priorities": [
             "priya_des",
             "charlie_brown"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "21",
@@ -313,7 +333,8 @@
         "priorities": [
             "noah_w",
             "zayn_m"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "22",
@@ -324,7 +345,8 @@
         "dominantColor": "#9bf6ff",
         "relationship": "Niece",
         "prioritiesCount": 0,
-        "priorities": []
+        "priorities": [],
+        "gender": "female"
     },
     {
         "id": "23",
@@ -338,7 +360,8 @@
         "priorities": [
             "lana143",
             "nina_sky"
-        ]
+        ],
+        "gender": "female"
     },
     {
         "id": "24",
@@ -351,7 +374,8 @@
         "prioritiesCount": 1,
         "priorities": [
             "lana143"
-        ]
+        ],
+        "gender": "male"
     },
     {
         "id": "25",
@@ -364,6 +388,7 @@
         "prioritiesCount": 1,
         "priorities": [
             "lana143"
-        ]
+        ],
+        "gender": "female"
     }
 ]

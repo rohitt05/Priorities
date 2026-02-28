@@ -22,7 +22,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import * as Haptics from 'expo-haptics'; // Added for better UX
+import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
@@ -47,10 +47,10 @@ const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight |
 // Optimized Types
 type CapturedMedia = { uri: string; type: 'image' | 'video'; facing: CameraType };
 
-const ZOOM_SENSITIVITY = 150; // Adjusted for smoother zoom
-const MAX_ZOOM = 0.8; // Capped at 0.8 for stability
+const ZOOM_SENSITIVITY = 150;
+const MAX_ZOOM = 0.8;
 const MIN_ZOOM = 0;
-const MIN_RECORDING_DURATION = 1000; // Minimum 1 second video
+const MIN_RECORDING_DURATION = 1000;
 
 const FilmMyDayContent = () => {
     const router = useRouter();
@@ -94,7 +94,6 @@ const FilmMyDayContent = () => {
     const focusScale = useSharedValue(1.5);
 
     // --- LIFECYCLE ---
-
     useEffect(() => {
         let mounted = true;
         (async () => {
@@ -133,13 +132,11 @@ const FilmMyDayContent = () => {
         };
     }, [isRecording]);
 
-    // Sync Reanimated value with State (only on mount/reset)
     useEffect(() => {
         currentZoom.value = zoom;
     }, []);
 
     // --- FUNCTIONS ---
-
     const loadRecentAssets = useCallback(async () => {
         try {
             const { assets } = await MediaLibrary.getAssetsAsync({
@@ -179,11 +176,9 @@ const FilmMyDayContent = () => {
     }, []);
 
     // --- CAPTURE ---
-
     const takePicture = async () => {
         if (!cameraRef.current || isCapturing || isRecordingRef.current) return;
 
-        // Ensure we are in picture mode
         if (cameraMode !== 'picture') {
             setCameraMode('picture');
             await new Promise(r => setTimeout(r, 50));
@@ -197,10 +192,9 @@ const FilmMyDayContent = () => {
                 quality: 0.8,
                 base64: false,
                 exif: true,
-                skipProcessing: true, // Key for performance
+                skipProcessing: true,
             });
 
-            // Directly set captured media. Mirroring happens visually in preview or during save.
             if (photo?.uri) {
                 setCapturedMedia({ uri: photo.uri, type: 'image', facing });
             }
@@ -212,15 +206,12 @@ const FilmMyDayContent = () => {
         }
     };
 
-    // --- ROBUST RECORDING LOGIC ---
-
     const startRecordingProcess = useCallback(async () => {
         if (!isPressingButton.current || isRecordingRef.current || isCapturing || !cameraRef.current) return;
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setCameraMode('video');
 
-        // Wait for mode switch
         setTimeout(async () => {
             if (!isPressingButton.current || !cameraRef.current) {
                 setCameraMode('picture');
@@ -269,8 +260,6 @@ const FilmMyDayContent = () => {
     }, []);
 
     // --- GESTURES ---
-
-    // Optimized Zoom Handler
     const updateZoom = (newZoom: number) => {
         setZoom(newZoom);
     };
@@ -297,7 +286,6 @@ const FilmMyDayContent = () => {
         })
         .onUpdate((e) => {
             if (isRecordingRef.current || isPressingButton.current) {
-                // Dragging up (negative Y) increases zoom
                 const dragDistance = -e.translationY;
                 runOnJS(updateZoomFromGesture)(dragDistance);
             }
@@ -348,8 +336,6 @@ const FilmMyDayContent = () => {
     const tapGestures = Gesture.Exclusive(doubleTapGesture, singleTapGesture);
     const cameraAreaGesture = Gesture.Simultaneous(pinchGesture, tapGestures);
 
-    // --- ANIMATED STYLES ---
-
     const animatedButtonStyle = useAnimatedStyle(() => ({
         transform: [{ scale: buttonScale.value }],
     }));
@@ -362,7 +348,6 @@ const FilmMyDayContent = () => {
     }));
 
     // --- HELPERS ---
-
     const pickImage = async () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -384,7 +369,6 @@ const FilmMyDayContent = () => {
         try {
             let uriToSave = capturedMedia.uri;
 
-            // Perform manipulation ONLY when saving (keeps capture fast)
             if (capturedMedia.type === 'image' && capturedMedia.facing === 'front') {
                 const manipulated = await ImageManipulator.manipulateAsync(
                     capturedMedia.uri,
@@ -407,7 +391,6 @@ const FilmMyDayContent = () => {
     const { dayShort, date, monthShort, yearShort } = getCurrentDate();
 
     // --- RENDERS ---
-
     if (!permission || !mediaPermission || !micPermission) {
         return (
             <View style={styles.loadingContainer}>
@@ -439,6 +422,7 @@ const FilmMyDayContent = () => {
             isFrontCamera={capturedMedia.facing === 'front'}
             onDiscard={handleDiscard}
             onSave={saveMedia}
+            recipient={recipient} // ✅ SUCCESSFULLY PASSING RECIPIENT DOWN TO THE PREVIEW NOW
         />;
     }
 
@@ -495,7 +479,7 @@ const FilmMyDayContent = () => {
                                         animateShutter={false}
                                         zoom={zoom}
                                         videoStabilizationMode="auto"
-                                        videoQuality="720p" // Good balance of quality/performance
+                                        videoQuality="720p"
                                         responsiveOrientationWhenOrientationLocked
                                     />
 
@@ -509,7 +493,7 @@ const FilmMyDayContent = () => {
                                         </View>
                                     )}
 
-                                    {/* Recording Timer (Top Center) */}
+                                    {/* Recording Timer */}
                                     {isRecording && (
                                         <View style={styles.recordingTimerBadge}>
                                             <View style={styles.recordingDot} />
@@ -520,7 +504,7 @@ const FilmMyDayContent = () => {
                             </GestureDetector>
                         </View>
 
-                        {/* Shutter Button (Floating) */}
+                        {/* Shutter Button */}
                         <View style={styles.shutterContainerFloating}>
                             <GestureDetector gesture={shutterGesture}>
                                 <Animated.View
@@ -578,7 +562,7 @@ const FilmMyDayContent = () => {
             </View>
         </View>
     );
-};
+}
 
 export default function FilmMyDayScreen() {
     return (

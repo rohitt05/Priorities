@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // Import Contexts
 import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
-import { UserTimelineProvider } from '@/contexts/UserTimelineContext';
+import { UserTimelineProvider, useUserTimeline } from '@/contexts/UserTimelineContext';
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
@@ -86,6 +86,7 @@ const ScribbleIndicator = ({ state, position, layout }: any) => {
 
 function TabLayoutContent() {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
+    const { priorities, scrollToUserIndex } = useUserTimeline(); // ✅ Extract priorities and scroll function
     const { width } = Dimensions.get('window');
     const { tabBarAnim } = useTabBarVisibility();
 
@@ -94,6 +95,7 @@ function TabLayoutContent() {
 
     return (
         <View style={styles.container}>
+            {/* BACKGROUND LAYERS */}
             <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.background }]} />
             <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor, opacity: 0.25 }]} />
             <Animated.View
@@ -108,7 +110,6 @@ function TabLayoutContent() {
                     }
                 ]}
             />
-
             <ThemeProvider value={TransparentTheme}>
                 <View style={styles.content}>
                     <Header />
@@ -207,6 +208,7 @@ function TabLayoutContent() {
         </View>
     );
 }
+
 
 export default function TabLayout() {
     return (
