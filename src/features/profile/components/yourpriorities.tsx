@@ -64,7 +64,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                         const isBeingPressed = activeLongPressId === u.uniqueUserId;
 
                         return (
-                            <View key={u.uniqueUserId} style={styles.itemWrapper}>
+                            <View key={u.uniqueUserId} style={[styles.itemWrapper, isBeingPressed && { zIndex: 1000 }]}>
                                 {isBeingPressed && (
                                     <View style={styles.bubbleGhostWrapper}>
                                         <Reanimated.View 

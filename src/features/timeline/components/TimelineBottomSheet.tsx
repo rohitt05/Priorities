@@ -13,6 +13,7 @@ import {
 import { Ionicons, MaterialCommunityIcons, Entypo, Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
+import { useRouter } from 'expo-router';
 import { User } from '@/types/userTypes';
 import { COLORS, FONTS } from '@/theme/theme';
 
@@ -28,6 +29,7 @@ interface TimelineBottomSheetProps {
 
 export default function TimelineBottomSheet({ visible, onClose, user }: TimelineBottomSheetProps) {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -105,35 +107,55 @@ export default function TimelineBottomSheet({ visible, onClose, user }: Timeline
                             <View style={styles.indicator} />
                         </View>
 
-                        <View style={styles.actionsContainer}>
+                        <View style={styles.gridContainer}>
+                            <TouchableOpacity 
+                                style={styles.gridItem}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                    onClose();
+                                    setTimeout(() => {
+                                        router.push({
+                                            pathname: '/FilmMyDay',
+                                            params: { recipient: user.name, uniqueUserId: user.uniqueUserId }
+                                        });
+                                    }, 100);
+                                }}
+                            >
+                                <View style={styles.iconContainer}>
+                                    <Entypo name="camera" size={24} color="#000" />
+                                </View>
+                                <Text style={styles.gridLabel}>Share</Text>
+                            </TouchableOpacity>
 
-                            <ActionButton
-                                icon={<Entypo name="camera" size={20} color="#000" />}
-                                label="Share a Moment"
-                                color="#000"
-                            />
+                            <TouchableOpacity 
+                                style={styles.gridItem}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                    onClose();
+                                    setTimeout(() => {
+                                        router.push(`/profile?userId=${user.uniqueUserId}`);
+                                    }, 100);
+                                }}
+                            >
+                                <View style={styles.iconContainer}>
+                                    <Feather name="user" size={26} color="#000" />
+                                </View>
+                                <Text style={styles.gridLabel}>Profile</Text>
+                            </TouchableOpacity>
 
-                            <ActionButton
-                                icon={<Feather name="user" size={22} color="#000" />}
-                                label="View Profile"
-                                color="#000"
-                            />
-
-                            <View style={styles.separator} />
-
-                            <ActionButton
-                                icon={<Feather name="user-x" size={22} color="#000" />}
-                                label="Remove from Priorities"
-                                color="#000"
-                            />
-
-                            <ActionButton
-                                icon={<MaterialCommunityIcons name="block-helper" size={20} color="#FF3B30" />}
-                                label="Block User"
-                                color="#FF3B30"
-                                hideArrow
-                            />
-
+                            <TouchableOpacity 
+                                style={styles.gridItem}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                    console.log('Delete entire timeline', user.uniqueUserId);
+                                    onClose();
+                                }}
+                            >
+                                <View style={[styles.iconContainer, { borderColor: '#FF3B30', borderWidth: 1 }]}>
+                                    <MaterialCommunityIcons name="trash-can-outline" size={26} color="#FF3B30" />
+                                </View>
+                                <Text style={[styles.gridLabel, { color: '#FF3B30' }]}>Delete</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
 
@@ -150,25 +172,6 @@ export default function TimelineBottomSheet({ visible, onClose, user }: Timeline
     );
 }
 
-const ActionButton = ({
-    icon,
-    label,
-    color,
-    hideArrow
-}: {
-    icon: any;
-    label: string;
-    color: string;
-    hideArrow?: boolean;
-}) => (
-    <TouchableOpacity style={styles.actionRow} activeOpacity={0.6}>
-        <View style={styles.iconBox}>
-            {icon}
-        </View>
-        <Text style={[styles.actionLabel, { color }]}>{label}</Text>
-        {!hideArrow && <Ionicons name="chevron-forward" size={18} color="#C7C7CC" />}
-    </TouchableOpacity>
-);
 
 const styles = StyleSheet.create({
     overlayWrapper: {
@@ -200,31 +203,32 @@ const styles = StyleSheet.create({
         borderRadius: 2,
         backgroundColor: 'rgba(0,0,0,0.15)',
     },
-    actionsContainer: {
-        paddingHorizontal: 24,
+    gridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        paddingHorizontal: 16,
         paddingTop: 10,
     },
-    actionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 16,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'transparent',
-    },
-    iconBox: {
-        width: 30,
+    gridItem: {
+        width: '33.33%',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 16,
+        paddingVertical: 12,
     },
-    actionLabel: {
-        flex: 1,
-        fontSize: 17,
-        fontWeight: '500',
+    iconContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(255,255,255,0.75)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
     },
-    separator: {
-        height: 1,
-        backgroundColor: 'rgba(0,0,0,0.08)',
-        marginVertical: 12,
+    gridLabel: {
+        fontSize: 12,
+        fontFamily: FONTS.bold,
+        color: '#1C1917',
+        opacity: 0.7,
+        textAlign: 'center',
     },
 });

@@ -236,6 +236,22 @@ function ProfileScreenContent() {
                     When partner EXISTS: capsule row is hidden — FloatingPartnerIcon
                     renders outside the ScrollView below (absolute, screen-relative).
                 */}
+                {/*
+                    FloatingPartnerIcon is now INSIDE the ScrollView and rendered BEFORE Priorities.
+                    This ensures Priorities (with higher zIndex) sit on top of it.
+                */}
+                {isOwner && partnerUser && (
+                    <FloatingPartnerIcon
+                        partnerUser={partnerUser}
+                        relationshipLabel={relationshipLabel}
+                        animatedBgColor={animatedBgColor}
+                        pullY={pullY}
+                        scrollY={scrollY}
+                        capsuleFadeStyle={capsuleFadeStyle}
+                        onRemove={handleRemovePartner}
+                    />
+                )}
+
                 {isOwner && !partnerUser && (
                     <Reanimated.View style={[styles.capsuleRow, capsuleFadeStyle]}>
                         <PartnerSection
@@ -251,7 +267,12 @@ function ProfileScreenContent() {
                     </Reanimated.View>
                 )}
 
-                <Reanimated.View style={prioritiesFadeStyle}>
+                <Reanimated.View 
+                    style={[
+                        prioritiesFadeStyle, 
+                        { zIndex: 100 } // Elevated stacking context above the partner icon
+                    ]}
+                >
                     <YourPriorities 
                         user={currentUser} 
                         onUnauthorizedAccess={() => {
@@ -273,26 +294,9 @@ function ProfileScreenContent() {
                     />
                     <View style={styles.bottomPad} />
                 </Reanimated.View>
+
             </Reanimated.ScrollView>
 
-            {/*
-                FloatingPartnerIcon MUST live outside the ScrollView.
-                Its style uses position: 'absolute', top: HEADER_HEIGHT which
-                must be measured from the screen root — not from a scroll container.
-                Placing it here (sibling to ScrollView, inside GestureHandlerRootView)
-                gives it correct screen-relative positioning.
-            */}
-            {isOwner && partnerUser && (
-                <FloatingPartnerIcon
-                    partnerUser={partnerUser}
-                    relationshipLabel={relationshipLabel}
-                    animatedBgColor={animatedBgColor}
-                    pullY={pullY}
-                    scrollY={scrollY}
-                    capsuleFadeStyle={capsuleFadeStyle}
-                    onRemove={handleRemovePartner}
-                />
-            )}
 
             {isEditing && (
                 <EditProfileScreen user={currentUser} onBack={handleCloseEdit} />

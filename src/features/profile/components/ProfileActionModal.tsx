@@ -26,7 +26,7 @@ import { COLORS, FONTS, FONT_SIZES } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = 400; // Tighter fixed height
+const SHEET_HEIGHT = 260; // Shorter top-down height
 const SWIPE_CLOSE_THRESHOLD = 80;
 
 interface ActionOption {
@@ -124,26 +124,7 @@ export default function ProfileActionModal({
         });
 
     const options: ActionOption[] = [
-        {
-            label: 'Remove from Priorities',
-            icon: 'account-remove-outline',
-            iconLibrary: 'MaterialCommunityIcons',
-            color: '#FF3B30',
-            onPress: () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                handleClose();
-            },
-        },
-        {
-            label: 'Report Account',
-            icon: 'flag-outline',
-            iconLibrary: 'Ionicons',
-            color: '#FF3B30',
-            onPress: () => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                handleClose();
-            },
-        },
+        // Row 1: Common Actions
         {
             label: 'Copy User ID',
             icon: 'copy-outline',
@@ -172,6 +153,37 @@ export default function ProfileActionModal({
             onPress: () => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setIsAboutView(true);
+            },
+        },
+        // Row 2: Moderation/Safety Actions (Red)
+        {
+            label: 'Remove from Priorities',
+            icon: 'account-remove-outline',
+            iconLibrary: 'MaterialCommunityIcons',
+            color: '#FF3B30',
+            onPress: () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleClose();
+            },
+        },
+        {
+            label: 'Report Account',
+            icon: 'flag-outline',
+            iconLibrary: 'Ionicons',
+            color: '#FF3B30',
+            onPress: () => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                handleClose();
+            },
+        },
+        {
+            label: 'Block',
+            icon: 'block-helper',
+            iconLibrary: 'MaterialCommunityIcons',
+            color: '#FF3B30',
+            onPress: () => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                handleClose();
             },
         },
     ];
@@ -244,28 +256,34 @@ export default function ProfileActionModal({
                                         </View>
                                     </GestureDetector>
 
-                                    <View style={styles.content}>
-                                        {options.map((option, index) => (
-                                            <React.Fragment key={index}>
-                                                <TouchableOpacity
-                                                    style={styles.optionRow}
-                                                    activeOpacity={0.7}
-                                                    onPress={option.onPress}
-                                                >
-                                                    <View style={styles.iconContainer}>
-                                                        {renderIcon(option)}
-                                                    </View>
-                                                    <Text style={[
-                                                        styles.optionLabel,
-                                                        option.color ? { color: option.color } : {}
-                                                    ]}>
-                                                        {option.label}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                                {index === 1 && <View style={styles.separator} />}
-                                            </React.Fragment>
-                                        ))}
-                                    </View>
+                            <View style={styles.gridContainer}>
+                                {options.map((option, index) => (
+                                    <TouchableOpacity
+                                        key={index}
+                                        style={styles.gridItem}
+                                        activeOpacity={0.7}
+                                        onPress={option.onPress}
+                                    >
+                                        <View style={[
+                                            styles.iconContainer,
+                                            option.color ? { borderColor: option.color, borderWidth: 1 } : {}
+                                        ]}>
+                                            {renderIcon(option)}
+                                        </View>
+                                        <Text style={[
+                                            styles.gridLabel,
+                                            option.color ? { color: option.color } : {}
+                                        ]}>
+                                            {option.label === 'Copy User ID' ? 'Copy' : 
+                                             option.label === 'Share Profile' ? 'Share' : 
+                                             option.label === 'About this account' ? 'Info' : 
+                                             option.label === 'Remove from Priorities' ? 'Remove' : 
+                                             option.label === 'Report Account' ? 'Report' : 
+                                             option.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
                                 </>
                             )}
                         </Reanimated.View>
@@ -315,32 +333,33 @@ const styles = StyleSheet.create({
         borderRadius: 999,
         backgroundColor: 'rgba(0,0,0,0.12)',
     },
-    content: {
-        paddingHorizontal: 20,
-        paddingTop: 8,
-    },
-    optionRow: {
+    gridContainer: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
+        paddingHorizontal: 10,
+        paddingTop: 4,
+    },
+    gridItem: {
+        width: '33.33%', // exactly 3 per row
         alignItems: 'center',
-        paddingVertical: 10,
-        marginVertical: 2,
-        borderRadius: 16,
+        justifyContent: 'center',
+        paddingVertical: 6,
     },
     iconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.65)',
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(255,255,255,0.75)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 16,
+        marginBottom: 8,
     },
-    optionLabel: {
-        fontSize: 16,
+    gridLabel: {
+        fontSize: 12,
         fontFamily: FONTS.bold,
-        fontWeight: '600',
         color: '#1C1917',
-        letterSpacing: -0.3,
+        opacity: 0.7,
+        textAlign: 'center',
     },
     aboutContainer: {
         flex: 1,

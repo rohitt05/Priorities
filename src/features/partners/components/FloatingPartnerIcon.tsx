@@ -81,9 +81,12 @@ export default function FloatingPartnerIcon({
     });
 
     // Whole container moves with pull-to-edit gesture
+    // Also compensates for parent scroll if scrollY is provided, allowing it to stay fixed
     const partnerContainerStyle = useAnimatedStyle(() => {
         return {
-            transform: [{ translateY: pullY.value }],
+            transform: [
+                { translateY: pullY.value + (scrollY ? scrollY.value : 0) }
+            ],
         };
     });
 
