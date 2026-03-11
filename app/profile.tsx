@@ -38,6 +38,7 @@ import { PartnerSection } from '@/features/profile/components/PartnerSection';
 import YourPriorities from '@/features/profile/components/yourpriorities';
 import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
 import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
+import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -47,6 +48,7 @@ function ProfileScreenContent() {
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
     const [isEditing, setIsEditing] = useState(false);
     const [isAddPartnerVisible, setIsAddPartnerVisible] = useState(false);
+    const [isActionModalVisible, setIsActionModalVisible] = useState(false);
     const [savedPartnerUniqueUserId, setSavedPartnerUniqueUserId] = useState<string | null>(null);
     const [showFlashBanner, setShowFlashBanner] = useState(false);
     const bannerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -203,6 +205,7 @@ function ProfileScreenContent() {
                 isOwner={isOwner}
                 scrollY={scrollY}
                 animatedBarColor={animatedCapsuleColor}
+                onActionPress={() => setIsActionModalVisible(true)}
             />
 
             <Reanimated.ScrollView
@@ -303,6 +306,13 @@ function ProfileScreenContent() {
                     setSavedPartnerUniqueUserId(selectedUserId);
                     AsyncStorage.setItem(PARTNER_KEY, selectedUserId).catch(() => { });
                 }}
+            />
+
+            <ProfileActionModal
+                visible={isActionModalVisible}
+                onClose={() => setIsActionModalVisible(false)}
+                userId={currentUser.uniqueUserId}
+                userName={currentUser.name}
             />
 
             {showFlashBanner && (

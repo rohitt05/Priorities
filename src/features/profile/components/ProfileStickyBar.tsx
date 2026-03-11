@@ -4,7 +4,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Animated as RNAnimated } from 'react-native';
 import Reanimated, { useAnimatedStyle, interpolate, Extrapolation, SharedValue } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Entypo } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/theme/theme';
@@ -18,6 +18,7 @@ interface ProfileStickyBarProps {
     isOwner?: boolean;
     scrollY: SharedValue<number>;
     animatedBarColor: any; // RNAnimated.AnimatedInterpolation
+    onActionPress?: () => void;
 }
 
 export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
@@ -25,6 +26,7 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
     isOwner = false,
     scrollY,
     animatedBarColor,
+    onActionPress,
 }) => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -110,7 +112,16 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                         </TouchableOpacity>
                     </Link>
                 ) : (
-                    <View style={{ width: 40 }} />
+                    <TouchableOpacity
+                        style={styles.iconButton}
+                        hitSlop={12}
+                        onPress={onActionPress}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Profile actions"
+                    >
+                        <Entypo name="dots-two-horizontal" size={24} color="white" />
+                    </TouchableOpacity>
                 )}
             </View>
         </View>
