@@ -1,0 +1,412 @@
+{
+    "schemaVersion": 1,
+    "events": [
+        {
+            "id": "rohit_1",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-25T14:30:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+            "thumbUri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_2",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-24T09:15:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Starting a new adventure today!"
+        },
+        {
+            "id": "rohit_3",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-22T19:45:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 450
+        },
+        {
+            "id": "rohit_4",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-20T11:20:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1533105079780-92b9be482077",
+            "thumbUri": "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_5",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-18T22:10:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 1200
+        },
+        {
+            "id": "rohit_6",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-15T15:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Happy Birthday Rohit!"
+        },
+        {
+            "id": "rohit_7",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-14T10:30:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+            "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_8",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-12T08:00:00+05:30",
+            "sender": "them",
+            "type": "audio",
+            "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+            "durationSec": 120,
+            "title": "Morning Tune"
+        },
+        {
+            "id": "rohit_9",
+            "userUniqueId": "rohit123",
+            "ts": "2025-10-10T21:20:00+05:30",
+            "sender": "me",
+            "type": "video",
+            "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+            "durationSec": 15
+        },
+        {
+            "id": "rohit_10",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-30T16:45:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Great weekend progress."
+        },
+        {
+            "id": "rohit_11",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-28T12:30:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+            "thumbUri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_12",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-25T19:10:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 890
+        },
+        {
+            "id": "rohit_13",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-20T10:00:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_14",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-15T21:30:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 2400
+        },
+        {
+            "id": "rohit_15",
+            "userUniqueId": "rohit123",
+            "ts": "2025-09-10T14:20:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Coffee and code ☕"
+        },
+        {
+            "id": "rohit_16",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-30T17:15:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05",
+            "thumbUri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_17",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-25T11:45:00+05:30",
+            "sender": "me",
+            "type": "voice_call",
+            "durationSec": 320
+        },
+        {
+            "id": "rohit_18",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-20T09:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e",
+            "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_19",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-15T22:30:00+05:30",
+            "sender": "me",
+            "type": "note",
+            "text": "Starry night thoughts."
+        },
+        {
+            "id": "rohit_20",
+            "userUniqueId": "rohit123",
+            "ts": "2025-08-10T15:10:00+05:30",
+            "sender": "them",
+            "type": "video_call",
+            "durationSec": 1500
+        },
+        {
+            "id": "rohit_21",
+            "userUniqueId": "rohit123",
+            "ts": "2025-07-25T12:00:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_22",
+            "userUniqueId": "rohit123",
+            "ts": "2025-07-20T19:30:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 560
+        },
+        {
+            "id": "rohit_23",
+            "userUniqueId": "rohit123",
+            "ts": "2025-07-15T11:45:00+05:30",
+            "sender": "me",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "rohit_24",
+            "userUniqueId": "rohit123",
+            "ts": "2025-07-10T22:15:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Mid-year reflection."
+        },
+        {
+            "id": "rohit_25",
+            "userUniqueId": "rohit123",
+            "ts": "2025-06-30T16:00:00+05:30",
+            "sender": "me",
+            "type": "video_call",
+            "durationSec": 1800
+        },
+        {
+            "id": "lana_1",
+            "userUniqueId": "lana143",
+            "ts": "2025-10-24T18:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e",
+            "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "jane_1",
+            "userUniqueId": "jane_doe",
+            "ts": "2025-10-23T10:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Happy Monday!"
+        },
+        {
+            "id": "bob_1",
+            "userUniqueId": "bob_builder",
+            "ts": "2025-10-22T09:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 600
+        },
+        {
+            "id": "charlie_1",
+            "userUniqueId": "charlie_brown",
+            "ts": "2025-10-21T15:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+            "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "sofia_1",
+            "userUniqueId": "sofia_art",
+            "ts": "2025-10-20T11:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Beautiful morning!"
+        },
+        {
+            "id": "liam_1",
+            "userUniqueId": "liam_travels",
+            "ts": "2025-10-19T08:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+            "thumbUri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "priya_1",
+            "userUniqueId": "priya_des",
+            "ts": "2025-10-18T20:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 1200
+        },
+        {
+            "id": "marco_1",
+            "userUniqueId": "marco_polo",
+            "ts": "2025-10-17T17:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
+            "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "nina_1",
+            "userUniqueId": "nina_sky",
+            "ts": "2025-10-16T12:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Feeling inspired."
+        },
+        {
+            "id": "zayn_1",
+            "userUniqueId": "zayn_m",
+            "ts": "2025-10-15T09:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+            "thumbUri": "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "chloe_1",
+            "userUniqueId": "chloe_b",
+            "ts": "2025-10-14T14:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 300
+        },
+        {
+            "id": "noah_1",
+            "userUniqueId": "noah_w",
+            "ts": "2025-10-13T10:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d",
+            "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "aria_1",
+            "userUniqueId": "aria_music",
+            "ts": "2025-10-12T19:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "New track coming soon!"
+        },
+        {
+            "id": "ethan_1",
+            "userUniqueId": "ethan_tech",
+            "ts": "2025-10-11T11:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05",
+            "thumbUri": "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "grace_1",
+            "userUniqueId": "grace_p",
+            "ts": "2025-10-10T16:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 1800
+        },
+        {
+            "id": "leo_1",
+            "userUniqueId": "leo_sun",
+            "ts": "2025-10-09T08:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e",
+            "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "mia_1",
+            "userUniqueId": "mia_dance",
+            "ts": "2025-10-08T20:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Dance class was fire!"
+        },
+        {
+            "id": "oscar_1",
+            "userUniqueId": "oscar_wild",
+            "ts": "2025-10-07T17:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1533105079780-92b9be482077",
+            "thumbUri": "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "zara_1",
+            "userUniqueId": "zara_fash",
+            "ts": "2025-10-06T12:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 900
+        },
+        {
+            "id": "kai_1",
+            "userUniqueId": "kai_zen",
+            "ts": "2025-10-05T09:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
+            "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "luna_1",
+            "userUniqueId": "luna_moon",
+            "ts": "2025-10-04T14:00:00+05:30",
+            "sender": "them",
+            "type": "note",
+            "text": "Moonlight magic."
+        },
+        {
+            "id": "ruby_1",
+            "userUniqueId": "ruby_rose",
+            "ts": "2025-10-03T10:00:00+05:30",
+            "sender": "them",
+            "type": "photo",
+            "uri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+            "thumbUri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=300&h=300&fit=crop"
+        },
+        {
+            "id": "jasper_1",
+            "userUniqueId": "jasper_j",
+            "ts": "2025-10-02T19:00:00+05:30",
+            "sender": "them",
+            "type": "voice_call",
+            "durationSec": 450
+        }
+    ]
+}

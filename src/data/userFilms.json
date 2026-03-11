@@ -1,0 +1,458 @@
+[
+    {
+        "id": "f1",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T18:30:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f2",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T14:20:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f3",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1506744626753-ce8ec91079d2?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T09:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f4",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1490682143684-14369e18dce8?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T08:45:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f7",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T20:10:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f8",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T16:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f9",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T12:30:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f10",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T08:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f11",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1470252649021-504040667425?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T17:45:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f12",
+        "userId": "rohit123",
+        "mediaUrl": "https://images.unsplash.com/photo-1488646953991-923b56de4357?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T10:15:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f5",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T09:15:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f13",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T13:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f14",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T18:30:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f15",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T11:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f16",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T15:20:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f17",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1502945015378-0e284ca1a5be?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T09:40:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f18",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T20:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f19",
+        "userId": "lana143",
+        "mediaUrl": "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T14:30:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f6",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1542204165-65bf26472b9b?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T11:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f20",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1544005168-0c6f191fa7cb?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T16:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f21",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T10:30:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f22",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T13:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f23",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1523906834998-6e052be04d9e?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T09:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f24",
+        "userId": "jane_doe",
+        "mediaUrl": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-17T19:00:00Z",
+        "dayOfWeek": "Tuesday"
+    },
+    {
+        "id": "f25",
+        "userId": "grace_p",
+        "mediaUrl": "https://images.unsplash.com/photo-1508739773316-c4e6f9a3b725?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T07:30:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f26",
+        "userId": "grace_p",
+        "mediaUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T12:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f27",
+        "userId": "grace_p",
+        "mediaUrl": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T08:30:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f28",
+        "userId": "grace_p",
+        "mediaUrl": "https://images.unsplash.com/photo-1520342564855-09cbbf3a6834?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T15:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f29",
+        "userId": "grace_p",
+        "mediaUrl": "https://images.unsplash.com/photo-1488161793119-0f9d4ac3bd50?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-17T11:00:00Z",
+        "dayOfWeek": "Tuesday"
+    },
+    {
+        "id": "f30",
+        "userId": "leo_sun",
+        "mediaUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T08:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f31",
+        "userId": "leo_sun",
+        "mediaUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T09:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f32",
+        "userId": "leo_sun",
+        "mediaUrl": "https://images.unsplash.com/photo-1463453091185-61582044d556?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T17:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f33",
+        "userId": "leo_sun",
+        "mediaUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T12:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f34",
+        "userId": "priya_des",
+        "mediaUrl": "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T10:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f35",
+        "userId": "priya_des",
+        "mediaUrl": "https://images.unsplash.com/photo-1499952127939-9bbf5af6c51c?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T14:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f36",
+        "userId": "priya_des",
+        "mediaUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T11:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f37",
+        "userId": "priya_des",
+        "mediaUrl": "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T08:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f38",
+        "userId": "charlie_brown",
+        "mediaUrl": "https://images.unsplash.com/photo-1521119989659-a83eee488004?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T12:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f39",
+        "userId": "charlie_brown",
+        "mediaUrl": "https://images.unsplash.com/photo-1504257432389-52343af06ae3?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T17:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f40",
+        "userId": "charlie_brown",
+        "mediaUrl": "https://images.unsplash.com/photo-1493606278519-11aa9f86e40a?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T10:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f41",
+        "userId": "bob_builder",
+        "mediaUrl": "https://images.unsplash.com/photo-1508243771214-6e95d137426b?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T09:30:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f42",
+        "userId": "bob_builder",
+        "mediaUrl": "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T13:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f43",
+        "userId": "bob_builder",
+        "mediaUrl": "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T16:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f44",
+        "userId": "sofia_art",
+        "mediaUrl": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T15:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f45",
+        "userId": "sofia_art",
+        "mediaUrl": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T11:30:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f46",
+        "userId": "liam_travels",
+        "mediaUrl": "https://images.unsplash.com/photo-1527631746610-bca00a040d60?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T10:30:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f47",
+        "userId": "liam_travels",
+        "mediaUrl": "https://images.unsplash.com/photo-1500835556837-99ac94a94552?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T14:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f48",
+        "userId": "nina_sky",
+        "mediaUrl": "https://images.unsplash.com/photo-1495364141860-b0d03eccd065?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-21T17:00:00Z",
+        "dayOfWeek": "Saturday"
+    },
+    {
+        "id": "f49",
+        "userId": "marco_polo",
+        "mediaUrl": "https://images.unsplash.com/photo-1476900164809-ff19b8ae5968?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T15:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f50",
+        "userId": "zayn_m",
+        "mediaUrl": "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-20T19:00:00Z",
+        "dayOfWeek": "Friday"
+    },
+    {
+        "id": "f51",
+        "userId": "chloe_b",
+        "mediaUrl": "https://images.unsplash.com/photo-1526413232644-8a40f03cc03b?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T18:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f52",
+        "userId": "noah_w",
+        "mediaUrl": "https://images.unsplash.com/photo-1519058082700-08a0b56da9b4?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-19T20:00:00Z",
+        "dayOfWeek": "Thursday"
+    },
+    {
+        "id": "f53",
+        "userId": "aria_music",
+        "mediaUrl": "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T16:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f54",
+        "userId": "ethan_tech",
+        "mediaUrl": "https://images.unsplash.com/photo-1517430816045-df4b7de11d1d?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-18T11:00:00Z",
+        "dayOfWeek": "Wednesday"
+    },
+    {
+        "id": "f55",
+        "userId": "mia_dance",
+        "mediaUrl": "https://images.unsplash.com/photo-1508700929628-666bc8bd84ea?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-17T20:00:00Z",
+        "dayOfWeek": "Tuesday"
+    },
+    {
+        "id": "f56",
+        "userId": "oscar_wild",
+        "mediaUrl": "https://images.unsplash.com/photo-1519419166318-4f5c601b8e6c?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-17T14:00:00Z",
+        "dayOfWeek": "Tuesday"
+    },
+    {
+        "id": "f57",
+        "userId": "kai_zen",
+        "mediaUrl": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=800&q=80",
+        "mediaType": "image",
+        "timestamp": "2026-02-16T07:30:00Z",
+        "dayOfWeek": "Monday"
+    }
+]

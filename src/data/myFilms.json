@@ -1,0 +1,67 @@
+{
+    "films": [
+        {
+            "id": "film_001",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T07:15:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "image",
+            "caption": "early morning light hits different ☀️"
+        },
+        {
+            "id": "film_002",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T09:30:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "image",
+            "caption": "coffee and a view, nothing else needed"
+        },
+        {
+            "id": "film_003",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T11:00:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "image",
+            "caption": "mid morning walk 🌿"
+        },
+        {
+            "id": "film_004",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T13:45:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1414609245224-afa02bfb3fda?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "video",
+            "caption": "lunch break chaos lol"
+        },
+        {
+            "id": "film_005",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T15:20:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "image",
+            "caption": "found this spot, never leaving 🫶"
+        },
+        {
+            "id": "film_006",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T17:10:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "video",
+            "caption": "golden hour always wins 🌅"
+        },
+        {
+            "id": "film_007",
+            "userId": "rohit123",
+            "timestamp": "2026-03-04T19:55:00.000Z",
+            "mediaUrl": "https://images.unsplash.com/photo-1518098268026-4e89f1a2cd8e?w=800",
+            "dayOfWeek": "Wednesday",
+            "mediaType": "image",
+            "caption": "end of day, grateful for this one 🌙"
+        }
+    ]
+}
