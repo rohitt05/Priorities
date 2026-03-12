@@ -1,0 +1,79 @@
+[
+  {
+    "id": "msg_lana_01",
+    "userId": "lana143",
+    "type": "video",
+    "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "durationSec": 10,
+    "status": "unread"
+  },
+  {
+    "id": "msg_jane_01",
+    "userId": "jane_doe",
+    "type": "image",
+    "uri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+    "status": "unread"
+  },
+  {
+    "id": "msg_bob_01",
+    "userId": "bob_builder",
+    "type": "voice",
+    "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    "durationSec": 15,
+    "status": "unread"
+  },
+  {
+    "id": "msg_sofia_01",
+    "userId": "sofia_art",
+    "type": "video",
+    "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "durationSec": 12,
+    "status": "unread"
+  },
+  {
+    "id": "msg_liam_01",
+    "userId": "liam_travels",
+    "type": "image",
+    "uri": "https://images.unsplash.com/photo-1517841905240-472988babdf9",
+    "status": "unread"
+  },
+  {
+    "id": "msg_priya_01",
+    "userId": "priya_des",
+    "type": "voice",
+    "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    "durationSec": 45,
+    "status": "unread"
+  },
+  {
+    "id": "msg_marco_01",
+    "userId": "marco_polo",
+    "type": "video",
+    "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "durationSec": 8,
+    "status": "unread"
+  },
+  {
+    "id": "msg_nina_01",
+    "userId": "nina_sky",
+    "type": "image",
+    "uri": "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+    "status": "unread"
+  },
+  {
+    "id": "msg_zayn_01",
+    "userId": "zayn_m",
+    "type": "voice",
+    "uri": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    "durationSec": 15,
+    "status": "unread"
+  },
+  {
+    "id": "msg_chloe_01",
+    "userId": "chloe_b",
+    "type": "video",
+    "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+    "durationSec": 10,
+    "status": "unread"
+  }
+]

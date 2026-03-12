@@ -16,21 +16,32 @@ import { useEvent } from 'expo';
 import { BaseMediaProps, formatTime } from '@/types/mediaTypes';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const PROGRESS_BAR_WIDTH = SCREEN_WIDTH - 40;
+// Assuming the player is mounted in a card that is 90% of screen width.
+const CARD_WIDTH = SCREEN_WIDTH * 0.9;
+const PROGRESS_BAR_WIDTH = CARD_WIDTH - 40;
 
 interface VideoPlayerProps extends BaseMediaProps {
     isFocused?: boolean;
+    autoPlay?: boolean;
+    onReady?: () => void;
+    themeColor?: string;
 }
 
-export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) {
-    // 1. Initialize Player (Manual Play - No Autoplay)
+export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, themeColor = '#000' }: VideoPlayerProps) {
+    // 1. Initialize Player
     const player = useVideoPlayer(mediaItem.uri || '', player => {
         player.loop = true;
         player.timeUpdateEventInterval = 0.1;
-        // NOTE: removed player.play() here to respect "play only when clicked"
+        if (autoPlay) player.play();
     });
 
     const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
+
+    useEffect(() => {
+        if (isPlaying && onReady) {
+            onReady();
+        }
+    }, [isPlaying, onReady]);
 
     // UI State
     const [currentTime, setCurrentTime] = useState(0);
@@ -118,11 +129,13 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
             setShowControls(true);
             controlsOpacity.setValue(1);
         } else {
-            // When focused, do NOT auto-play (per user request).
-            // But show controls so they can click play.
+            // When focused, auto-play only if prop is set
+            if (autoPlay) {
+                player.play();
+            }
             fadeInControls();
         }
-    }, [isFocused, player]);
+    }, [isFocused, player, autoPlay]);
 
     // Monitor playing state to manage timer
     useEffect(() => {
@@ -201,7 +214,7 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
             <VideoView
                 player={player}
                 style={styles.video}
-                contentFit="contain"
+                contentFit="cover"
                 nativeControls={false}
             />
 
@@ -224,13 +237,13 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
                     */}
                     <TouchableOpacity
                         onPress={handlePlayPause}
-                        style={styles.playButton}
+                        style={[styles.playButton, { backgroundColor: themeColor + '20', borderColor: themeColor }]}
                         activeOpacity={0.7}
                     >
                         <Ionicons
                             name={isPlaying ? "pause" : "play"}
                             size={50}
-                            color="#fff"
+                            color={themeColor}
                             style={{ marginLeft: isPlaying ? 0 : 5 }}
                         />
                     </TouchableOpacity>
@@ -246,8 +259,8 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
                 pointerEvents={showControls ? 'box-none' : 'none'}
             >
                 <View style={styles.timeContainer}>
-                    <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-                    <Text style={styles.timeText}>{formatTime(duration)}</Text>
+                    <Text style={[styles.timeText, { color: themeColor }]}>{formatTime(currentTime)}</Text>
+                    <Text style={[styles.timeText, { color: themeColor }]}>{formatTime(duration)}</Text>
                 </View>
 
                 <View
@@ -259,13 +272,13 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
                         <View
                             style={[
                                 styles.progressFill,
-                                { width: `${progressPercent}%` }
+                                { width: `${progressPercent}%`, backgroundColor: themeColor }
                             ]}
                         />
                         <View
                             style={[
                                 styles.scrubberKnob,
-                                { left: `${progressPercent}%` }
+                                { left: `${progressPercent}%`, backgroundColor: themeColor }
                             ]}
                         />
                     </View>
@@ -277,15 +290,21 @@ export default function VideoPlayer({ mediaItem, isFocused }: VideoPlayerProps) 
 
 const styles = StyleSheet.create({
     container: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT,
+        width: '100%',
+        height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'transparent'
+        backgroundColor: '#000', // Solid background establishes a hardware layer
+        borderRadius: 32,
+        overflow: 'hidden',
+        borderWidth: 1, // Another trick to force hardware bounds
+        borderColor: 'transparent',
     },
     video: {
         width: '100%',
-        height: '100%'
+        height: '100%',
+        borderRadius: 32,
+        overflow: 'hidden',
     },
     centerOverlay: {
         ...StyleSheet.absoluteFillObject,
@@ -305,7 +324,7 @@ const styles = StyleSheet.create({
     },
     controlsBottom: {
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 100 : 90,
+        bottom: 20,
         left: 20,
         right: 20,
         zIndex: 20
@@ -316,12 +335,8 @@ const styles = StyleSheet.create({
         marginBottom: 8
     },
     timeText: {
-        color: '#fff',
         fontSize: 14,
-        fontWeight: '600',
-        textShadowColor: 'rgba(0, 0, 0, 0.75)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3
+        fontWeight: '700',
     },
     progressBarContainer: {
         height: 30,
@@ -329,7 +344,7 @@ const styles = StyleSheet.create({
     },
     progressBarTrack: {
         height: 4,
-        backgroundColor: 'rgba(255,255,255,0.3)',
+        backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 2,
         position: 'relative'
     },

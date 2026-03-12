@@ -15,9 +15,10 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface PhotoViewerProps extends BaseMediaProps {
     onDragDown?: () => void;
+    onReady?: () => void;
 }
 
-export default function PhotoViewer({ mediaItem, onDragDown }: PhotoViewerProps) {
+export default function PhotoViewer({ mediaItem, onDragDown, onReady }: PhotoViewerProps) {
     const scale = useRef(new Animated.Value(1)).current;
     const translateX = useRef(new Animated.Value(0)).current;
     const translateY = useRef(new Animated.Value(0)).current;
@@ -32,9 +33,10 @@ export default function PhotoViewer({ mediaItem, onDragDown }: PhotoViewerProps)
         PanResponder.create({
             onMoveShouldSetPanResponder: (_, gestureState: PanResponderGestureState) => {
                 const isZoomed = currentScale.current > 1;
+                const moved = Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
+                if (isZoomed && moved) return true;
                 const isVerticalDrag = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
-                if (isZoomed) return true;
-                return isVerticalDrag;
+                return !isZoomed && isVerticalDrag;
             },
             onPanResponderGrant: () => {
                 translateX.stopAnimation();
@@ -66,8 +68,12 @@ export default function PhotoViewer({ mediaItem, onDragDown }: PhotoViewerProps)
     const handleDoubleTap = () => {
         const now = Date.now();
         if (lastTap.current && now - lastTap.current < 300) {
-            const newScale = currentScale.current === 1 ? 2 : 1;
+            const newScale = currentScale.current <= 1.1 ? 2 : 1;
             Animated.spring(scale, { toValue: newScale, useNativeDriver: true }).start();
+            if (newScale === 1) {
+                Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+                Animated.spring(translateY, { toValue: 0, useNativeDriver: true }).start();
+            }
         }
         lastTap.current = now;
     };
@@ -89,7 +95,8 @@ export default function PhotoViewer({ mediaItem, onDragDown }: PhotoViewerProps)
                 <Image
                     source={{ uri: mediaItem.uri }}
                     style={styles.image}
-                    resizeMode="contain"
+                    resizeMode="cover"
+                    onLoad={onReady}
                 />
             </Pressable>
         </Animated.View>
@@ -98,8 +105,8 @@ export default function PhotoViewer({ mediaItem, onDragDown }: PhotoViewerProps)
 
 const styles = StyleSheet.create({
     container: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_HEIGHT,
+        width: '100%',
+        height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'transparent'

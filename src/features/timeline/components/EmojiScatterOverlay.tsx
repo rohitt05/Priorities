@@ -37,15 +37,11 @@ const SAFE_EMOJI_LIST = [
     '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️',
 
     // Romantic & Hearts
-    '💌', '💘', '💝', '💖', '💗', '💓', '💞', '💕', '💟', '❣️', '💔', '❤️‍🔥', '❤️‍🩹', '❤️', '🩷', '🧡', '💛', '💚', '💙', '🩵', '💜', '🤎', '🖤', '🩶', '🤍', '💋', '💯', '🧿',
+    '💌', '💘', '💝', '💖', '💗', '💓', '💞', '💕', '💟', '❣️', '💔', '❤️🔥', '❤️🩹', '❤️', '🩷', '🧡', '💛', '💚', '💙', '🩵', '💜', '🤎', '🖤', '🩶', '🤍', '💋', '💯', '🧿', '💞', '💕', '❣️', '💔', '❤️🔥', '❤️🩹', '❤️', '🩷', '🧡', '💛', '💚', '💙', '🩵', '💜', '🤎', '🖤', '🩶', '🤍', '💋', '💯', '🪷', '🍐',
 
     // Hands & Gestures
     '👋', '🤚', '🖐️', '✋', '🖖', '🫱', '🫲', '🫳', '🫴', '🫷', '🫸', '👌', '🤌', '🤏', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '🫵',
     '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🫶', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪',
-
-    // Food & Drinks
-    '🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🌰',
-    '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯',
 
 ];
 
@@ -189,6 +185,7 @@ const EmojiScatterOverlay: React.FC<EmojiScatterOverlayProps> = ({ visible, onCl
         if (burstState.emoji) {
             onSelect(burstState.emoji);
             onClose();
+            setBurstState({ active: false, emoji: null });
         }
     }, [burstState.emoji, onSelect, onClose]);
 
@@ -212,7 +209,9 @@ const EmojiScatterOverlay: React.FC<EmojiScatterOverlayProps> = ({ visible, onCl
             onRequestClose={onClose}
             hardwareAccelerated={true}
         >
-            <View style={styles.overlayBackdrop}>
+            <View style={styles.overlayContainer}>
+                <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.85)', opacity: slideUpAnim }]} />
+
                 {!burstState.active && (
                     <TouchableWithoutFeedback onPress={onClose}>
                         <View style={StyleSheet.absoluteFill} />
@@ -270,9 +269,8 @@ const EmojiScatterOverlay: React.FC<EmojiScatterOverlayProps> = ({ visible, onCl
 
 // --- 7. STYLES ---
 const styles = StyleSheet.create({
-    overlayBackdrop: {
+    overlayContainer: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.85)',
         alignItems: 'center',
         justifyContent: 'center',
         paddingBottom: 40,

@@ -24,7 +24,7 @@ import {
     GestureDetector,
 } from 'react-native-gesture-handler';
 import Svg, { Path, Text as SvgText, TextPath, Defs } from 'react-native-svg';
-import { Feather, MaterialCommunityIcons, Entypo } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons, Entypo, Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -34,6 +34,9 @@ import { PriorityUserWithPost } from '@/types/userTypes';
 import PriorityMenuModal, { AnchorPosition } from './PriorityMenuModal';
 import { TapHoldProvider, TapHoldContext, TapHoldImage } from '@/contexts/TapHoldViewer';
 import { useVoiceNoteRecording } from '@/contexts/VoiceNoteRecordingContext';
+import { useMediaInbox } from '@/contexts/MediaInboxContext';
+import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
+import usersData from '@/data/users.json';
 
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 
@@ -169,6 +172,41 @@ const OptionsButton = React.memo(({ onPress, size }: {
 });
 OptionsButton.displayName = 'OptionsButton';
 
+const UnreadIndicator = React.memo(({ type, size, onPress }: { type: 'video' | 'image' | 'voice'; size: number; onPress: () => void }) => {
+    const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
+    const accentColor = type === 'video' ? '#AF52DE' : type === 'image' ? '#FF3B30' : '#007AFF';
+    const iconName = type === 'video' ? 'videocam' : type === 'image' ? 'image' : 'mic';
+
+    return (
+        <TouchableOpacity 
+            activeOpacity={0.8} 
+            onPress={onPress} 
+            style={[styles.thoughtBubbleContainer, position]}
+        >
+            <View style={styles.thoughtMainBubble}>
+                <Ionicons name={iconName as any} size={11} color={accentColor} />
+                <View style={[styles.thoughtDotIndicator, { backgroundColor: accentColor }]} />
+            </View>
+            
+            <View style={styles.thoughtBubblesTrail}>
+                <View style={styles.thoughtBubbleSmall} />
+                <View style={styles.thoughtBubbleTiny} />
+            </View>
+        </TouchableOpacity>
+    );
+});
+UnreadIndicator.displayName = 'UnreadIndicator';
+
+const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; size: number }) => {
+    const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 20), [size]);
+    return (
+        <View style={[styles.seenLabelContainer, position]}>
+            <Text style={styles.seenText}>{status === 'seen' ? 'Seen' : 'Sent'}</Text>
+        </View>
+    );
+});
+SeenIndicator.displayName = 'SeenIndicator';
+
 const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     item: any;
     isActive: boolean;
@@ -179,9 +217,15 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     const tapHoldContext = useContext(TapHoldContext);
 
     const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
+    const { unreadMessages, myLastSentStatus, markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
     const imageWrapperRef = useRef<View | null>(null);
 
     const recordingForThisCard = isGlobalRecording && activeSourceId === item.id;
+
+    const unreadMedia = unreadMessages[item.uniqueUserId || item.id];
+    const sentStatus = myLastSentStatus[item.uniqueUserId || item.id] || 'none';
+    
+    const [viewingMedia, setViewingMedia] = useState(false);
 
     const handleSingleTap = useCallback(() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
@@ -197,6 +241,13 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
         startFromRef(imageWrapperRef, { sourceId: item.id, uri: item.profilePicture });
     }, [item.id, item.profilePicture, startFromRef]);
 
+    const handleSendStatus = useCallback(() => {
+        const userId = item.uniqueUserId || item.id;
+        recordMessageSent(userId);
+        // Simulate them seeing it after a few seconds
+        setTimeout(() => simulateCounterpartSeen(userId), 3000);
+    }, [item.id, item.uniqueUserId, recordMessageSent, simulateCounterpartSeen]);
+
     const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
     const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
     const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
@@ -205,7 +256,14 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
         .activateAfterLongPress(350)
         .onStart(() => runOnJS(startRecording)())
         .onUpdate((e) => runOnJS(updateDrag)(e.translationX))
-        .onEnd((e) => runOnJS(endFromTranslationX)(e.translationX));
+        .onEnd((e) => {
+            // Check if it was a "Send" action (positive X translation typically in VoiceNote)
+            // For now we assume if it ended and it wasn't cancelled, it was sent.
+            if (e.translationX > 50) { 
+                runOnJS(handleSendStatus)();
+            }
+            runOnJS(endFromTranslationX)(e.translationX);
+        });
 
     const composedGesture = Gesture.Exclusive(panGesture, tapGestures);
 
@@ -233,7 +291,31 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
                 {!recordingForThisCard && isActive && (
                     <OptionsButton size={LAYOUT.IMAGE_SIZE} onPress={onOptionsPress} />
                 )}
+                {!recordingForThisCard && unreadMedia && isActive && (
+                    <UnreadIndicator 
+                        type={unreadMedia.type} 
+                        size={LAYOUT.IMAGE_SIZE} 
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setViewingMedia(true);
+                        }} 
+                    />
+                )}
+                {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && (
+                    <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} />
+                )}
             </View>
+
+            <ViewMessageModal
+                visible={viewingMedia}
+                media={unreadMedia || null}
+                userName={item.name}
+                userColor={dominantColor}
+                onClose={() => {
+                    setViewingMedia(false);
+                    markAsSeen(item.uniqueUserId || item.id);
+                }}
+            />
         </View>
     );
 },
@@ -400,6 +482,80 @@ const styles = StyleSheet.create({
     callIconSpacer: { width: 12 },
     optionsButton: { position: 'absolute', zIndex: Z_INDEX.OPTIONS_BUTTON, elevation: 10 },
     optionsIconBlur: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255, 255, 255, 0.9)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3.84, elevation: 5, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.5)' },
+    thoughtBubbleContainer: {
+        position: 'absolute',
+        zIndex: Z_INDEX.INDICATOR,
+        alignItems: 'center',
+    },
+    thoughtMainBubble: {
+        backgroundColor: '#FFF',
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 20,
+        gap: 6,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 3,
+        elevation: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.03)',
+    },
+    thoughtDotIndicator: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    thoughtBubblesTrail: {
+        alignItems: 'center',
+        marginTop: 1,
+        marginRight: -10, // Offset to point naturally toward the avatar center
+    },
+    thoughtBubbleSmall: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#FFF',
+        marginBottom: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+        elevation: 2,
+    },
+    thoughtBubbleTiny: {
+        width: 3.5,
+        height: 3.5,
+        borderRadius: 2,
+        backgroundColor: '#FFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 1,
+        elevation: 1,
+    },
+    seenLabelContainer: {
+        position: 'absolute',
+        zIndex: Z_INDEX.INDICATOR,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    seenText: {
+        fontSize: 10,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
 });
 
 export default PriorityList;

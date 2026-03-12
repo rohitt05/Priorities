@@ -26,6 +26,7 @@ import MediaViewer from '@/components/ui/MediaViewer';
 import { MediaItem } from '@/types/mediaTypes';
 import { User, TimelineEvent } from '@/types/domain';
 import { filmService } from '@/services/filmService';
+import { useMediaInbox } from '@/contexts/MediaInboxContext';
 
 // ==========================================
 // UTILS
@@ -92,10 +93,18 @@ export default function UserTimelineView({
         return () => backHandler.remove();
     }, [user, mediaViewerVisible, onClose]);
 
+    const { timelineEvents } = useMediaInbox();
+
     const allUserMedia = useMemo(() => {
         if (!user) return [];
-        const events = filmService.getTimelineEventsByUserId(user.uniqueUserId);
-        return events.map((event) => ({
+        const staticEvents = filmService.getTimelineEventsByUserId(user.uniqueUserId);
+        const dynamicEvents = timelineEvents[user.uniqueUserId] || [];
+        
+        const combinedEvents = [...dynamicEvents, ...staticEvents].sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+
+        return combinedEvents.map((event) => ({
             id: event.id,
             type: event.type as any,
             uri: event.uri,
@@ -107,7 +116,7 @@ export default function UserTimelineView({
             timestamp: formatTimestamp(event.timestamp),
             sender: event.sender
         } as MediaItem));
-    }, [user]);
+    }, [user, timelineEvents]);
 
     const handleMediaPress = (event: TimelineEvent) => {
         const mediaItem = allUserMedia.find(item => item.id === event.id);

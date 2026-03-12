@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
 import { UserTimelineProvider, useUserTimeline } from '@/contexts/UserTimelineContext';
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
+import { MediaInboxProvider } from '@/contexts/MediaInboxContext';
 
 const { Navigator } = createMaterialTopTabNavigator();
 export const MaterialTopTabs = withLayoutContext(Navigator);
@@ -214,11 +215,13 @@ export default function TabLayout() {
     return (
         <BackgroundProvider>
             <TabBarVisibilityProvider>
-                <UserTimelineProvider>
-                    <VoiceNoteRecordingProvider>
-                        <TabLayoutContent />
-                    </VoiceNoteRecordingProvider>
-                </UserTimelineProvider>
+                <MediaInboxProvider>
+                    <UserTimelineProvider>
+                        <VoiceNoteRecordingProvider>
+                            <TabLayoutContent />
+                        </VoiceNoteRecordingProvider>
+                    </UserTimelineProvider>
+                </MediaInboxProvider>
             </TabBarVisibilityProvider>
         </BackgroundProvider>
     );
