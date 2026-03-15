@@ -30,7 +30,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // 🔄 NEW
 
-import { PriorityUserWithPost } from '@/types/userTypes';
+import { Profile, PriorityUserWithPost } from '@/types/domain';
 import PriorityMenuModal, { AnchorPosition } from './PriorityMenuModal';
 import { TapHoldProvider, TapHoldContext, TapHoldImage } from '@/contexts/TapHoldViewer';
 import { useVoiceNoteRecording } from '@/contexts/VoiceNoteRecordingContext';
@@ -172,10 +172,28 @@ const OptionsButton = React.memo(({ onPress, size }: {
 });
 OptionsButton.displayName = 'OptionsButton';
 
-const UnreadIndicator = React.memo(({ type, size, onPress }: { type: 'video' | 'image' | 'voice'; size: number; onPress: () => void }) => {
+import { MediaType } from '@/types/domain';
+
+const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; size: number; onPress: () => void }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
-    const accentColor = type === 'video' ? '#AF52DE' : type === 'image' ? '#FF3B30' : '#007AFF';
-    const iconName = type === 'video' ? 'videocam' : type === 'image' ? 'image' : 'mic';
+    
+    // Determine color and icon based on type, with fallbacks
+    let accentColor = '#007AFF';
+    let iconName = 'notifications';
+
+    if (type === 'video') {
+        accentColor = '#AF52DE';
+        iconName = 'videocam';
+    } else if (type === 'photo') {
+        accentColor = '#FF3B30';
+        iconName = 'image';
+    } else if (type === 'voice') {
+        accentColor = '#007AFF';
+        iconName = 'mic';
+    } else if (type === 'note') {
+        accentColor = '#FF9500';
+        iconName = 'chatbubble';
+    }
 
     return (
         <TouchableOpacity 

@@ -63,11 +63,13 @@ const UserFilms = () => {
     });
 
     let userFilms = filmService.getFilmsByUserId(userId);
-    userFilms.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    userFilms.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     const themeColors = Object.values(COLORS.PALETTE);
     const userColorOffset = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const topDay = userFilms.length > 0 ? userFilms[userFilms.length - 1].dayOfWeek : 'Today';
+    const topDay = userFilms.length > 0 
+        ? new Date(userFilms[userFilms.length - 1].createdAt).toLocaleDateString(undefined, { weekday: 'long' }) 
+        : 'Today';
 
     const handleCardPress = React.useCallback((index: number) => {
         setActiveIndex(index);

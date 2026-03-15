@@ -2,7 +2,7 @@ export type { TimelineEvent } from '@/types/domain';
 import { TimelineEvent } from '@/types/domain';
 
 export interface TimelineGridItem {
-    type: 'photo' | 'note' | 'audio' | 'play';
+    type: 'photo' | 'video';
     bg: string;
     uri?: string;
     text?: string;
@@ -81,41 +81,27 @@ export const getYearMonth = (dateKey: string): string => {
  * Transforms raw timeline event to UI grid item
  */
 export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem => {
-    let type: TimelineGridItem['type'] = 'note';
+    const ev = event as any;
+    let type: TimelineGridItem['type'] = 'photo';
     let bg = '#eee';
 
-    switch (event.type) {
+    switch (ev.type) {
         case 'photo':
+        case 'image':
             type = 'photo';
             bg = '#eee';
             break;
         case 'video':
-            type = 'photo'; // Videos show as photos with play overlay
+            type = 'video';
             bg = '#000';
-            break;
-        case 'voice_call':
-            type = 'audio';
-            bg = '#F8BBD0'; // Pink for voice calls
-            break;
-        case 'video_call':
-            type = 'play';
-            bg = '#E1BEE7'; // Purple for video calls
-            break;
-        case 'note':
-            type = 'note';
-            bg = '#FFF9C4'; // Yellow for notes
-            break;
-        case 'audio':
-            type = 'audio';
-            bg = '#B2DFDB'; // Teal for audio messages
             break;
     }
 
     return {
         type,
         bg,
-        uri: event.thumbUri || event.uri,
-        text: event.text || event.caption,
+        uri: ev.thumbUri || ev.uri,
+        text: ev.textContent || ev.text || ev.caption,
     };
 };
 
@@ -123,7 +109,7 @@ export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem
  * Calculates mood color gradient based on items in a day
  */
 export const calculateMoodColor = (items: TimelineGridItem[]): [string, string] => {
-    const hasPhotos = items.some(item => item.type === 'photo');
+    const hasPhotos = items.some(item => item.type === 'photo' || item.type === 'video');
 
     if (hasPhotos) {
         // Photo/video days get purple-pink gradient
@@ -250,7 +236,7 @@ export const filterEventsByDateRange = (
  */
 export const filterEventsByType = (
     events: TimelineEvent[],
-    types: TimelineEvent['type'][]
+    types: any[]
 ): TimelineEvent[] => {
     return events.filter(event => types.includes(event.type));
 };
@@ -266,9 +252,6 @@ export interface TimelineStats {
     totalEvents: number;
     photoCount: number;
     videoCount: number;
-    noteCount: number;
-    callCount: number;
-    audioCount: number;
     dateRange: {
         oldest: string;
         newest: string;
@@ -280,32 +263,17 @@ export const calculateTimelineStats = (events: TimelineEvent[]): TimelineStats =
         totalEvents: events.length,
         photoCount: 0,
         videoCount: 0,
-        noteCount: 0,
-        callCount: 0,
-        audioCount: 0,
         dateRange: null
     };
 
     if (events.length === 0) return stats;
 
     events.forEach(event => {
-        switch (event.type) {
-            case 'photo':
-                stats.photoCount++;
-                break;
-            case 'video':
-                stats.videoCount++;
-                break;
-            case 'note':
-                stats.noteCount++;
-                break;
-            case 'voice_call':
-            case 'video_call':
-                stats.callCount++;
-                break;
-            case 'audio':
-                stats.audioCount++;
-                break;
+        const ev = event as any;
+        if (ev.type === 'photo' || ev.type === 'image') {
+            stats.photoCount++;
+        } else if (ev.type === 'video') {
+            stats.videoCount++;
         }
     });
 

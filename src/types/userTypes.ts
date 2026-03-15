@@ -1,21 +1,10 @@
-export interface User {
-    id: string;
-    uniqueUserId: string;
-    name: string;
-    profilePicture: string;
-    birthday: string;
-    dominantColor: string;
-    relationship?: string;
-    partnerId?: string;
-    prioritiesCount?: number;
-    priorities: string[];
-    gender?: 'male' | 'female' | string;
-}
+// src/types/userTypes.ts
+// Proxy file to maintain backward compatibility while transitioning to domain.ts schema
 
-export interface PriorityUser extends User {
-    relationship: string;
-}
+import { Profile, User, PriorityUserWithPost } from './domain';
 
-export interface PriorityUserWithPost extends PriorityUser {
-    hasNewPost?: boolean;
-}
+export type { Profile, User, PriorityUserWithPost };
+
+// Compatibility aliases for removed types
+export type PriorityUser = Profile & { relationship: string };
+export type PriorityUserDTO = Profile;

@@ -18,7 +18,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS } from '@/theme/theme';
-import { PriorityUserWithPost } from '@/types/userTypes';
+import { Profile, PriorityUserWithPost } from '@/types/domain';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 

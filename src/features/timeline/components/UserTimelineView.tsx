@@ -100,43 +100,50 @@ export default function UserTimelineView({
         const staticEvents = filmService.getTimelineEventsByUserId(user.uniqueUserId);
         const dynamicEvents = timelineEvents[user.uniqueUserId] || [];
         
-        const combinedEvents = [...dynamicEvents, ...staticEvents].sort((a, b) => 
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        const combinedEventsList = [...dynamicEvents, ...staticEvents]
+            .filter((e: any) => e.type === 'video' || e.type === 'photo' || e.type === 'image')
+            .sort((a, b) => 
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
 
-        return combinedEvents.map((event) => ({
-            id: event.id,
-            type: event.type as any,
-            uri: event.uri,
-            thumbUri: event.thumbUri,
-            text: event.text,
-            caption: event.caption,
-            durationSec: event.durationSec,
-            title: event.title,
-            timestamp: formatTimestamp(event.timestamp),
-            sender: event.sender
-        } as MediaItem));
+        return combinedEventsList.map((event) => {
+            const ev = event as any;
+            return {
+                id: ev.id,
+                type: (ev.type === 'image' || ev.type === 'photo') ? 'photo' : 'video',
+                uri: ev.uri,
+                thumbUri: ev.thumbUri || ev.uri,
+                text: ev.textContent || ev.text || ev.caption,
+                caption: ev.caption || ev.textContent,
+                durationSec: ev.durationSec,
+                title: ev.title,
+                timestamp: formatTimestamp(ev.timestamp),
+                sender: ev.sender
+            } as MediaItem;
+        });
     }, [user, timelineEvents]);
 
     const handleMediaPress = (event: TimelineEvent) => {
-        const mediaItem = allUserMedia.find(item => item.id === event.id);
+        const ev = event as any;
+        const mediaItem = allUserMedia.find(item => item.id === ev.id);
         if (mediaItem) {
             setSelectedMedia(mediaItem);
             setMediaViewerVisible(true);
         } else {
             const temp: MediaItem = {
-                id: event.id,
-                type: event.type,
-                uri: event.uri,
-                text: event.text,
-                caption: event.caption,
-                sender: event.sender,
-                timestamp: formatTimestamp(event.timestamp)
-            };
+                id: ev.id,
+                type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : 'video',
+                uri: ev.uri,
+                text: ev.textContent || ev.text || ev.caption,
+                caption: ev.caption || ev.textContent,
+                sender: ev.sender,
+                timestamp: formatTimestamp(ev.timestamp)
+            } as MediaItem;
             setSelectedMedia(temp);
             setMediaViewerVisible(true);
         }
     };
+
 
     const handleCloseMediaViewer = () => {
         setMediaViewerVisible(false);
@@ -210,11 +217,14 @@ export default function UserTimelineView({
                     {allUserMedia.length > 0 ? (
                         <TimelineCalendar
                             userUniqueId={user!.uniqueUserId}
-                            timelineEvents={filmService.getAllTimelineEvents() as any}
+                            timelineEvents={(filmService.getAllTimelineEvents() as any[]).filter(e => 
+                                e.type === 'video' || e.type === 'photo' || e.type === 'image'
+                            )}
                             contentPaddingTop={(TARGET_TOP - CLIPPING_START_Y) + TARGET_SIZE + 20}
                             onMediaPress={handleMediaPress}
                         />
                     ) : (
+
                         <View style={styles.emptyContainer}>
                             <Text style={styles.emptyText}>no memories with them</Text>
                         </View>

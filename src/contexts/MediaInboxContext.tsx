@@ -1,17 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode, useEffect } from 'react';
-import usersData from '@/data/users.json';
 import messagesData from '@/data/userMessages.json';
-import { TimelineEvent } from '@/types/domain';
+import { TimelineEvent, Message } from '@/types/domain';
 
-export type UnreadMedia = {
-    id: string;
-    type: 'video' | 'image' | 'voice';
-    uri: string;
-    durationSec?: number;
-};
+export type UnreadMedia = Message; // Standardized to Message
 
 interface MediaInboxContextType {
-    unreadMessages: Record<string, UnreadMedia>; // userId -> message
+    unreadMessages: Record<string, Message>; // userId -> last unread message
     myLastSentStatus: Record<string, 'none' | 'sent' | 'seen'>;
     markAsSeen: (userId: string) => void;
     addTimelineEvent: (event: TimelineEvent) => void;
@@ -23,20 +17,25 @@ interface MediaInboxContextType {
 const MediaInboxContext = createContext<MediaInboxContextType | undefined>(undefined);
 
 export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
-    // Initialize with data from userMessages.json
-    const initialUnread: Record<string, UnreadMedia> = {};
+    // Initialize with data from userMessages.json (Mapped to new Schema)
+    const initialUnread: Record<string, Message> = {};
     (messagesData as any[]).forEach(msg => {
         if (msg.status === 'unread') {
             initialUnread[msg.userId] = {
                 id: msg.id,
-                type: msg.type,
+                senderId: msg.userId,
+                receiverId: 'me',
+                type: msg.type === 'voice' ? 'audio' : msg.type,
                 uri: msg.uri,
-                durationSec: msg.durationSec || 5
-            };
+                durationSec: msg.durationSec || 5,
+                sentAt: new Date().toISOString(),
+                seenAt: null,
+                disappeared: false,
+            } as Message;
         }
     });
 
-    const [unreadMessages, setUnreadMessages] = useState<Record<string, UnreadMedia>>(initialUnread);
+    const [unreadMessages, setUnreadMessages] = useState<Record<string, Message>>(initialUnread);
     const [myLastSentStatus, setMyLastSentStatus] = useState<Record<string, 'none' | 'sent' | 'seen'>>({});
     const [timelineEvents, setTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
 
@@ -63,23 +62,24 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     const markAsSeen = useCallback((userId: string) => {
-        if (unreadMessages[userId]) {
-            const message = unreadMessages[userId];
-            
-            // 1. Move to timeline
-            const event: TimelineEvent = {
-                id: message.id,
-                userUniqueId: userId,
-                timestamp: new Date().toISOString(),
-                sender: 'them',
-                type: message.type === 'voice' ? 'audio' : (message.type === 'video' ? 'video' : 'photo'),
-                uri: message.uri,
-                durationSec: message.durationSec,
-                title: message.type === 'voice' ? 'Voice note' : undefined,
+        const message = unreadMessages[userId];
+        if (message) {
+            // 1. Prepare persistence (Timeline Event)
+            const updatedMessage: Message = {
+                ...message,
+                seenAt: new Date().toISOString(), // Standardized schema field
             };
+
+            const event: TimelineEvent = {
+                ...updatedMessage,
+                userUniqueId: userId,
+                timestamp: updatedMessage.seenAt!,
+                sender: 'them',
+            } as TimelineEvent;
+            
             addTimelineEvent(event);
 
-            // 2. Remove from unread (Indicator disappears, NO "Seen" label for the viewer)
+            // 2. Clear from active Inbox (Home Screen indicator)
             setUnreadMessages(prev => {
                 const next = { ...prev };
                 delete next[userId];

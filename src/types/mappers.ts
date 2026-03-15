@@ -1,48 +1,59 @@
 // src/types/mappers.ts
 
-import { User, Film, TimelineEvent } from './domain';
+import { Profile, Film, Message, TimelineEvent, MediaType } from './domain';
 import { UserDTO, FilmDTO, TimelineEventDTO, UserFilmCardDTO } from './dto';
 
-export const mapUserDTOToUser = (dto: UserDTO): User => ({
+export const mapUserDTOToUser = (dto: UserDTO): Profile => ({
     id: dto.id,
     uniqueUserId: dto.uniqueUserId,
     name: dto.name,
     profilePicture: dto.profilePicture,
     birthday: dto.birthday,
     dominantColor: dto.dominantColor,
-    relationship: dto.relationship,
-    partnerId: dto.partnerId,
-    prioritiesCount: dto.prioritiesCount,
-    priorities: dto.priorities || [],
     gender: dto.gender,
 });
 
 export const mapFilmDTOToFilm = (dto: FilmDTO): Film => ({
-    ...dto,
-    dayOfWeek: new Date(dto.timestamp).toLocaleDateString(undefined, { weekday: 'long' }),
-});
-
-export const mapTimelineEventDTOToEvent = (dto: TimelineEventDTO): TimelineEvent => ({
     id: dto.id,
-    userUniqueId: dto.userUniqueId,
-    timestamp: dto.timestamp,
-    sender: dto.sender,
+    creatorId: dto.userId, // Standardized to creatorId
     type: dto.type,
     uri: dto.uri,
-    thumbUri: dto.thumbUri,
-    caption: dto.caption,
-    text: dto.text,
-    durationSec: dto.durationSec,
-    title: dto.title,
+    thumbnail: dto.thumbnail,
+    location: dto.location,
+    isPublic: dto.isPublic,
+    targetUserId: dto.recipientId, // Standardized to targetUserId
+    createdAt: dto.timestamp, // Standardized to createdAt
 });
+
+export const mapTimelineEventDTOToEvent = (dto: TimelineEventDTO): TimelineEvent => {
+    const isMe = dto.sender === 'me';
+    let type: MediaType = 'photo';
+    if (dto.type === 'video') type = 'video';
+    else if (dto.type === 'voice' || dto.type === 'audio') type = 'voice';
+
+    return {
+        id: dto.id,
+        senderId: isMe ? 'me' : dto.userUniqueId,
+        receiverId: isMe ? dto.userUniqueId : 'me',
+        userUniqueId: dto.userUniqueId,
+        sentAt: dto.timestamp,
+        timestamp: dto.timestamp,
+        sender: dto.sender,
+        type,
+        uri: dto.uri,
+        textContent: dto.caption || dto.text,
+        durationSec: dto.durationSec,
+    } as TimelineEvent;
+};
+
 
 export const mapUserFilmCardDTOToFilm = (dto: UserFilmCardDTO): Film => ({
     id: dto.id,
-    userId: dto.userId,
+    creatorId: dto.userId,
     type: dto.mediaType === 'video' ? 'video' : 'image',
     thumbnail: dto.mediaUrl,
     uri: dto.mediaUrl,
-    timestamp: dto.timestamp,
     isPublic: true,
-    dayOfWeek: dto.dayOfWeek,
+    createdAt: dto.timestamp,
 });
+

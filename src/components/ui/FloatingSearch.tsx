@@ -20,18 +20,18 @@ import usersData from '@/data/users.json';
 
 const { width } = Dimensions.get('window');
 
-import { User, PriorityUser } from '@/types/userTypes';
+import { Profile } from '@/types/domain';
 
 interface FloatingSearchProps {
-    onAddPriority?: (user: PriorityUser) => void;
+    onAddPriority?: (user: Profile) => void;
 }
 
 const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const router = useRouter();
     const [isExpanded, setIsExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [filteredUsers, setFilteredUsers] = useState<Profile[]>([]);
+    const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
     const [relationship, setRelationship] = useState('');
 
     const expandAnim = useRef(new Animated.Value(0)).current;
@@ -121,7 +121,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         setSearchQuery(text);
         if (text.length > 0) {
             const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
-            const filtered = data.filter((user: User) =>
+            const filtered = data.filter((user: Profile) =>
                 user.uniqueUserId.toLowerCase().includes(text.toLowerCase())
             );
             setFilteredUsers(filtered);
@@ -130,20 +130,22 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }
     };
 
-    const handleAddPress = (user: User) => {
+    const handleAddPress = (user: Profile) => {
         setSelectedUser(user);
     };
+
 
     const handleSavePriority = () => {
         if (selectedUser && relationship) {
             onAddPriority?.({
                 ...selectedUser,
                 relationship: relationship
-            });
+            } as any); // Type cast to allow temporary relationship field
         }
         setIsExpanded(false);
         resetSearch();
     };
+
 
     const searchBarWidth = expandAnim.interpolate({
         inputRange: [0, 1],

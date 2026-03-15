@@ -78,7 +78,7 @@ export default function TimelineCalendar({
             if (originalEvent && onMediaPress) onMediaPress(originalEvent);
         };
 
-        const isVideo = item.type === 'video' || item.type === 'video_call';
+        const isVideo = item.type === 'video';
         const hasUri = !!item.uri;
 
         return (
@@ -106,29 +106,18 @@ export default function TimelineCalendar({
                     />
                 ) : (
                     <>
-                        {item.type === 'photo' && item.uri && (
+                        {item.uri && (
                             <Image
                                 source={{ uri: item.uri }}
                                 style={{ width: '100%', height: '100%' }}
                                 resizeMode="cover"
                             />
                         )}
-                        {item.type === 'note' && (
-                            <View style={{ padding: 6, justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                                <Text style={{ fontSize: 9, fontWeight: '600', textAlign: 'center', color: '#333' }} numberOfLines={3}>
-                                    {item.text}
-                                </Text>
-                            </View>
-                        )}
-                        {(item.type === 'audio' || item.type === 'voice_call') && (
-                            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                                <Ionicons name={item.type === 'audio' ? 'mic' : 'call'} size={20} color="#333" style={{ opacity: 0.7 }} />
-                            </View>
-                        )}
                     </>
                 )}
             </TouchableOpacity>
         );
+
     };
 
     // 4. Render Row

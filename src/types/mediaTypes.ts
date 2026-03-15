@@ -1,6 +1,6 @@
 export interface MediaItem {
     id: string; // STRICT string ID for reliable keys
-    type: 'photo' | 'video' | 'audio' | 'voice_call' | 'video_call' | 'note';
+    type: 'photo' | 'video' | 'voice' | 'voice_call' | 'video_call' | 'note';
     uri?: string;
     thumbUri?: string;
     text?: string;

@@ -128,7 +128,7 @@ export default function MediaViewer({
                 case 'video':
                     content = <VideoPlayer mediaItem={mediaItem} isFocused={isFocused} />;
                     break;
-                case 'audio':
+                case 'voice':
                     content = <AudioPlayer mediaItem={mediaItem} />;
                     break;
                 case 'note':

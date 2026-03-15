@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/theme/theme';
 import FloatingSearch from '@/components/ui/FloatingSearch';
 import PriorityList from '@/features/partners/components/PriorityList';
-import { PriorityUser, PriorityUserWithPost } from '@/types/userTypes';
+import { Profile, PriorityUserWithPost } from '@/types/domain';
 import { useBackground } from '@/contexts/BackgroundContext';
 import usersData from '@/data/users.json';
 import FilmSwiperBlob from '@/features/film-my-day/components/FilmSwiperBlob';
@@ -29,7 +29,7 @@ export default function HomeScreen() {
             try {
                 const saved = await AsyncStorage.getItem(PRIORITIES_KEY);
                 if (saved) {
-                    const parsed = JSON.parse(saved) as PriorityUser[];
+                    const parsed = JSON.parse(saved) as Profile[];
                     const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
                     const synced = parsed.map(savedUser => {
                         const latestUser = data.find((u: any) => u.uniqueUserId === savedUser.uniqueUserId);
@@ -51,9 +51,9 @@ export default function HomeScreen() {
         }
     }, [priorities]);
 
-    const handleAddPriority = (user: PriorityUser) => {
+    const handleAddPriority = (user: Profile) => {
         if (!priorities.find(p => p.id === user.id)) {
-            setPriorities(prev => [user, ...prev]);
+            setPriorities(prev => [user as any as PriorityUserWithPost, ...prev]);
         }
     };
 

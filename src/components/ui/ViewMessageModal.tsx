@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -8,16 +8,15 @@ import {
     Dimensions,
     StatusBar,
     ActivityIndicator,
-    Animated,
     Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import VideoPlayer from './VideoPlayer';
 import PhotoViewer from './PhotoViewer';
 import AudioPlayer from './AudioPlayer';
 import EmojiScatterOverlay from '@/features/timeline/components/EmojiScatterOverlay';
+import { Message } from '@/types/domain';
 import { MediaItem } from '@/types/mediaTypes';
 import { COLORS, SPACING, FONTS } from '@/theme/theme';
 
@@ -25,11 +24,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface ViewMessageModalProps {
     visible: boolean;
-    media: {
-        type: 'video' | 'image' | 'voice';
-        uri: string;
-        durationSec?: number;
-    } | null;
+    media: Message | null;
     userName: string;
     userColor: string;
     onClose: () => void;
@@ -64,19 +59,19 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
 
     if (!visible || !media) return null;
 
+    // Map Message (Schema) back to MediaItem (UI Legacy)
     const mediaItem: MediaItem = {
-        id: 'temp_message',
-        type: media.type === 'voice' ? 'audio' : (media.type === 'video' ? 'video' : 'photo'),
-        uri: media.uri,
+        id: media.id,
+        type: media.type === 'voice' ? 'voice' : (media.type === 'video' ? 'video' : 'photo'),
+        uri: media.uri || '',
         sender: 'them',
-        timestamp: new Date().toISOString(),
+        timestamp: media.sentAt,
         durationSec: media.durationSec,
     };
 
     // Helper to get a very light version of the color for the background
     const lightColor = userColor + '20'; // 12% opacity hex
 
-    // Generate a pseudo-random stable time based on username
     const timeOptions = ['5m ago', '12m ago', '25m ago', '45m ago', '1h ago', '2h ago', '4h ago'];
     const timeIndex = userName.length % timeOptions.length;
     const timeAgo = timeOptions[timeIndex];
@@ -96,25 +91,20 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
                 />
                 <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.01)" translucent />
                 
-                {/* Backdrop press to close */}
                 <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
 
-                {/* Main Content Wrapper allowing overflow */}
                 <View style={styles.contentWrapper}>
-                    {/* Header: Name half in/out, Time strictly outside/above */}
                     <View style={styles.absoluteHeader}>
                         <Text style={[styles.userNameAbsolute, { color: userColor }]}>{userName}</Text>
                         <Text style={styles.timeTextAbsolute}>{timeAgo}</Text>
                     </View>
 
                     <View style={[styles.cardContainer, media.type === 'voice' && styles.cardContainerAudio]}>
-                    {/* Dominant Color Gradient Background */}
                     <LinearGradient
                         colors={[userColor, lightColor, '#FFFFFF']}
                         style={StyleSheet.absoluteFill}
                     />
                     
-                    {/* Background Media */}
                     <View style={styles.mediaContainer}>
                         {media.type === 'video' && (
                             <VideoPlayer 
@@ -125,7 +115,7 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
                                 themeColor={userColor}
                             />
                         )}
-                        {media.type === 'image' && (
+                        {(media.type as string === 'photo' || media.type as string === 'image') && (
                             <PhotoViewer mediaItem={mediaItem} onDragDown={handleClose} onReady={handleMediaReady} />
                         )}
                         {media.type === 'voice' && (
@@ -147,16 +137,13 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
                     )}
                 </View>
 
-                {/* Details Outside the Card */}
                 <View style={styles.outsideContainer}>
-                    {/* Emoji Button at the bottom with circle glass padding */}
                     <TouchableOpacity onPress={(() => setIsEmojiVisible(true))} style={styles.emojiButtonGlass}>
                         <Text style={styles.emojiIcon}>😊</Text>
                     </TouchableOpacity>
                 </View>
             </View>
 
-                {/* Emoji Overlay */}
                 <EmojiScatterOverlay
                     visible={isEmojiVisible}
                     onClose={() => setIsEmojiVisible(false)}
@@ -182,7 +169,7 @@ const styles = StyleSheet.create({
         height: SCREEN_HEIGHT * 0.72,
         borderRadius: 32,
         overflow: 'hidden',
-        backgroundColor: '#000', // Black background to force hardware clip for Android surfaces
+        backgroundColor: '#000',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.3,
@@ -204,17 +191,17 @@ const styles = StyleSheet.create({
     },
     absoluteHeader: {
         position: 'absolute',
-        top: -30, // Centers the 60px line height exactly at the top edge of the modal
+        top: -30,
         left: -10, 
         flexDirection: 'row',
-        alignItems: 'flex-start', // Align to top
+        alignItems: 'flex-start',
         zIndex: 100,
         elevation: 10,
         width: '100%', 
     },
     userNameAbsolute: {
         fontSize: 54,
-        lineHeight: 60, // Spans from -30 to +30 (Perfectly half in, half out of the 0 top boundary)
+        lineHeight: 60,
         fontFamily: 'DancingScript-Bold',
         textShadowColor: 'rgba(0,0,0,0.5)',
         textShadowOffset: { width: 0, height: 4 },
@@ -223,17 +210,17 @@ const styles = StyleSheet.create({
     timeTextAbsolute: {
         color: 'rgba(255,255,255,0.9)',
         fontSize: 14,
-        lineHeight: 20, // Spans from -30 to -10 (Entirely outside and above the 0 top boundary)
+        lineHeight: 20,
         fontFamily: FONTS.bold,
         textTransform: 'lowercase',
-        marginLeft: 4, // Tightly bind closely next to the sender name
-        marginTop: 5, // Visual tweak
+        marginLeft: 4,
+        marginTop: 5,
     },
     emojiButtonGlass: {
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(255,255,255,0.15)', // Glassy
+        backgroundColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
         justifyContent: 'center',

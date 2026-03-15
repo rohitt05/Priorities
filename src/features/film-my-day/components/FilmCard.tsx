@@ -138,8 +138,8 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
                         />
                     </View>
                     <View style={styles.cardRight}>
-                        <Text style={styles.dateText}>{formatDate(film.timestamp)}</Text>
-                        <Text style={styles.timeText}>{formatTime(film.timestamp)}</Text>
+                        <Text style={styles.dateText}>{formatDate(film.createdAt)}</Text>
+                        <Text style={styles.timeText}>{formatTime(film.createdAt)}</Text>
                     </View>
                 </View>
             </Pressable>

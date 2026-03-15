@@ -13,14 +13,14 @@ export const filmService = {
             .filter(f => f.userId === userId)
             .map(mapFilmDTOToFilm);
 
-        // Also check userFilms.json which seems to have a slightly different structure used in some screens
+        // Also check userFilms.json which seems to have a slightly different structure
         const additionalFilms = (userFilmsRaw as UserFilmCardDTO[])
             .filter(f => f.userId === userId)
             .map(mapUserFilmCardDTOToFilm);
 
-        // Merge and sort by timestamp
+        // Merge and sort by createdAt (standardized)
         return [...films, ...additionalFilms].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
     },
 

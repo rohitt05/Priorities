@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     },
     dialogueBox: {
         minWidth: 100,
-        maxWidth: 140,
+        maxWidth: 160,
         height: 38,
         paddingHorizontal: 14,
         justifyContent: 'center',

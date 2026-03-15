@@ -152,9 +152,10 @@ function ProfileScreenContent() {
     }, []);
 
     const partnerUser = useMemo(() => {
-        if (!savedPartnerUniqueUserId) return null;
-        return (usersData as User[]).find((u) => u.uniqueUserId === savedPartnerUniqueUserId) || null;
-    }, [savedPartnerUniqueUserId]);
+        const partnerId = isOwner ? savedPartnerUniqueUserId : currentUser.partnerId;
+        if (!partnerId) return null;
+        return (usersData as User[]).find((u) => u.uniqueUserId === partnerId) || null;
+    }, [savedPartnerUniqueUserId, currentUser.partnerId, isOwner]);
 
     const lightDominantColor = useMemo(
         () => (currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)'),
@@ -185,9 +186,20 @@ function ProfileScreenContent() {
 
     if (!currentUser) return null;
 
-    const relationshipLabel = isOwner
-        ? 'Mine'
-        : (currentUser.gender === 'male' ? 'His' : (currentUser.gender === 'female' ? 'Hers' : 'Theirs'));
+    const relationshipLabel = useMemo(() => {
+        if (isOwner) return 'Mine';
+        
+        const ownerGender = currentUser.gender || 'male';
+        const possessive = ownerGender === 'male' ? 'his' : (ownerGender === 'female' ? 'hers' : 'theirs');
+        
+        // If viewer is the partner
+        if (CURRENT_USER_ID === currentUser.partnerId) {
+            return `you're ${possessive}`;
+        }
+        
+        // General viewer sees capitalized possessive
+        return possessive.charAt(0).toUpperCase() + possessive.slice(1);
+    }, [currentUser, isOwner]);
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
@@ -240,7 +252,7 @@ function ProfileScreenContent() {
                     FloatingPartnerIcon is now INSIDE the ScrollView and rendered BEFORE Priorities.
                     This ensures Priorities (with higher zIndex) sit on top of it.
                 */}
-                {isOwner && partnerUser && (
+                {partnerUser && (
                     <FloatingPartnerIcon
                         partnerUser={partnerUser}
                         relationshipLabel={relationshipLabel}
@@ -248,7 +260,7 @@ function ProfileScreenContent() {
                         pullY={pullY}
                         scrollY={scrollY}
                         capsuleFadeStyle={capsuleFadeStyle}
-                        onRemove={handleRemovePartner}
+                        onRemove={isOwner ? handleRemovePartner : undefined}
                     />
                 )}
 

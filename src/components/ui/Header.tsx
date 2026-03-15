@@ -39,12 +39,13 @@ export default function Header() {
     const panGesture = Gesture.Pan()
         .onUpdate((event) => {
             if (event.translationY > 0) {
-                translateY.value = event.translationY * 0.5; // Dampened movement
+                const drag = event.translationY * 0.4; // natural rubber-band feel
+                translateY.value = drag;
 
-                if (translateY.value > PULL_THRESHOLD && !hasTriggered.value) {
+                if (drag > PULL_THRESHOLD && !hasTriggered.value) {
                     hasTriggered.value = true;
                     runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
-                } else if (translateY.value < PULL_THRESHOLD && hasTriggered.value) {
+                } else if (drag < PULL_THRESHOLD && hasTriggered.value) {
                     hasTriggered.value = false;
                 }
             } else {
@@ -55,7 +56,8 @@ export default function Header() {
             if (translateY.value > PULL_THRESHOLD) {
                 runOnJS(navigateToFilm)();
             }
-            translateY.value = withSpring(0);
+            // Fast iPhone-like snap back
+            translateY.value = withSpring(0, { damping: 26, stiffness: 400, mass: 0.6 });
             hasTriggered.value = false;
         });
 

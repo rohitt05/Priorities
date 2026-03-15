@@ -1,52 +1,88 @@
-// src/types/domain.ts
+export type MediaType = 'photo' | 'video' | 'voice';
 
-export type MediaType = 'photo' | 'video' | 'audio' | 'voice_call' | 'video_call' | 'note';
-
-export interface User {
-    id: string;
-    uniqueUserId: string;
+/**
+ * Profile: Aligns with 'profiles' table (Supabase/Auth extension)
+ */
+export interface Profile {
+    id: string; // Internal UUID
+    uniqueUserId: string; // @handle
     name: string;
     profilePicture: string;
-    birthday: string;
     dominantColor: string;
-    relationship?: string;
-    partnerId?: string;
-    prioritiesCount?: number;
-    priorities: string[]; // Always present in domain model
-    gender?: 'male' | 'female' | string;
+    birthday?: string;
+    gender?: string;
+    createdAt?: string;
+    priorities?: string[]; // Kept for backward compatibility with mock data logic
+    partnerId?: string; // Optional partner link
+    relationship?: string; // Relationship label (e.g., "GF", "Wife") - STRICTLY for couples/dating only
 }
 
-export interface PriorityUser extends User {
-    relationship: string;
+
+
+// Keep User alias for backward compatibility during transition
+export type User = Profile;
+
+/**
+ * Priority: Aligns with 'priorities' join table
+ * Defines the relationship circle on the Home screen
+ */
+export interface Priority {
+    id: string;
+    userId: string; // Owner
+    priorityUserId: string; // The person in the circle
+    rank: number; // Order for horizontal scrolling
+    isPinned: boolean;
+    createdAt: string;
 }
 
-export interface PriorityUserWithPost extends PriorityUser {
-    hasNewPost?: boolean;
-}
-
+/**
+ * Film: Aligns with 'films' table
+ * Daily captures (Photo/Video)
+ */
 export interface Film {
     id: string;
-    userId: string;
+    creatorId: string;
     type: 'image' | 'video';
-    thumbnail: string;
     uri: string;
-    timestamp: string;
+    thumbnail?: string;
     location?: string;
     isPublic: boolean;
-    recipientId?: string | null;
-    dayOfWeek?: string; // Derived or optional
+    targetUserId?: string | null; // Optional direct send
+    createdAt: string;
 }
 
-export interface TimelineEvent {
+/**
+ * Message: Aligns with 'messages' table
+ * Handles the "Media Inbox" / Snapchat-style disappear logic
+ */
+export interface Message {
     id: string;
-    userUniqueId: string;
-    timestamp: string;
-    sender: 'me' | 'them';
+    senderId: string;
+    receiverId: string;
     type: MediaType;
     uri?: string;
-    thumbUri?: string;
-    caption?: string;
-    text?: string;
+    textContent?: string;
     durationSec?: number;
-    title?: string;
+    sentAt: string;
+    seenAt?: string | null; // Used for "seen" badges
+    disappeared?: boolean; // Snapchat-style logic
 }
+
+/**
+ * UI Support Types
+ * These are used by components that need combined data
+ */
+export interface PriorityUserWithPost extends Profile {
+    relationship?: string;
+    hasNewPost?: boolean;
+    pinned?: boolean;
+    rank?: number;
+}
+
+// Backward compatibility for existing Timeline logic
+export interface TimelineEvent extends Message {
+    userUniqueId: string; // Field still used in many files
+    sender: 'me' | 'them'; // Derived from senderId vs current user
+    timestamp: string; // Alias for sentAt
+}
+
