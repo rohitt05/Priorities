@@ -62,14 +62,20 @@ const UserFilms = () => {
         }
     });
 
-    let userFilms = filmService.getFilmsByUserId(userId);
-    userFilms.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const userFilms = React.useMemo(() => {
+        const films = filmService.getFilmsByUserId(userId);
+        return films.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }, [userId]);
 
     const themeColors = Object.values(COLORS.PALETTE);
-    const userColorOffset = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const topDay = userFilms.length > 0 
-        ? new Date(userFilms[userFilms.length - 1].createdAt).toLocaleDateString(undefined, { weekday: 'long' }) 
-        : 'Today';
+    const userColorOffset = React.useMemo(() =>
+        userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0),
+        [userId]);
+
+    const topDay = React.useMemo(() => {
+        if (userFilms.length === 0) return 'Today';
+        return new Date(userFilms[userFilms.length - 1].createdAt).toLocaleDateString(undefined, { weekday: 'long' });
+    }, [userFilms]);
 
     const handleCardPress = React.useCallback((index: number) => {
         setActiveIndex(index);

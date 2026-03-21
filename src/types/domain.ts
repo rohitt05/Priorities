@@ -49,6 +49,8 @@ export interface Film {
     isPublic: boolean;
     targetUserId?: string | null; // Optional direct send
     createdAt: string;
+    caption?: string;
+    likesCount?: number;
 }
 
 /**

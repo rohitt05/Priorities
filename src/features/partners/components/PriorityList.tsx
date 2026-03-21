@@ -176,7 +176,7 @@ import { MediaType } from '@/types/domain';
 
 const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; size: number; onPress: () => void }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
-    
+
     // Determine color and icon based on type, with fallbacks
     let accentColor = '#007AFF';
     let iconName = 'notifications';
@@ -196,16 +196,16 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
     }
 
     return (
-        <TouchableOpacity 
-            activeOpacity={0.8} 
-            onPress={onPress} 
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onPress}
             style={[styles.thoughtBubbleContainer, position]}
         >
             <View style={styles.thoughtMainBubble}>
                 <Ionicons name={iconName as any} size={11} color={accentColor} />
                 <View style={[styles.thoughtDotIndicator, { backgroundColor: accentColor }]} />
             </View>
-            
+
             <View style={styles.thoughtBubblesTrail}>
                 <View style={styles.thoughtBubbleSmall} />
                 <View style={styles.thoughtBubbleTiny} />
@@ -242,7 +242,7 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
 
     const unreadMedia = unreadMessages[item.uniqueUserId || item.id];
     const sentStatus = myLastSentStatus[item.uniqueUserId || item.id] || 'none';
-    
+
     const [viewingMedia, setViewingMedia] = useState(false);
 
     const handleSingleTap = useCallback(() => {
@@ -277,7 +277,7 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
         .onEnd((e) => {
             // Check if it was a "Send" action (positive X translation typically in VoiceNote)
             // For now we assume if it ended and it wasn't cancelled, it was sent.
-            if (e.translationX > 50) { 
+            if (e.translationX > 50) {
                 runOnJS(handleSendStatus)();
             }
             runOnJS(endFromTranslationX)(e.translationX);
@@ -310,13 +310,13 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
                     <OptionsButton size={LAYOUT.IMAGE_SIZE} onPress={onOptionsPress} />
                 )}
                 {!recordingForThisCard && unreadMedia && isActive && (
-                    <UnreadIndicator 
-                        type={unreadMedia.type} 
-                        size={LAYOUT.IMAGE_SIZE} 
+                    <UnreadIndicator
+                        type={unreadMedia.type}
+                        size={LAYOUT.IMAGE_SIZE}
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             setViewingMedia(true);
-                        }} 
+                        }}
                     />
                 )}
                 {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && (
@@ -341,6 +341,31 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
 );
 PriorityCard.displayName = 'PriorityCard';
 
+const hexToRgba = (hex: string, alpha: number) => {
+    if (!hex || hex[0] !== '#') return `rgba(0,0,0,${alpha})`;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColor }: { direction: 'left' | 'right', count: number, onPress: () => void, bgColor: string }) => {
+    return (
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onPress}
+            style={[
+                styles.edgeIndicatorContainer,
+                direction === 'left' ? styles.indicatorLeft : styles.indicatorRight,
+                { backgroundColor: hexToRgba(bgColor, 0.25) }
+            ]}
+        >
+            <Text style={[styles.indicatorCountText, { color: COLORS.text }]}>{count}+</Text>
+        </TouchableOpacity>
+    );
+});
+PriorityMessageIndicator.displayName = 'PriorityMessageIndicator';
+
 const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorChange, onActiveUserChange, scrollX }) => {
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => { if (scrollX) scrollX.value = event.contentOffset.x; },
@@ -354,6 +379,8 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const [menuAnchor, setMenuAnchor] = useState<AnchorPosition | null>(null);
 
     const flatListRef = useRef<GHFlatList>(null);
+
+    const { unreadMessages } = useMediaInbox();
 
     // 🔄 NEW: load persisted pinnedId on mount
     useEffect(() => {
@@ -431,6 +458,36 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         />
     ), [activeIndex, openPinSheetForUser]);
 
+    const leftUnread = useMemo(() => {
+        let count = 0;
+        let firstIndex = -1;
+        let lastUnreadIndex = -1;
+        for (let i = 0; i < activeIndex; i++) {
+            const user = displayPriorities[i];
+            if (unreadMessages[user.uniqueUserId || user.id]) {
+                if (firstIndex === -1) firstIndex = i;
+                lastUnreadIndex = i;
+                count++;
+            }
+        }
+        const upcomingUserColor = lastUnreadIndex !== -1 ? (displayPriorities[lastUnreadIndex].dominantColor || COLORS.primary) : COLORS.primary;
+        return { count, firstIndex, upcomingUserColor };
+    }, [displayPriorities, activeIndex, unreadMessages]);
+
+    const rightUnread = useMemo(() => {
+        let count = 0;
+        let firstIndex = -1;
+        for (let i = activeIndex + 1; i < displayPriorities.length; i++) {
+            const user = displayPriorities[i];
+            if (unreadMessages[user.uniqueUserId || user.id]) {
+                if (firstIndex === -1) firstIndex = i;
+                count++;
+            }
+        }
+        const upcomingUserColor = firstIndex !== -1 ? (displayPriorities[firstIndex].dominantColor || COLORS.primary) : COLORS.primary;
+        return { count, firstIndex, upcomingUserColor };
+    }, [displayPriorities, activeIndex, unreadMessages]);
+
     if (displayPriorities.length === 0) return null;
 
     return (
@@ -459,6 +516,24 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
                 overScrollMode="never"
                 nestedScrollEnabled
             />
+
+            {leftUnread.count > 0 && (
+                <PriorityMessageIndicator
+                    direction="left"
+                    count={leftUnread.count}
+                    bgColor={leftUnread.upcomingUserColor}
+                    onPress={() => flatListRef.current?.scrollToIndex({ index: leftUnread.firstIndex, animated: true })}
+                />
+            )}
+
+            {rightUnread.count > 0 && (
+                <PriorityMessageIndicator
+                    direction="right"
+                    count={rightUnread.count}
+                    bgColor={rightUnread.upcomingUserColor}
+                    onPress={() => flatListRef.current?.scrollToIndex({ index: rightUnread.firstIndex, animated: true })}
+                />
+            )}
 
             <PriorityMenuModal
                 visible={isPinSheetVisible}
@@ -573,6 +648,34 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
+    },
+    edgeIndicatorContainer: {
+        position: 'absolute',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: Z_INDEX.INDICATOR,
+    },
+    indicatorLeft: {
+        top: 140, // Top edge
+        left: 0,
+        borderTopLeftRadius: 0,
+        borderBottomLeftRadius: 0,
+    },
+    indicatorRight: {
+        bottom: 140, // Bottom edge
+        right: 0,
+        borderTopRightRadius: 0,
+        borderBottomRightRadius: 0,
+    },
+    indicatorCountText: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: COLORS.text,
+        fontWeight: '800',
     },
 });
 

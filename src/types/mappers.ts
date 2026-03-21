@@ -23,6 +23,8 @@ export const mapFilmDTOToFilm = (dto: FilmDTO): Film => ({
     isPublic: dto.isPublic,
     targetUserId: dto.recipientId, // Standardized to targetUserId
     createdAt: dto.timestamp, // Standardized to createdAt
+    caption: dto.caption,
+    likesCount: dto.likesCount,
 });
 
 export const mapTimelineEventDTOToEvent = (dto: TimelineEventDTO): TimelineEvent => {
@@ -55,5 +57,7 @@ export const mapUserFilmCardDTOToFilm = (dto: UserFilmCardDTO): Film => ({
     uri: dto.mediaUrl,
     isPublic: true,
     createdAt: dto.timestamp,
+    caption: dto.caption,
+    likesCount: dto.likesCount,
 });
 

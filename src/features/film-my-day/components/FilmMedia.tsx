@@ -3,10 +3,11 @@ import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { 
-    useAnimatedStyle, 
-    useSharedValue, 
-    withTiming 
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+    SharedValue
 } from 'react-native-reanimated';
 
 interface FilmMediaProps {
@@ -16,6 +17,10 @@ interface FilmMediaProps {
     resizeMode?: 'cover' | 'contain';
     isPlaying?: boolean;
     accent?: string;
+    onReady?: () => void;
+    onDuration?: (duration: number) => void;
+    onComplete?: () => void;
+    progress?: SharedValue<number>;
 }
 
 const FilmMedia: React.FC<FilmMediaProps> = ({
@@ -25,18 +30,46 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     resizeMode = 'cover',
     isPlaying = false,
     accent = '#fff',
+    onReady,
+    onDuration,
+    onComplete,
+    progress: externalProgress,
 }) => {
-    const progress = useSharedValue(0);
+    const internalProgress = useSharedValue(0);
+    const progress = externalProgress || internalProgress;
     const progressOpacity = useSharedValue(1);
+    const isReadyReported = React.useRef(false);
+    
     // Always initialize the player for videos to enable pre-loading
     const player = useVideoPlayer(type === 'video' ? uri : null, (p) => {
-        p.loop = true;
-        p.muted = true;
+        p.loop = false; // Disable loop to detect completion
+        p.muted = false; // User might want sound for stories
         p.staysActiveInBackground = false;
         if (isPlaying) {
             p.play();
         }
     });
+
+    useEffect(() => {
+        if (type === 'image') {
+            onReady?.();
+            return;
+        }
+
+        const statusSub = player.addListener('statusChange', (payload: any) => {
+            if (payload.status === 'readyToPlay' && !isReadyReported.current) {
+                isReadyReported.current = true;
+                onReady?.();
+                if (player.duration > 0) {
+                    onDuration?.(player.duration * 1000);
+                }
+            }
+        });
+
+        return () => {
+            statusSub.remove();
+        };
+    }, [player, type, onReady, onDuration]);
 
     useEffect(() => {
         if (type !== 'video') return;
@@ -53,13 +86,24 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
 
     // Use the player's timeUpdate listener to keep the progress bar updated
     useEffect(() => {
-        const sub = player.addListener('timeUpdate', (payload) => {
+        const sub = player.addListener('timeUpdate', (payload: any) => {
             if (player.duration > 0) {
                 progress.value = payload.currentTime / player.duration;
             }
+            if (player.duration > 0 && isReadyReported.current) {
+                onDuration?.(player.duration * 1000);
+            }
         });
-        return () => sub.remove();
-    }, [player]);
+        
+        const completeSub = player.addListener('playToEnd', () => {
+            onComplete?.();
+        });
+
+        return () => {
+            sub.remove();
+            completeSub.remove();
+        };
+    }, [player, onDuration, onComplete, progress]);
 
     const barStyle = useAnimatedStyle(() => ({
         width: `${progress.value * 100}%`,
@@ -71,20 +115,13 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
 
     if (type === 'video') {
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, style]}>
                 <VideoView
                     style={StyleSheet.absoluteFill}
                     player={player}
                     contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
                     nativeControls={false}
                 />
-                
-                {/* Progress Bar */}
-                <Animated.View style={[styles.progressContainer, barContainerStyle]}>
-                    <View style={styles.progressBarTrack}>
-                        <Animated.View style={[styles.progressBarFill, { backgroundColor: accent }, barStyle]} />
-                    </View>
-                </Animated.View>
             </View>
         );
     }

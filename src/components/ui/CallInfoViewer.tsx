@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-// FIXED IMPORT PATH
 import { BaseMediaProps, formatTime } from '@/types/mediaTypes';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

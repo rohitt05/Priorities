@@ -5,7 +5,9 @@
         "mediaUrl": "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?auto=format&fit=crop&w=800&q=80",
         "mediaType": "image",
         "timestamp": "2026-02-21T18:30:00Z",
-        "dayOfWeek": "Saturday"
+        "dayOfWeek": "Saturday",
+        "caption": "Living my best life! 🚀",
+        "likesCount": 5
     },
     {
         "id": "f2",
@@ -13,7 +15,9 @@
         "mediaUrl": "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=800&q=80",
         "mediaType": "image",
         "timestamp": "2026-02-21T14:20:00Z",
-        "dayOfWeek": "Saturday"
+        "dayOfWeek": "Saturday",
+        "caption": "Mountain air is so refreshing 🏔️",
+        "likesCount": 8
     },
     {
         "id": "f3",
@@ -21,7 +25,9 @@
         "mediaUrl": "https://images.unsplash.com/photo-1506744626753-ce8ec91079d2?auto=format&fit=crop&w=800&q=80",
         "mediaType": "image",
         "timestamp": "2026-02-21T09:00:00Z",
-        "dayOfWeek": "Saturday"
+        "dayOfWeek": "Saturday",
+        "caption": "Peaceful morning ☕",
+        "likesCount": 3
     },
     {
         "id": "f4",

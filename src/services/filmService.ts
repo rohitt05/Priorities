@@ -18,10 +18,16 @@ export const filmService = {
             .filter(f => f.userId === userId)
             .map(mapUserFilmCardDTOToFilm);
 
-        // Merge and sort by createdAt (standardized)
-        return [...films, ...additionalFilms].sort((a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        // Merge, validate, and sort
+        return [...films, ...additionalFilms]
+            .filter(f => !!f.uri) // Ensure URI exists
+            .map(f => ({
+                ...f,
+                createdAt: f.createdAt || new Date().toISOString() // Ensure createdAt exists
+            }))
+            .sort((a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
     },
 
     getTimelineEventsByUserId: (userId: string): TimelineEvent[] => {

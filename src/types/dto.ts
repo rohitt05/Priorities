@@ -24,6 +24,8 @@ export interface FilmDTO {
     location?: string;
     isPublic: boolean;
     recipientId: string | null;
+    caption?: string;
+    likesCount?: number;
 }
 
 export interface TimelineEventDTO {
@@ -47,4 +49,6 @@ export interface UserFilmCardDTO {
     mediaType: string;
     timestamp: string;
     dayOfWeek: string;
+    caption?: string;
+    likesCount?: number;
 }

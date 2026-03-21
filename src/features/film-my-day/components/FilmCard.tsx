@@ -8,11 +8,11 @@ import Animated, {
     useSharedValue,
     withSpring
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
 import { Film as UserFilm } from '@/types/domain';
 import { FONTS } from '@/theme/theme';
-import { formatDate, formatTime } from '../utils/dateUtils';
+import { formatRelativeTime } from '../utils/dateUtils';
 import FilmMedia from './FilmMedia';
+import * as Haptics from 'expo-haptics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_HEIGHT = 160;
@@ -70,21 +70,24 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
     });
 
     const handlePressIn = () => {
-        pressScale.value = withSpring(0.97, {
-            damping: 15,
-            stiffness: 150
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        pressScale.value = withSpring(0.98, {
+            damping: 20,
+            stiffness: 250
         });
     };
 
     const handlePressOut = () => {
         pressScale.value = withSpring(1, {
-            damping: 15,
-            stiffness: 150
+            damping: 20,
+            stiffness: 250
         });
     };
 
     return (
         <Animated.View
+            shouldRasterizeIOS={true}
+            renderToHardwareTextureAndroid={true}
             style={[
                 styles.card,
                 {
@@ -130,16 +133,8 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
                 style={{ flex: 1 }}
             >
                 <View style={styles.cardTopRow}>
-                    <View style={styles.cardLeft}>
-                        <Ionicons
-                            name={film.type === 'video' ? 'play' : 'image'}
-                            size={24}
-                            color="rgba(255,255,255,0.9)"
-                        />
-                    </View>
                     <View style={styles.cardRight}>
-                        <Text style={styles.dateText}>{formatDate(film.createdAt)}</Text>
-                        <Text style={styles.timeText}>{formatTime(film.createdAt)}</Text>
+                        <Text style={styles.dateText}>{formatRelativeTime(film.createdAt)}</Text>
                     </View>
                 </View>
             </Pressable>
@@ -155,11 +150,6 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 40,
         borderTopRightRadius: 40,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-        elevation: 10,
         width: '100%',
         overflow: 'visible',
     },
@@ -191,16 +181,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    cardLeft: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        // backgroundColor: 'rgba(255,255,255,0.3)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     cardRight: {
         alignItems: 'flex-end',
+        flex: 1,
     },
     dateText: {
         fontSize: 14,

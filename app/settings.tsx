@@ -22,10 +22,9 @@ import usersData from '@/data/users.json';
 import { User } from '@/types/userTypes';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
+import { CURRENT_USER_ID } from '@/features/profile/utils/profileConstants';
 
 const { width } = Dimensions.get('window');
-
-const CURRENT_USER_ID = 'rohit123';
 
 type SettingsRowProps = {
     icon: keyof typeof Ionicons.glyphMap;
@@ -129,6 +128,9 @@ function SettingsScreenContent() {
         outputRange: [prevBgColor, bgColor],
     });
 
+    const headerColorHeavy = currentUser ? hexToRgba(currentUser.dominantColor, 0.95) : 'rgba(240, 239, 233, 0.95)';
+    const headerColorLight = currentUser ? hexToRgba(currentUser.dominantColor, 0) : 'rgba(240, 239, 233, 0)';
+
     const HEADER_HEIGHT = 60 + insets.top; // Approximate height
 
     return (
@@ -216,6 +218,7 @@ function SettingsScreenContent() {
                         <Ionicons name="chevron-back" size={24} color={COLORS.text} />
                     </TouchableOpacity>
                     <Text style={styles.title}>settings</Text>
+                    <View style={styles.rightSpacer} />
                 </View>
             </View>
 

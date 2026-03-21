@@ -16,7 +16,8 @@ import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import * as MediaLibrary from 'expo-media-library';
-import FilmMyDayTextBox from '@/features/film-my-day/components/filmOfTheDay/FilmMyDayTextBox';
+import StoryTextOverlay, { StoryTextOverlayRef } from './StoryTextOverlay';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -41,8 +42,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isVideoReady, setIsVideoReady] = useState(false);
-    const [caption, setCaption] = useState('');
-    const [showTextBox, setShowTextBox] = useState(false);
+    const overlayRef = useRef<StoryTextOverlayRef>(null);
+    const [isEditingText, setIsEditingText] = useState(false);
 
     // Use ref to track if component is mounted
     const isMountedRef = useRef(true);
@@ -200,16 +201,14 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             <View style={[styles.cardContainer, { paddingTop: STATUS_BAR_HEIGHT + 10 }]}>
                 <View style={styles.mediaCard}>
                     {isVideo ? (
-                        <>
-                            <VideoView
-                                style={[styles.mediaFill, mirrorStyle]}
-                                player={player}
-                                contentFit="cover"
-                                nativeControls={false}
-                                allowsFullscreen={false}
-                                allowsPictureInPicture={false}
-                            />
-                        </>
+                        <VideoView
+                            style={[styles.mediaFill, mirrorStyle]}
+                            player={player}
+                            contentFit="cover"
+                            nativeControls={false}
+                            allowsFullscreen={false}
+                            allowsPictureInPicture={false}
+                        />
                     ) : (
                         <Image
                             source={{ uri: capturedMedia.uri }}
@@ -217,35 +216,19 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             resizeMode="cover"
                         />
                     )}
-                </View>
 
-                {/* ✅ Added Textbox Overlay */}
-                {showTextBox && (
-                    <FilmMyDayTextBox
-                        value={caption}
-                        onChangeText={setCaption}
-                        onClose={() => setShowTextBox(false)}
-                    />
-                )}
+                {/* Interactive Text Overlay */}
+                <StoryTextOverlay 
+                    ref={overlayRef} 
+                    onOpenEditor={() => setIsEditingText(true)}
+                    onCloseEditor={() => setIsEditingText(false)}
+                    mediaUri={capturedMedia.uri}
+                    mediaType={capturedMedia.type}
+                />
+            </View>
 
-                {/* ✅ Render Caption text if textbox is closed but text exists */}
-                {!showTextBox && caption.length > 0 && (
-                    <TouchableOpacity
-                        style={styles.captionDisplay}
-                        onPress={() => setShowTextBox(true)}
-                        activeOpacity={0.9}
-                    >
-                        <LinearGradient
-                            colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.7)']}
-                            style={styles.captionGradient}
-                        >
-                            <Text style={styles.captionDisplayText}>{caption}</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                )}
-
-                {/* ✅ Moved Video Controls Overlay to higher layer */}
-                {isVideo && isVideoReady && (
+            {/* ✅ Moved Video Controls Overlay to higher layer - Hide when editing */}
+            {isVideo && isVideoReady && !isEditingText && (
                     <View style={styles.videoControlsOverlay} pointerEvents="box-none">
                         <TouchableOpacity
                             style={styles.muteButton}
@@ -277,65 +260,69 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 )}
             </View>
 
-            {/* Bottom Controls */}
-            <View style={styles.bottomControls}>
-                <View style={styles.buttonsRow}>
-                    {/* LEFT: Delete Button */}
-                    <TouchableOpacity
-                        style={styles.deleteButton}
-                        onPress={onDiscard}
-                        activeOpacity={0.7}
-                    >
-                        <Feather name="trash-2" size={24} color="#FF4040" />
-                    </TouchableOpacity>
-
-                    {/* RIGHT GROUP: Download + Send/Film Button */}
-                    <View style={styles.rightGroup}>
-                        {/* Edit Button */}
+            {/* Bottom Controls - Hide when editing */}
+            {!isEditingText && (
+                <View style={styles.bottomControls}>
+                    <View style={styles.buttonsRow}>
+                        {/* LEFT: Delete Button */}
                         <TouchableOpacity
-                            style={styles.editButton}
-                            onPress={() => setShowTextBox(true)}
+                            style={styles.deleteButton}
+                            onPress={onDiscard}
                             activeOpacity={0.7}
                         >
-                            <MaterialCommunityIcons name="format-quote-open-outline" size={24} color="#FFF" />
+                            <Feather name="trash-2" size={24} color="#FF4040" />
                         </TouchableOpacity>
 
-                        {/* Download Button */}
-                        <TouchableOpacity
-                            style={styles.iconButton}
-                            onPress={handleDownload}
-                            activeOpacity={0.7}
-                            disabled={isSaving}
-                        >
-                            {isSaving ? (
-                                <ActivityIndicator size="small" color="#FFF" />
-                            ) : (
-                                <Ionicons name="download-outline" size={24} color="#FFF" />
-                            )}
-                        </TouchableOpacity>
+                        {/* RIGHT GROUP: Download + Send/Film Button */}
+                        <View style={styles.rightGroup}>
+                            {/* Edit Button */}
+                            <TouchableOpacity
+                                style={styles.editButton}
+                                onPress={() => overlayRef.current?.startEditing()}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialCommunityIcons name="format-text" size={24} color="#FFF" />
+                            </TouchableOpacity>
 
-                        {/* ✅ UPDATED: Dynamic Text Capsule Button */}
-                        <TouchableOpacity
-                            style={styles.capsuleButton}
-                            onPress={onSave}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.capsuleButtonText}>
-                                {recipient ? `Send ${recipient.split(' ')[0]}` : '+ Film of the Day'}
-                            </Text>
-                        </TouchableOpacity>
+                            {/* Download Button */}
+                            <TouchableOpacity
+                                style={styles.iconButton}
+                                onPress={handleDownload}
+                                activeOpacity={0.7}
+                                disabled={isSaving}
+                            >
+                                {isSaving ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Ionicons name="download-outline" size={24} color="#FFF" />
+                                )}
+                            </TouchableOpacity>
+
+                            {/* ✅ UPDATED: Dynamic Text Capsule Button */}
+                            <TouchableOpacity
+                                style={styles.capsuleButton}
+                                onPress={onSave}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.capsuleButtonText}>
+                                    {recipient ? `Send ${recipient.split(' ')[0]}` : '+ Film of the Day'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
-            </View>
+            )}
         </View>
     );
 };
 
 const MediaPreview: React.FC<MediaPreviewProps> = (props) => {
     return (
-        <BackgroundProvider>
-            <MediaPreviewContent {...props} />
-        </BackgroundProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <BackgroundProvider>
+                <MediaPreviewContent {...props} />
+            </BackgroundProvider>
+        </GestureHandlerRootView>
     );
 };
 

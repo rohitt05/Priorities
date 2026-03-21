@@ -27,7 +27,7 @@ const ITEM_SIZE = AVAILABLE_WIDTH / COLUMN_COUNT;
 const PARTICLE_COUNT = 15;
 
 
-// --- 2. EMOJI DATA (EMOTIONS, HANDS, ROMANTIC, FOOD ONLY) ---
+// --- 2. EMOJI DATA (EMOTIONS, HANDS, ROMANTIC) ---
 const SAFE_EMOJI_LIST = [
     // Emotions
     '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '🫠', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '☺️', '😚', '😙',
