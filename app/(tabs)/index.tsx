@@ -12,7 +12,8 @@ import usersData from '@/data/users.json';
 import FilmSwiperBlob from '@/features/film-my-day/components/FilmSwiperBlob';
 import FilmMyDay from '@/features/film-my-day/components/FilmMyDayContent';
 import { useRouter } from 'expo-router';
-import { useSharedValue } from 'react-native-reanimated';
+import { useSharedValue, runOnJS } from 'react-native-reanimated';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
 const PRIORITIES_KEY = '@priorities_list';
 

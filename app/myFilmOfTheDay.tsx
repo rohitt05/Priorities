@@ -34,27 +34,32 @@ import {
 } from 'react-native-gesture-handler';
 import Svg, {
     Path, Circle, Line, Rect,
-    Defs, LinearGradient as SvgGrad, Stop,
+    Defs, Stop,
 } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import myFilmsData from '@/data/myFilms.json';
 import FilmMedia from '../src/features/film-my-day/components/FilmMedia';
+import ZoomableMediaCard from '../src/features/film-my-day/components/ZoomableMediaCard';
 import FilmViewerList from '../src/features/film-my-day/components/FilmViewerList';
+import { getColors } from 'react-native-image-colors';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 import { BlurView } from 'expo-blur';
 
 // ─────────────────────────────────────────── constants
 const { width: SW, height: SH } = Dimensions.get('window');
 
-const CARD_W = 160;
-const CARD_H = 210;
+const CARD_W = 200;
+const CARD_H = 270;
 const CELL = 22;
 const MIN_SC = 0.12; // Allow slightly more zoom out for "map view"
 const MAX_SC = 3.5;
-const DEF_SC = (SW * 0.72) / CARD_W;
+const DEF_SC = (SW * 0.8) / CARD_W;
 const COLS = 3;
-const ROW_H = 340; // Increased spacing for better clarity
+const ROW_H = 420; // Increased spacing for larger cards
 const CANVAS_W = 1400;
 const WINDOW = 3; // Number of items to keep in view/preloaded
+const CARD_MARGIN = 20; // Small breath between path and card edge
 
 // ─────────────────────────────────────────── helpers
 function hexRgb(hex: string) {
@@ -92,7 +97,7 @@ function buildLayout(count: number) {
         const row = Math.floor(i / COLS);
         const col = i % COLS;
         const colIdx = row % 2 === 1 ? COLS - 1 - col : col;
-        
+
         // Add organic drift so it doesn't look like a rigid grid
         const dx = Math.sin(i * 1.5) * 80;
         const dy = Math.cos(i * 0.8) * 40;
@@ -106,21 +111,21 @@ function buildLayout(count: number) {
 
 function buildPath(pts: { x: number; y: number }[]) {
     if (pts.length < 2) return '';
-    const cx = (p: { x: number }) => p.x + CARD_W / 2;
-    const cy = (p: { y: number }) => p.y + CARD_H / 2;
-    
+    // Dot sits 12px outside the card's top-right corner
+    const cx = (p: { x: number }) => p.x + 12;
+    const cy = (p: { y: number }) => p.y;
+
     let d = `M ${cx(pts[0])} ${cy(pts[0])}`;
     for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1], b = pts[i];
         const distY = cy(b) - cy(a);
         const distX = cx(b) - cx(a);
-        
-        // Full curved: increase control points to create more "bulge"
+
         const cp1x = cx(a) + distX * 0.15;
         const cp1y = cy(a) + distY * 0.75;
         const cp2x = cx(b) - distX * 0.15;
         const cp2y = cy(b) - distY * 0.75;
-        
+
         d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${cx(b)} ${cy(b)}`;
     }
     return d;
@@ -128,24 +133,25 @@ function buildPath(pts: { x: number; y: number }[]) {
 
 function makeCentre(idx: number, positions: { x: number; y: number }[], sc: number) {
     const p = positions[idx];
-    const cx = p.x + CARD_W / 2;
+    // Card renders with top-right at pos.x, so card center X = pos.x - CARD_W/2
+    const cx = p.x - CARD_W / 2;
     const cy = p.y + CARD_H / 2;
     return { tx: -cx * sc, ty: -cy * sc };
 }
 
 // ─────────────────────────────────────────── graph grid
 const ScreenGrid = React.memo(({ accent }: { accent: string }) => {
-    const lc = rgba(accent, 0.22);
+    const lc = rgba('#433D35', 0.15); // Clearer charcoal grid
     const cols = Math.ceil(SW / CELL) + 1;
     const rows = Math.ceil(SH / CELL) + 1;
     const lines: React.ReactNode[] = [];
     for (let r = 0; r <= rows; r++) {
         lines.push(<Line key={`h${r}`} x1={0} y1={r * CELL} x2={SW} y2={r * CELL}
-            stroke={lc} strokeWidth={0.85} />);
+            stroke={lc} strokeWidth={1.2} />);
     }
     for (let c = 0; c <= cols; c++) {
         lines.push(<Line key={`v${c}`} x1={c * CELL} y1={0} x2={c * CELL} y2={SH}
-            stroke={lc} strokeWidth={0.85} />);
+            stroke={lc} strokeWidth={1.2} />);
     }
     return (
         <Svg width={SW} height={SH} style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -166,45 +172,45 @@ const RouteLayer = React.memo(({
     <Svg width={cw} height={ch}
         style={{ position: 'absolute', left: originX, top: originY }}
         pointerEvents="none">
-        
+
         {/* 1. Underlying Soft Glow Trail */}
-        <Path 
-            d={path} 
-            stroke={rgba(accent, 0.12)} 
-            strokeWidth={12} 
-            fill="none" 
-            strokeLinecap="round" 
+        <Path
+            d={path}
+            stroke={rgba('#433D35', 0.12)}
+            strokeWidth={12}
+            fill="none"
+            strokeLinecap="round"
         />
 
         {/* 2. Beaded Silk Path (The 'Trail of Light') */}
-        <Path 
-            d={path} 
-            stroke={rgba(accent, 0.45)} 
-            strokeWidth={3} 
-            fill="none" 
-            strokeDasharray="0.1, 12" 
-            strokeLinecap="round" 
+        <Path
+            d={path}
+            stroke={rgba('#433D35', 0.45)}
+            strokeWidth={3}
+            fill="none"
+            strokeDasharray="0.1, 12"
+            strokeLinecap="round"
         />
 
         {/* 3. Circular Ring Chain — Ethereal rings along the route */}
         {positions.slice(0, -1).map((p, i) => {
             const next = positions[i + 1];
-            const cxA = p.x + CARD_W / 2 - originX;
-            const cyA = p.y + CARD_H / 2 - originY;
-            const cxB = next.x + CARD_W / 2 - originX;
-            const cyB = next.y + CARD_H / 2 - originY;
+            // Match buildPath 12px offset logic
+            const cxA = (p.x + 12) - originX;
+            const cyA = p.y - originY;
+            const cxB = (next.x + 12) - originX;
+            const cyB = next.y - originY;
 
             // Add small rings at 25%, 50%, 75% between nodes
             const points = [0.25, 0.5, 0.75];
             return points.map(t => {
-                // Linear interp for simplicity (Bézier nodes are close enough for deco)
                 const mx = cxA + (cxB - cxA) * t;
                 const my = cyA + (cyB - cyA) * t;
                 return (
                     <Circle key={`deco-ring-${i}-${t}`}
                         cx={mx} cy={my}
                         r={6 + t * 2} // Variable size for organic feel
-                        stroke={accent}
+                        stroke={'#433D35'}
                         strokeWidth={0.6}
                         fill="none"
                         opacity={0.15 - t * 0.05}
@@ -212,39 +218,39 @@ const RouteLayer = React.memo(({
                 );
             });
         })}
-        
+
         {/* 4. Central Connection Line */}
-        <Path 
-            d={path} 
-            stroke={rgba(accent, 0.3)} 
-            strokeWidth={0.6} 
-            fill="none" 
+        <Path
+            d={path}
+            stroke={rgba('#433D35', 0.3)}
+            strokeWidth={0.6}
+            fill="none"
         />
 
         {/* Node Portals & Orbital Rings */}
         {positions.map((p, i) => {
-            const cx = p.x + CARD_W / 2 - originX;
-            const cy = p.y + CARD_H / 2 - originY;
+            const cx = (p.x + 12) - originX;
+            const cy = p.y - originY;
             return (
                 <React.Fragment key={i}>
-                    <Circle 
-                        cx={cx} cy={cy} r={24} 
-                        stroke={accent} 
-                        strokeWidth={0.35} 
-                        fill="none" 
+                    <Circle
+                        cx={cx} cy={cy} r={24}
+                        stroke={'#433D35'}
+                        strokeWidth={0.35}
+                        fill="none"
                         opacity={0.06}
                     />
-                    <Circle 
-                        cx={cx} cy={cy} r={12} 
-                        stroke={rgba(accent, 0.15)} 
-                        strokeWidth={0.8} 
-                        fill="none" 
+                    <Circle
+                        cx={cx} cy={cy} r={12}
+                        stroke={rgba('#433D35', 0.15)}
+                        strokeWidth={0.8}
+                        fill="none"
                     />
-                    <Circle 
-                        cx={cx} cy={cy} r={4.5} 
-                        fill="white" 
-                        stroke={accent} 
-                        strokeWidth={2} 
+                    <Circle
+                        cx={cx} cy={cy} r={4.5}
+                        fill="white"
+                        stroke={'#433D35'}
+                        strokeWidth={2}
                     />
                 </React.Fragment>
             );
@@ -252,65 +258,80 @@ const RouteLayer = React.memo(({
     </Svg>
 ));
 RouteLayer.displayName = 'RouteLayer';
+// ─────────────────────────────────────────── doodle underline
+const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; width?: number }) => (
+    <Svg width={width} height={14} viewBox={`0 0 ${width} 14`} style={{ marginTop: -5, opacity: 0.85 }}>
+        {/* Primary scribble */}
+        <Path
+            d={`M${width * 0.03} 7C${width * 0.2} 5 ${width * 0.4} 6 ${width * 0.6} 7C${width * 0.8} 8 ${width * 0.95} 5 ${width * 0.98} 6`}
+            stroke={color} strokeWidth={2.8} strokeLinecap="round" fill="none"
+        />
+        {/* Second lower stroke */}
+        <Path
+            d={`M${width * 0.08} 10C${width * 0.3} 9 ${width * 0.5} 10 ${width * 0.7} 11C${width * 0.9} 12 ${width * 0.95} 9 ${width * 0.92} 8`}
+            stroke={color} strokeWidth={2.2} strokeLinecap="round" fill="none" opacity={0.65}
+        />
+        {/* Third short stroke */}
+        <Path
+            d={`M${width * 0.2} 12C${width * 0.4} 11 ${width * 0.6} 12 ${width * 0.8} 13`}
+            stroke={color} strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.4}
+        />
+    </Svg>
+));
+DoodleUnderline.displayName = 'DoodleUnderline';
 
 // ─────────────────────────────────────────── media node
 const MediaNode = React.memo(({
-    item, pos, active, accent, inView, isPaused, onPress,
+    item, pos, active, accent, inView, isPaused, tx, ty, sc, onPress,
 }: {
     item: any; pos: { x: number; y: number }; active: boolean;
-    accent: string; inView: boolean; isPaused: boolean; 
+    accent: string; inView: boolean; isPaused: boolean;
+    tx: any; ty: any; sc: any;
     onPress: () => void;
 }) => {
     const isVideo = item.mediaType === 'video';
-    
+
     // Auto-play condition: active, is video, and NOT manually paused
     const shouldPlay = active && isVideo && !isPaused;
 
-    return (
-        <View style={{ position: 'absolute', left: pos.x, top: pos.y }}>
-            {/* Time label — ABOVE card, left-aligned */}
-            <View style={styles.timeRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <Text style={[styles.timeText, { color: rgba(accent, 0.7) }]}>
-                        {fmtTime(item.timestamp)}
-                    </Text>
-                </View>
-            </View>
+    // The path pointer (dot) is at pos.x, pos.y (top-right corner of card)
+    // Card renders with its top-right corner at pos.x, top edge at pos.y
+    const finalX = pos.x - CARD_W;  // card left
+    const finalY = pos.y;           // card top
 
-            {/* Media card */}
-            <View
-                pointerEvents="none"
-                style={[styles.card, {
-                    borderColor: active ? rgba(accent, 0.45) : rgba(accent, 0.1),
-                    borderWidth: 1,
-                    shadowColor: accent,
-                    shadowOpacity: active ? 0.42 : 0.07,
-                }]}
+    return (
+        <View style={{ position: 'absolute', left: finalX, top: finalY }}>
+            <ZoomableMediaCard
+                width={CARD_W}
+                height={CARD_H}
+                pos={{ x: finalX, y: finalY }}
+                isActive={active}
+                accent={accent}
+                tx={tx}
+                ty={ty}
+                sc={sc}
             >
                 {inView ? (
                     <FilmMedia
                         uri={item.mediaUrl}
-                        type={isVideo ? 'video' : 'image'}
+                        type={item.mediaType === 'video' ? 'video' : 'image'}
                         isPlaying={shouldPlay}
                         accent={accent}
                         resizeMode="cover"
                     />
                 ) : (
-                    <View style={[styles.placeholder, { backgroundColor: rgba(accent, 0.1) }]} />
+                    <View style={[styles.placeholder, { backgroundColor: rgba('#433D35', 0.1) }]} />
                 )}
 
                 {active && <View style={[styles.activeDot, { backgroundColor: accent }]} />}
-            </View>
+            </ZoomableMediaCard>
 
-            {/* Caption below */}
-            {item.caption ? (
-                <View style={styles.captionWrap}>
-                    <Text style={[styles.caption, { color: rgba('#2C2720', 0.62) }]}
-                        numberOfLines={3}>
-                        {item.caption}
-                    </Text>
-                </View>
-            ) : null}
+            {/* Time label — bottom-right of the media card area */}
+            <View style={styles.timeLabelContainer}>
+                <Text style={styles.timeText}>
+                    {fmtTime(item.timestamp)}
+                </Text>
+            </View>
         </View>
     );
 });
@@ -380,33 +401,86 @@ export default function MyFilmOfTheDay() {
     const [isPaused, setIsPaused] = useState(false);
     const [showViewers, setShowViewers] = useState(false);
 
-    // ── Dynamic background colour from active film ────────────
+    // ── Optimized dynamic background ───────────────────────────
     const bgAnim = useRef(new RNAnimated.Value(0)).current;
-    const [bgColor, setBgColor] = useState(rgba(accent, 0.08));
-    const [prevBgColor, setPrevBgColor] = useState(rgba(accent, 0.08));
+    const colorCache = useRef<Record<string, string[]>>({});
 
-    const filmBgColors = useMemo(() => [
-        'rgba(255, 220, 150, 0.15)', // warm sunrise
-        'rgba(150, 200, 255, 0.15)', // cool sky
-        'rgba(150, 220, 170, 0.15)', // green walk
-        'rgba(200, 160, 120, 0.15)', // warm lunch
-        'rgba(120, 200, 210, 0.15)', // teal found spot
-        'rgba(255, 180, 100, 0.15)', // golden hour
-        'rgba(100, 130, 200, 0.15)', // night blue
-    ], []);
+    const [bgColors, setBgColors] = useState<string[]>([
+        rgba(accent, 0.92),
+        rgba(accent, 0.78),
+        rgba(accent, 0.55),
+    ]);
+    const [prevBgColors, setPrevBgColors] = useState<string[]>([
+        rgba(accent, 0.92),
+        rgba(accent, 0.78),
+        rgba(accent, 0.55),
+    ]);
 
-    const updateBg = useCallback((idx: number) => {
-        const next = filmBgColors[idx % filmBgColors.length] ?? rgba(accent, 0.08);
-        setPrevBgColor(bgColor);
-        setBgColor(next);
+    const extractColor = useCallback(async (idx: number) => {
+        const film = films[idx];
+        if (!film || colorCache.current[film.id]) return colorCache.current[film.id];
+
+        try {
+            let mediaUri = film.mediaUrl;
+            if (film.mediaType === 'video') {
+                const thumb = await VideoThumbnails.getThumbnailAsync(film.mediaUrl, { time: 500 });
+                mediaUri = thumb.uri;
+            }
+
+            const small = await ImageManipulator.manipulateAsync(
+                mediaUri,
+                [{ resize: { width: 100 } }],
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.6 }
+            );
+
+            const res = await getColors(small.uri, { fallback: accent, cache: true, quality: 'low' });
+            let dominant = accent;
+            if (res.platform === 'android') dominant = res.vibrant || res.dominant || res.average || accent;
+            else if (res.platform === 'ios') dominant = res.primary || res.detail || res.background || accent;
+
+            const result = [
+                rgba(dominant, 0.95),   // rich top
+                rgba(dominant, 0.75),   // mid wash
+                rgba(dominant, 0.45),   // soft bottom
+            ];
+            colorCache.current[film.id] = result;
+            return result;
+        } catch (e) {
+            console.warn('[ColorPick] Failed for idx', idx, e);
+            return [rgba(accent, 0.8), rgba(accent, 0.6), rgba(accent, 0.4)];
+        }
+    }, [accent, films]);
+
+    const updateBg = useCallback(async (idx: number) => {
+        const film = films[idx];
+        if (!film) return;
+
+        // 1. Get color (immediately if cached, else async)
+        const cached = colorCache.current[film.id];
+        const colors = cached || await extractColor(idx);
+
+        // 2. Cross-fade to new colors
+        setPrevBgColors(bgColors);
+        setBgColors(colors);
         bgAnim.setValue(0);
-        RNAnimated.timing(bgAnim, { toValue: 1, duration: 600, useNativeDriver: false }).start();
-    }, [bgColor, filmBgColors, accent, bgAnim]);
+        RNAnimated.timing(bgAnim, {
+            toValue: 1,
+            duration: cached ? 500 : 800,
+            useNativeDriver: false
+        }).start();
 
-    const animBg = bgAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [prevBgColor, bgColor],
-    });
+        // 3. Proactively pre-fetch neighbors for zero-lag navigation
+        if (idx + 1 < films.length) extractColor(idx + 1);
+        if (idx - 1 >= 0) extractColor(idx - 1);
+    }, [bgColors, bgAnim, films, extractColor]);
+
+    useEffect(() => {
+        // Initial load for first 3 items to prime the cache
+        Promise.all([extractColor(0), extractColor(1), extractColor(2)]).then(() => {
+            updateBg(0);
+        });
+    }, []);
+
 
     // ── shared values ──────────────────────────────────────────
     const initC = makeCentre(0, positions, DEF_SC);
@@ -434,10 +508,14 @@ export default function MyFilmOfTheDay() {
         const currentSc = sc.value;
         const snapSc = currentSc < 0.4 ? DEF_SC : currentSc;
 
-        const c = makeCentre(i, positions, snapSc);
+        const p = positions[i];
+        // Card renders with top-right at pos.x => card center X = pos.x - CARD_W/2
+        const cx = p.x - CARD_W / 2;
+        const cy = p.y + CARD_H / 2;
+        const target = { tx: -cx * snapSc, ty: -cy * snapSc };
 
-        tx.value = withSpring(c.tx, SPRING);
-        ty.value = withSpring(c.ty, SPRING);
+        tx.value = withSpring(target.tx, SPRING);
+        ty.value = withSpring(target.ty, SPRING);
         if (Math.abs(snapSc - currentSc) > 0.01) {
             sc.value = withSpring(snapSc, SPRING);
         }
@@ -451,8 +529,8 @@ export default function MyFilmOfTheDay() {
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
 
         // Save current values for next gesture
-        sTx.value = c.tx;
-        sTy.value = c.ty;
+        sTx.value = target.tx;
+        sTy.value = target.ty;
         sSc.value = snapSc;
     }, [films.length, positions, updateBg, showViewers]);
 
@@ -473,7 +551,7 @@ export default function MyFilmOfTheDay() {
             sTy.value = ty.value;
 
             const speed = Math.sqrt(e.velocityX ** 2 + e.velocityY ** 2);
-            
+
             // Logic for snapping: flick or distance based
             let targetIdx = activeIdx;
 
@@ -489,7 +567,7 @@ export default function MyFilmOfTheDay() {
                 // Distance logic: Find the card closest to the screen center
                 const centerCx = -tx.value / sc.value;
                 const centerCy = -ty.value / sc.value;
-                
+
                 let minDist = Infinity;
                 positions.forEach((p, idx) => {
                     const dx = (p.x + CARD_W / 2) - centerCx;
@@ -501,7 +579,7 @@ export default function MyFilmOfTheDay() {
                     }
                 });
             }
-            
+
             runOnJS(snapTo)(targetIdx);
         });
 
@@ -539,7 +617,7 @@ export default function MyFilmOfTheDay() {
             // High-performance Hit Testing for all cards
             // coordinates are relative to the device screen (viewport)
             let tappedIdx = -1;
-            
+
             for (let i = 0; i < positions.length; i++) {
                 const p = positions[i];
                 // screenX = pivotCenterX + tx + canvasX * sc
@@ -585,11 +663,42 @@ export default function MyFilmOfTheDay() {
 
     return (
         <GestureHandlerRootView style={styles.root}>
-            {/* Background wash */}
-            <RNAnimated.View
-                style={[StyleSheet.absoluteFill, { backgroundColor: animBg }]}
-                pointerEvents="none"
-            />
+            {/* Instagram-style ambient color wash background */}
+            <View style={StyleSheet.absoluteFill}>
+                {/* Previous color state — fades OUT */}
+                <RNAnimated.View style={[StyleSheet.absoluteFill, {
+                    opacity: bgAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                }]}>
+                    <LinearGradient
+                        colors={prevBgColors as [string, string, string]}
+                        locations={[0, 0.5, 1]}
+                        style={StyleSheet.absoluteFill}
+                    />
+                </RNAnimated.View>
+
+                {/* Current color state — fades IN */}
+                <RNAnimated.View style={[StyleSheet.absoluteFill, { opacity: bgAnim }]}>
+                    <LinearGradient
+                        colors={bgColors as [string, string, string]}
+                        locations={[0, 0.5, 1]}
+                        style={StyleSheet.absoluteFill}
+                    />
+                </RNAnimated.View>
+
+                {/* Premium "Milk" Layer — the requested whitish shade */}
+                <LinearGradient
+                    colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.15)', 'transparent']}
+                    locations={[0, 0.4, 0.9]}
+                    style={StyleSheet.absoluteFill}
+                />
+
+                {/* Soft vignette — for grounding */}
+                <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.12)']}
+                    locations={[0.6, 1]}
+                    style={StyleSheet.absoluteFill}
+                />
+            </View>
 
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <ScreenGrid accent={accent} />
@@ -605,16 +714,17 @@ export default function MyFilmOfTheDay() {
                     }}
                     style={[styles.backBtn, { top: insets.top + 14 }]}
                 >
-                    <Ionicons name="chevron-back" size={24} color={accent} />
+                    <Ionicons name="chevron-back" size={24} color={'#433D35'} />
                 </Pressable>
                 <View style={styles.headerCenter} pointerEvents="none">
-                    <Text style={[styles.hSub, { color: rgba(accent, 0.5) }]}>
+                    <Text style={[styles.hSub, { color: rgba('#433D35', 0.8), ...styles.textShadowHighlight }]}>
                         Films of my day
                     </Text>
-                    <Text style={[styles.hWeekday, { color: accent }]} numberOfLines={1}>
+                    <Text style={[styles.hWeekday, { color: '#433D35', ...styles.textShadowSoft }]} numberOfLines={1}>
                         {weekday}
                     </Text>
-                    <Text style={[styles.hDate, { color: rgba(accent, 0.7) }]} numberOfLines={1}>
+                    <DoodleUnderline color={'#433D35'} width={180} />
+                    <Text style={[styles.hDate, { color: rgba('#433D35', 0.9), ...styles.textShadowHighlight }]} numberOfLines={1}>
                         {date}
                     </Text>
                 </View>
@@ -636,11 +746,14 @@ export default function MyFilmOfTheDay() {
                         {films.map((f, i) => (
                             <MediaNode
                                 key={f.id}
-                                item={f}
+                                item={{ ...f, index: i }}
                                 pos={positions[i]}
                                 active={i === activeIdx}
                                 isPaused={isPaused}
                                 accent={accent}
+                                tx={tx}
+                                ty={ty}
+                                sc={sc}
                                 inView={Math.abs(i - activeIdx) <= WINDOW}
                                 onPress={() => {
                                     if (i !== activeIdx) {
@@ -743,19 +856,27 @@ const styles = StyleSheet.create({
     },
     timeText: {
         fontFamily: FONTS.bold,
-        fontSize: 9,
-        letterSpacing: 0.6,
+        fontSize: 10,
+        letterSpacing: 0.8,
         textTransform: 'uppercase',
+        color: '#433D35',
+        opacity: 0.8,
+    },
+    timeLabelContainer: {
+        position: 'absolute',
+        bottom: -22, // Moved OUTSIDE the card area
+        right: 0,
+        paddingVertical: 3,
     },
     card: {
         width: CARD_W,
         height: CARD_H,
-        borderRadius: 16,
+        borderRadius: 24,
         overflow: 'hidden',
         backgroundColor: '#e8e7e4',
-        shadowOffset: { width: 0, height: 6 },
-        shadowRadius: 16,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 12 },
+        shadowRadius: 20,
+        elevation: 12,
     },
     placeholder: { flex: 1 },
     videoOverlay: {
@@ -839,5 +960,15 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    textShadowSoft: {
+        textShadowColor: 'rgba(255,255,255,0.85)',
+        textShadowOffset: { width: 0, height: 1.5 },
+        textShadowRadius: 6,
+    },
+    textShadowHighlight: {
+        textShadowColor: 'rgba(255,255,255,0.92)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
     },
 });

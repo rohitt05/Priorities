@@ -3,22 +3,107 @@ import {
     View,
     Pressable,
     StyleSheet,
-    Animated,
     TextInput,
     Dimensions,
     Keyboard,
     Platform,
+    Animated as RNAnimated,
     Text,
     Image,
     FlatList,
-    InteractionManager
+    InteractionManager,
+    StatusBar,
+    BackHandler
 } from 'react-native';
+import ReAnimated, {
+    useSharedValue,
+    useAnimatedStyle,
+    useAnimatedScrollHandler,
+    withTiming,
+    interpolate,
+    Extrapolate,
+    SharedValue
+} from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { COLORS, FONTS } from '@/theme/theme';
-import usersData from '@/data/users.json';
 
-const { width } = Dimensions.get('window');
+interface User {
+    id: string;
+    uniqueUserId: string;
+    name: string;
+    profilePicture: string;
+    dominantColor: string;
+}
+
+interface SearchResultCardProps {
+    item: User;
+    index: number;
+    scrollY: SharedValue<number>;
+    onPress: (userId: string) => void;
+    onAddPress: (user: User) => void;
+}
+
+const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress }: SearchResultCardProps) => {
+    const ITEM_H = 80;
+    const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+    const animatedStyle = useAnimatedStyle(() => {
+        const itemPos = index * ITEM_H;
+        const relativePos = itemPos - scrollY.value;
+
+        const opacity = interpolate(
+            relativePos,
+            [-ITEM_H, 0, 50, SCREEN_HEIGHT * 0.6, SCREEN_HEIGHT * 0.75],
+            [0, 1, 1, 1, 0],
+            Extrapolate.CLAMP
+        );
+
+        const scale = interpolate(
+            relativePos,
+            [-ITEM_H, 0, SCREEN_HEIGHT * 0.6, SCREEN_HEIGHT * 0.75],
+            [0.9, 1, 1, 0.9],
+            Extrapolate.CLAMP
+        );
+
+        return {
+            opacity,
+            transform: [{ scale }]
+        };
+    });
+
+    return (
+        <ReAnimated.View style={[styles.resultCard, animatedStyle]}>
+            <Pressable
+                style={styles.userInfoContainer}
+                onPress={() => onPress(item.uniqueUserId)}
+            >
+                <Image source={{ uri: item.profilePicture }} style={styles.resultAvatar} />
+                <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.name}</Text>
+                    <Text style={styles.userId}>@{item.uniqueUserId}</Text>
+                </View>
+            </Pressable>
+            <Pressable
+                style={({ pressed }) => [
+                    styles.resultAcceptButton,
+                    { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                ]}
+                onPress={() => onAddPress(item)}
+            >
+                <Text style={styles.resultAcceptText}>Add to Priorities</Text>
+            </Pressable>
+        </ReAnimated.View>
+    );
+};
+import usersData from '@/data/users.json';
+import receivedPriorityRequests from '@/data/receivedPriorityRequests.json';
+import ReceivedPriorityRequests from './ReceivedPriorityRequests';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 import { Profile } from '@/types/domain';
 
@@ -28,16 +113,28 @@ interface FloatingSearchProps {
 
 const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const router = useRouter();
+    const isFocused = useIsFocused();
     const [isExpanded, setIsExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        if (!isFocused && isExpanded) {
+            setIsExpanded(false);
+        }
+    }, [isFocused]);
     const [filteredUsers, setFilteredUsers] = useState<Profile[]>([]);
     const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
     const [relationship, setRelationship] = useState('');
+    const [hasNewRequests, setHasNewRequests] = useState(true);
+    const CURRENT_USER_ID = "rohit123";
+    const myRequests = (receivedPriorityRequests as any)[CURRENT_USER_ID] || [];
 
-    const expandAnim = useRef(new Animated.Value(0)).current;
-    const keyboardOffset = useRef(new Animated.Value(0)).current;
-    const resultsAnim = useRef(new Animated.Value(0)).current;
-    const relationshipAnim = useRef(new Animated.Value(0)).current;
+    const requestListOpacity = useSharedValue(0);
+
+    const expandAnim = useRef(new RNAnimated.Value(0)).current;
+    const keyboardOffset = useRef(new RNAnimated.Value(0)).current;
+    const resultsAnim = useRef(new RNAnimated.Value(0)).current;
+    const relationshipAnim = useRef(new RNAnimated.Value(0)).current;
     const inputRef = useRef<TextInput>(null);
     const relInputRef = useRef<TextInput>(null);
 
@@ -46,7 +143,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
         const showSubscription = Keyboard.addListener(showEvent, (e) => {
-            Animated.spring(keyboardOffset, {
+            RNAnimated.spring(keyboardOffset, {
                 toValue: e.endCoordinates.height + (Platform.OS === 'ios' ? 20 : 10),
                 friction: 8,
                 tension: 40,
@@ -55,7 +152,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         });
 
         const hideSubscription = Keyboard.addListener(hideEvent, () => {
-            Animated.spring(keyboardOffset, {
+            RNAnimated.spring(keyboardOffset, {
                 toValue: 0,
                 friction: 8,
                 tension: 40,
@@ -70,7 +167,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     }, []);
 
     useEffect(() => {
-        Animated.spring(expandAnim, {
+        RNAnimated.spring(expandAnim, {
             toValue: isExpanded ? 1 : 0,
             friction: 8,
             tension: 40,
@@ -78,12 +175,15 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }).start();
 
         if (isExpanded) {
+            setHasNewRequests(false);
+            requestListOpacity.value = withTiming(1, { duration: 400 });
             // Wait for animation to finish before focusing
             const task = InteractionManager.runAfterInteractions(() => {
                 inputRef.current?.focus();
             });
             return () => task.cancel();
         } else {
+            requestListOpacity.value = withTiming(0, { duration: 200 });
             Keyboard.dismiss();
             resetSearch();
         }
@@ -97,7 +197,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     };
 
     useEffect(() => {
-        Animated.timing(resultsAnim, {
+        RNAnimated.timing(resultsAnim, {
             toValue: (filteredUsers.length > 0 && !selectedUser) ? 1 : 0,
             duration: 200,
             useNativeDriver: true,
@@ -105,7 +205,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     }, [filteredUsers, selectedUser]);
 
     useEffect(() => {
-        Animated.spring(relationshipAnim, {
+        RNAnimated.spring(relationshipAnim, {
             toValue: selectedUser ? 1 : 0,
             friction: 8,
             tension: 40,
@@ -119,6 +219,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
 
     const handleSearch = (text: string) => {
         setSearchQuery(text);
+        requestListOpacity.value = withTiming(text.length > 0 ? 0 : 1, { duration: 300 });
         if (text.length > 0) {
             const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
             const filtered = data.filter((user: Profile) =>
@@ -135,6 +236,25 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     };
 
 
+    useEffect(() => {
+        if (!isExpanded) return;
+
+        const onBackPress = () => {
+            setIsExpanded(false);
+            return true; // Prevent default behavior
+        };
+
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => backHandler.remove();
+    }, [isExpanded]);
+
+    const resultScrollY = useSharedValue(0);
+    const resultScrollHandler = useAnimatedScrollHandler({
+        onScroll: (event: any) => {
+            resultScrollY.value = event.contentOffset.y;
+        },
+    });
+
     const handleSavePriority = () => {
         if (selectedUser && relationship) {
             onAddPriority?.({
@@ -149,7 +269,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
 
     const searchBarWidth = expandAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: [60, width - 40],
+        outputRange: [60, SCREEN_WIDTH - 40],
     });
 
     const borderRadius = expandAnim.interpolate({
@@ -159,145 +279,192 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
 
     const hitSlop = { top: 20, bottom: 20, left: 20, right: 20 };
 
-    const bottomPosition = Animated.add(new Animated.Value(30), keyboardOffset);
+    const bottomPosition = RNAnimated.add(new RNAnimated.Value(30), keyboardOffset);
+
+    const overlayOpacity = expandAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+    });
 
     return (
-        <Animated.View
-            style={[
-                styles.container,
-                {
-                    width: searchBarWidth,
-                    borderRadius: borderRadius,
-                    bottom: bottomPosition,
-                }
-            ]}
-        >
-            {/* Relationship Input Overlay */}
-            {selectedUser && (
-                <Animated.View
-                    style={[
-                        styles.relationshipContainer,
-                        {
-                            opacity: relationshipAnim,
-                            transform: [{
-                                translateY: relationshipAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [20, 0]
-                                })
-                            }]
-                        }
-                    ]}
+        <>
+            {/* Fullscreen Blurred Overlay */}
+            <RNAnimated.View
+                pointerEvents={isExpanded ? 'auto' : 'none'}
+                style={[
+                    styles.fullscreenOverlay,
+                    { opacity: overlayOpacity }
+                ]}
+            >
+                <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => setIsExpanded(false)}
                 >
-                    <Text style={styles.relTitle}>Who is {selectedUser.name} to you?</Text>
-                    <TextInput
-                        ref={relInputRef}
-                        style={styles.relInput}
-                        placeholder="e.g. Best Friend, Sister, Mentor..."
-                        placeholderTextColor="rgba(61, 42, 71, 0.4)"
-                        value={relationship}
-                        onChangeText={setRelationship}
+                    <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill}>
+                        <LinearGradient
+                            colors={['rgba(253, 252, 240, 0.95)', 'rgba(253, 252, 240, 0.7)', 'rgba(253, 252, 240, 0.4)']}
+                            style={StyleSheet.absoluteFill}
+                            start={{ x: 0.5, y: 0 }}
+                            end={{ x: 0.5, y: 1 }}
+                        />
+                    </BlurView>
+                </Pressable>
+            </RNAnimated.View>
+
+            {isExpanded && myRequests.length > 0 && (
+                <RNAnimated.View
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: keyboardOffset,
+                        zIndex: 2500
+                    }}
+                    pointerEvents="box-none"
+                >
+                    <ReceivedPriorityRequests
+                        requests={myRequests}
+                        opacity={requestListOpacity}
                     />
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.saveButton,
-                            { opacity: pressed ? 0.8 : 1 }
-                        ]}
-                        onPress={handleSavePriority}
-                    >
-                        <Text style={styles.saveButtonText}>Add to Priorities</Text>
-                    </Pressable>
-                </Animated.View>
+                </RNAnimated.View>
             )}
 
-            {/* Results List */}
-            {filteredUsers.length > 0 && !selectedUser && (
-                <Animated.View
-                    style={[
-                        styles.resultsContainer,
-                        {
-                            opacity: resultsAnim,
-                            width: width - 40,
-                            transform: [{
-                                translateY: resultsAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: [10, 0]
-                                })
-                            }]
-                        }
-                    ]}
-                >
-                    <FlatList
-                        data={filteredUsers}
-                        keyExtractor={(item) => item.id}
-                        renderItem={({ item }) => (
-                            <View style={styles.resultItem}>
-                                <Pressable
-                                    style={({ pressed }) => [
-                                        styles.userInfoContainer,
-                                        { opacity: pressed ? 0.6 : 1 }
-                                    ]}
-                                    onPress={() => {
+            <RNAnimated.View
+                style={[
+                    styles.container,
+                    {
+                        width: searchBarWidth,
+                        borderRadius: borderRadius,
+                        bottom: bottomPosition,
+                    }
+                ]}
+            >
+                {/* Relationship Input Overlay */}
+                {selectedUser && (
+                    <RNAnimated.View
+                        style={[
+                            styles.relationshipContainer,
+                            {
+                                opacity: relationshipAnim,
+                                transform: [{
+                                    translateY: relationshipAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [20, 0]
+                                    })
+                                }]
+                            }
+                        ]}
+                    >
+                        <Text style={styles.relTitle}>Who is {selectedUser.name} to you?</Text>
+                        <TextInput
+                            ref={relInputRef}
+                            style={styles.relInput}
+                            placeholder="e.g. Best Friend, Sister, Mentor..."
+                            placeholderTextColor="rgba(61, 42, 71, 0.4)"
+                            value={relationship}
+                            onChangeText={setRelationship}
+                        />
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.saveButton,
+                                { opacity: pressed ? 0.8 : 1 }
+                            ]}
+                            onPress={handleSavePriority}
+                        >
+                            <Text style={styles.saveButtonText}>Add to Priorities</Text>
+                        </Pressable>
+                    </RNAnimated.View>
+                )}
+
+                {/* Results List */}
+                {filteredUsers.length > 0 && !selectedUser && (
+                    <RNAnimated.View
+                        style={[
+                            styles.resultsContainer,
+                            {
+                                opacity: resultsAnim,
+                                transform: [{
+                                    translateY: resultsAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [10, 0]
+                                    })
+                                }]
+                            }
+                        ]}
+                    >
+                        <ReAnimated.FlatList
+                            data={filteredUsers}
+                            keyExtractor={(item: any) => item.id}
+                            renderItem={({ item, index }: any) => (
+                                <SearchResultCard
+                                    item={item}
+                                    index={index}
+                                    scrollY={resultScrollY}
+                                    onPress={(userId) => {
                                         setIsExpanded(false);
                                         resetSearch();
                                         router.push({
                                             pathname: '/profile',
-                                            params: { userId: item.uniqueUserId }
+                                            params: { userId }
                                         });
                                     }}
-                                >
-                                    <Image source={{ uri: item.profilePicture }} style={styles.avatar} />
-                                    <View style={styles.userInfo}>
-                                        <Text style={styles.userName}>{item.name}</Text>
-                                        <Text style={styles.userId}>@{item.uniqueUserId}</Text>
-                                    </View>
-                                </Pressable>
-                                <Pressable
-                                    style={({ pressed }) => [
-                                        styles.addButton,
-                                        { transform: [{ scale: pressed ? 0.9 : 1 }] }
-                                    ]}
-                                    onPress={() => handleAddPress(item)}
-                                >
-                                    <Ionicons name="add-circle" size={32} color={COLORS.primary} />
-                                </Pressable>
-                            </View>
-                        )}
-                        style={styles.resultsList}
-                    />
-                </Animated.View>
-            )}
-
-            <View style={styles.searchBar}>
-                {isExpanded && (
-                    <TextInput
-                        ref={inputRef}
-                        style={styles.input}
-                        placeholder="search unique user id..."
-                        placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                        selectionColor={COLORS.background}
-                        value={searchQuery}
-                        onChangeText={handleSearch}
-                        autoCapitalize="none"
-                        editable={!selectedUser}
-                    />
+                                    onAddPress={handleAddPress}
+                                />
+                            )}
+                            onScroll={resultScrollHandler}
+                            scrollEventThrottle={16}
+                            contentContainerStyle={styles.resultsListContent}
+                            showsVerticalScrollIndicator={false}
+                        />
+                        <LinearGradient
+                            colors={['rgba(255, 255, 255, 0.3)', 'rgba(255, 255, 255, 0)']}
+                            style={styles.resultsTopFade}
+                            pointerEvents="none"
+                        />
+                    </RNAnimated.View>
                 )}
 
-                <Pressable
-                    style={({ pressed }) => [
-                        styles.iconButton,
-                        { opacity: pressed ? 0.6 : 1 }
-                    ]}
-                    onPress={() => isExpanded ? (selectedUser ? setSelectedUser(null) : setIsExpanded(false)) : setIsExpanded(true)}
-                    hitSlop={hitSlop}
-                >
-                    <Ionicons
-                        name={isExpanded ? (selectedUser ? "arrow-back" : "close") : "search"}
-                        size={28}
-                        color={COLORS.background}
-                    />
-                </Pressable>
-            </View>
-        </Animated.View>
+                <View style={[
+                    styles.searchBar,
+                    { paddingRight: isExpanded ? 5 : 0 } // Sublte right offset when expanded
+                ]}>
+                    {isExpanded && (
+                        <TextInput
+                            ref={inputRef}
+                            style={[styles.input, { marginLeft: 20 }]}
+                            placeholder="search unique user id"
+                            placeholderTextColor="rgba(255, 255, 255, 0.6)"
+                            selectionColor={COLORS.background}
+                            value={searchQuery}
+                            onChangeText={handleSearch}
+                            autoCapitalize="none"
+                            editable={!selectedUser}
+                        />
+                    )}
+
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.iconButton,
+                            { opacity: pressed ? 0.6 : 1 }
+                        ]}
+                        onPress={() => isExpanded ? (selectedUser ? setSelectedUser(null) : setIsExpanded(false)) : setIsExpanded(true)}
+                        hitSlop={hitSlop}
+                    >
+                        <Ionicons
+                            name={isExpanded ? (selectedUser ? "arrow-back" : "close") : "search"}
+                            size={28}
+                            color={COLORS.background}
+                        />
+                        {!isExpanded && hasNewRequests && myRequests.length > 0 && (
+                            <View style={styles.newRequestIndicator}>
+                                <Ionicons name="add" size={10} color={COLORS.primary} />
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
+            </RNAnimated.View>
+        </>
     );
 };
 
@@ -306,23 +473,20 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: 20,
         backgroundColor: COLORS.primary,
-        zIndex: 2000,
+        zIndex: 3000,
         elevation: 10,
-        shadowColor: '#433D35',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.2,
-        shadowRadius: 10,
-        overflow: 'visible',
     },
-    searchBar: {
-        height: 60,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
+    fullscreenOverlay: {
+        position: 'absolute',
+        width: SCREEN_WIDTH * 1.5,
+        height: SCREEN_HEIGHT * 2,
+        bottom: -500, // Far enough down to cover everything
+        right: -100, // Wide enough to cover everything
+        zIndex: 1999,
     },
     iconButton: {
-        width: 30,
-        height: 30,
+        width: 56,
+        height: 56,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -336,26 +500,63 @@ const styles = StyleSheet.create({
     },
     resultsContainer: {
         position: 'absolute',
-        bottom: 70,
+        bottom: 58,
         left: 0,
-        backgroundColor: COLORS.secondary,
-        borderRadius: 20, // Rounded borders
-        maxHeight: 320,
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.05)',
-        shadowColor: '#433D35',
-        shadowOffset: { width: 0, height: -8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 10,
-        padding: 8,
+        width: SCREEN_WIDTH - 40,
+        maxHeight: 400,
+        justifyContent: 'flex-end', // Push items down to the search bar
+    },
+    resultsListContent: {
+        flexGrow: 1,
+        justifyContent: 'flex-end',
+        paddingBottom: 4,
+    },
+    resultCard: {
+        height: 74,
+        backgroundColor: 'rgba(255, 255, 255, 0.45)',
+        borderRadius: 30,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        marginBottom: 6,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+    },
+    resultAcceptButton: {
+        backgroundColor: COLORS.primary,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+    },
+    resultAcceptText: {
+        color: COLORS.background,
+        fontFamily: FONTS.bold,
+        fontSize: 13,
+    },
+    resultAvatar: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    },
+    resultsTopFade: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 60,
+        zIndex: 10,
     },
     relationshipContainer: {
         position: 'absolute',
         bottom: 70,
         left: 0,
         right: 0,
-        width: width - 40,
+        width: SCREEN_WIDTH - 40,
         backgroundColor: COLORS.secondary,
         borderRadius: 20, // Rounded borders
         padding: 24,
@@ -441,6 +642,25 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         flex: 1,
+    },
+    newRequestIndicator: {
+        position: 'absolute',
+        top: -2,
+        right: -2,
+        backgroundColor: COLORS.surface,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1.5,
+        borderColor: COLORS.primary,
+    },
+    searchBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 56,
+        zIndex: 100,
     },
 });
 

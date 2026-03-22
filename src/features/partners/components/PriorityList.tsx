@@ -5,6 +5,7 @@ import {
     Text,
     Dimensions,
     TouchableOpacity,
+    Vibration,
     type ViewabilityConfig,
 } from 'react-native';
 import Animated, {
@@ -233,6 +234,17 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     const dominantColor = item.dominantColor || COLORS.primary;
     const router = useRouter();
     const tapHoldContext = useContext(TapHoldContext);
+    const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800]; // Phone call rhythm
+
+    const startCallVibration = () => {
+        console.log(`[Vibration] Initiating call for: ${item.name}`);
+        Vibration.vibrate(VIBRATION_PATTERN, true);
+    };
+
+    const stopCallVibration = () => {
+        console.log(`[Vibration] Ended focus for: ${item.name}`);
+        Vibration.cancel();
+    };
 
     const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
     const { unreadMessages, myLastSentStatus, markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
@@ -285,8 +297,24 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
 
     const composedGesture = Gesture.Exclusive(panGesture, tapGestures);
 
+    const callVibrationGesture = Gesture.LongPress()
+        .minDuration(400)
+        .onStart(() => {
+            'worklet';
+            runOnJS(startCallVibration)();
+        })
+        .onFinalize(() => {
+            'worklet';
+            runOnJS(stopCallVibration)();
+        });
+
     return (
         <View style={styles.cardContainer}>
+            {/* Background Trigger Zone: Captures tap/hold around the content */}
+            <GestureDetector gesture={callVibrationGesture}>
+                <View style={StyleSheet.absoluteFill} />
+            </GestureDetector>
+
             <View pointerEvents="none" style={styles.backgroundTextContainer}>
                 <Text style={styles.backgroundText} numberOfLines={1} adjustsFontSizeToFit>{item.name}</Text>
             </View>
@@ -346,10 +374,11 @@ const hexToRgba = (hex: string, alpha: number) => {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
 };
-
 const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColor }: { direction: 'left' | 'right', count: number, onPress: () => void, bgColor: string }) => {
+    const indicatorColor = hexToRgba(bgColor, 0.85);
+
     return (
         <TouchableOpacity
             activeOpacity={0.8}
@@ -357,10 +386,22 @@ const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColo
             style={[
                 styles.edgeIndicatorContainer,
                 direction === 'left' ? styles.indicatorLeft : styles.indicatorRight,
-                { backgroundColor: hexToRgba(bgColor, 0.25) }
             ]}
         >
-            <Text style={[styles.indicatorCountText, { color: COLORS.text }]}>{count}+</Text>
+            <View style={styles.indicatorGroup}>
+                <View style={[
+                    styles.indicatorCircle,
+                    { backgroundColor: indicatorColor },
+                    direction === 'left' ? { bottom: 0, right: 0 } : { top: 0, left: 0 }
+                ]}>
+                    <Text style={styles.indicatorCountTextSmall}>{count}+</Text>
+                </View>
+                <View style={[
+                    styles.indicatorDot,
+                    { backgroundColor: indicatorColor },
+                    direction === 'left' ? { top: 4, left: 2 } : { bottom: 4, right: 2 }
+                ]} />
+            </View>
         </TouchableOpacity>
     );
 });
@@ -563,7 +604,7 @@ const styles = StyleSheet.create({
     rootContainer: { flex: 1 },
     container: { flex: 1, justifyContent: 'center', height: '100%', marginVertical: 0 },
     flatListContent: { paddingHorizontal: LAYOUT.SIDE_PADDING, alignItems: 'center', paddingTop: 100, paddingBottom: 80 },
-    cardContainer: { width: LAYOUT.CARD_WIDTH, marginHorizontal: LAYOUT.SPACING_PER_SIDE, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+    cardContainer: { width: LAYOUT.CARD_WIDTH, height: 800, marginHorizontal: LAYOUT.SPACING_PER_SIDE, alignItems: 'center', justifyContent: 'center', overflow: 'visible', backgroundColor: 'transparent' },
     blobContainer: { position: 'absolute', zIndex: Z_INDEX.BLOB, justifyContent: 'center', alignItems: 'center' },
     backgroundTextContainer: { position: 'absolute', top: -70, width: '130%', alignItems: 'center', justifyContent: 'center', zIndex: Z_INDEX.BACKGROUND_TEXT },
     backgroundText: { fontSize: 48, fontFamily: 'DancingScript-Bold', color: COLORS.primary, opacity: 0.3, textAlign: 'center', letterSpacing: 1 },
@@ -651,28 +692,40 @@ const styles = StyleSheet.create({
     },
     edgeIndicatorContainer: {
         position: 'absolute',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 24,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
         zIndex: Z_INDEX.INDICATOR,
     },
     indicatorLeft: {
-        top: 140, // Top edge
+        top: 80, // Moved more upwards
         left: 0,
-        borderTopLeftRadius: 0,
-        borderBottomLeftRadius: 0,
     },
     indicatorRight: {
-        bottom: 140, // Bottom edge
+        bottom: 80, // Moved more downwards
         right: 0,
-        borderTopRightRadius: 0,
-        borderBottomRightRadius: 0,
     },
-    indicatorCountText: {
-        fontSize: 14,
+    indicatorGroup: {
+         width: 42,
+         height: 42,
+    },
+    indicatorCircle: {
+        position: 'absolute',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    indicatorDot: {
+        position: 'absolute',
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    indicatorCountTextSmall: {
+        fontSize: 12,
         fontFamily: FONTS.bold,
         color: COLORS.text,
         fontWeight: '800',
