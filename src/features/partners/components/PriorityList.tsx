@@ -550,9 +550,10 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     if (displayPriorities.length === 0) return null;
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} pointerEvents="box-none">
             <AnimatedGHFlatList
                 ref={flatListRef as any}
+                hitSlop={{ top: -220, bottom: -220 }}
                 style={{ flexGrow: 0 }}
                 data={displayPriorities}
                 keyExtractor={(item: any) => item.id}
@@ -620,7 +621,7 @@ const PriorityList: React.FC<PriorityListProps> = (props) => {
 
 const styles = StyleSheet.create({
     rootContainer: { flex: 1 },
-    container: { flex: 1, justifyContent: 'center', height: '100%', marginVertical: 0 },
+    container: { flex: 1, justifyContent: 'center', height: '100%', width: '100%', marginVertical: 0 },
     flatListContent: { paddingHorizontal: LAYOUT.SIDE_PADDING, alignItems: 'center', paddingTop: 100, paddingBottom: 80 },
     cardContainer: { width: LAYOUT.CARD_WIDTH, height: 800, marginHorizontal: LAYOUT.SPACING_PER_SIDE, alignItems: 'center', justifyContent: 'center', overflow: 'visible', backgroundColor: 'transparent' },
     blobContainer: { position: 'absolute', zIndex: Z_INDEX.BLOB, justifyContent: 'center', alignItems: 'center' },
