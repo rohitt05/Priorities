@@ -95,20 +95,42 @@ const BlobBackground = React.memo(({ color, size, isActive }: { color: string; s
 });
 BlobBackground.displayName = 'BlobBackground';
 
-const CurvedText = React.memo(({ text, width }: { text: string; width: number }) => {
+const CurvedText = React.memo(({ text, width, color, isActive }: { text: string; width: number; color?: string; isActive: boolean }) => {
+    const scale = useSharedValue(isActive ? 1 : 0);
+    const opacity = useSharedValue(isActive ? 1 : 0);
+
+    useEffect(() => {
+        scale.value = withTiming(isActive ? 1 : 0, { duration: ANIMATION.DURATION, easing: Easing.out(Easing.ease) });
+        opacity.value = withTiming(isActive ? 1 : 0, { duration: ANIMATION.DURATION, easing: Easing.inOut(Easing.ease) });
+    }, [isActive]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: interpolate(scale.value, [0, 1], [0.98, 1]) }],
+        opacity: opacity.value,
+    }));
+
+    if (!isActive && opacity.value === 0) return null;
+
     const textRadius = width / 2 + 4;
     const svgWidth = textRadius * 2 + 20;
     const d = `M 20,${textRadius} A ${textRadius},${textRadius} 0 0,1 ${svgWidth - 20},${textRadius}`;
 
     return (
-        <View pointerEvents="none" style={[styles.curvedTextWrapper, { width: svgWidth, height: textRadius * 0.5 }]}>
+        <Animated.View pointerEvents="none" style={[styles.curvedTextWrapper, { width: svgWidth, height: textRadius * 0.5 }, animatedStyle]}>
             <Svg width={svgWidth} height={textRadius + 10} viewBox={`0 0 ${svgWidth} ${textRadius + 10}`}>
                 <Defs><Path id="outerArc" d={d} fill="none" /></Defs>
-                <SvgText fill={COLORS.primary} fontSize="36" fontFamily={FONTS.bold} fontWeight="900" textAnchor="middle" letterSpacing="2">
+                
+                {/* 🆕 Shadow/Dancing Layer: Using the script font and slightly offset */}
+                <SvgText fill={COLORS.textSecondary} fontSize="56" fontFamily="DancingScript-Bold" opacity="0.3" textAnchor="middle" letterSpacing="1" dy="10">
+                    <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
+                </SvgText>
+
+                {/* Main Name Layer */}
+                <SvgText fill={COLORS.primary} fontSize="34" fontFamily={FONTS.bold} fontWeight="900" textAnchor="middle" letterSpacing="2">
                     <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
                 </SvgText>
             </Svg>
-        </View>
+        </Animated.View>
     );
 });
 CurvedText.displayName = 'CurvedText';
@@ -315,12 +337,8 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
                 <View style={StyleSheet.absoluteFill} />
             </GestureDetector>
 
-            <View pointerEvents="none" style={styles.backgroundTextContainer}>
-                <Text style={styles.backgroundText} numberOfLines={1} adjustsFontSizeToFit>{item.name}</Text>
-            </View>
-
             <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-            <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} />
+            <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
 
             <View style={styles.imageWrapper}>
                 <GestureDetector gesture={composedGesture}>
@@ -608,7 +626,7 @@ const styles = StyleSheet.create({
     blobContainer: { position: 'absolute', zIndex: Z_INDEX.BLOB, justifyContent: 'center', alignItems: 'center' },
     backgroundTextContainer: { position: 'absolute', top: -70, width: '130%', alignItems: 'center', justifyContent: 'center', zIndex: Z_INDEX.BACKGROUND_TEXT },
     backgroundText: { fontSize: 48, fontFamily: 'DancingScript-Bold', color: COLORS.primary, opacity: 0.3, textAlign: 'center', letterSpacing: 1 },
-    curvedTextWrapper: { marginBottom: -85, zIndex: Z_INDEX.CURVED_TEXT, alignItems: 'center', justifyContent: 'flex-end', overflow: 'visible' },
+    curvedTextWrapper: { marginBottom: -75, zIndex: Z_INDEX.CURVED_TEXT, alignItems: 'center', justifyContent: 'flex-end', overflow: 'visible' },
     imageWrapper: { width: LAYOUT.IMAGE_SIZE, height: LAYOUT.IMAGE_SIZE, borderRadius: LAYOUT.IMAGE_SIZE / 2, position: 'relative', overflow: 'visible' },
     circularImage: { width: '100%', height: '100%', backgroundColor: '#F0EFE9', resizeMode: 'cover' },
     callIconsContainer: { position: 'absolute', bottom: -60, alignSelf: 'center', flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255, 255, 255, 0.96)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 4, zIndex: Z_INDEX.INDICATOR },
