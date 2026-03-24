@@ -8,8 +8,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1518199266791-5375a83190b7",
-        "thumbUri": "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=300&h=300&fit=crop",
-        "caption": "Happy V-Day ❤️"
+        "thumbUri": "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=300&h=300&fit=crop"
     },
     {
         "id": "feb_13_01",
@@ -25,8 +24,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?w=300&h=300&fit=crop",
-        "durationSec": 15,
-        "caption": "Girls night prep 💅"
+        "durationSec": 15
     },
     {
         "id": "feb_12_01",
@@ -37,8 +35,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1500917293891-ef795e70e1f6",
-        "thumbUri": "https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?w=300&h=300&fit=crop",
-        "caption": "Solo lunch date"
+        "thumbUri": "https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?w=300&h=300&fit=crop"
     },
     {
         "id": "feb_10_01",
@@ -51,8 +48,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1517841905240-472988babdf9",
-        "thumbUri": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&h=300&fit=crop",
-        "caption": "Late night grind 💻"
+        "thumbUri": "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&h=300&fit=crop"
     },
     {
         "id": "feb_09_01",
@@ -66,8 +62,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=300&h=300&fit=crop",
-        "durationSec": 42,
-        "caption": "Gym squad 💪"
+        "durationSec": 42
     },
     {
         "id": "feb_08_01",
@@ -79,8 +74,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac",
-        "thumbUri": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=300&h=300&fit=crop",
-        "caption": "Sunday vibes"
+        "thumbUri": "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=300&h=300&fit=crop"
     },
     {
         "id": "feb_06_01",
@@ -93,8 +87,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
-        "thumbUri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=300&h=300&fit=crop",
-        "caption": "Inspiration hunt 🎨"
+        "thumbUri": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=300&h=300&fit=crop"
     },
     {
         "id": "feb_04_01",
@@ -108,8 +101,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1504609773096-104ff2c73ba4?w=300&h=300&fit=crop",
-        "durationSec": 28,
-        "caption": "City lights"
+        "durationSec": 28
     },
     {
         "id": "feb_02_01",
@@ -121,8 +113,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1488161628813-99c97485fe11",
-        "thumbUri": "https://images.unsplash.com/photo-1488161628813-99c97485fe11?w=300&h=300&fit=crop",
-        "caption": "New designs loaded"
+        "thumbUri": "https://images.unsplash.com/photo-1488161628813-99c97485fe11?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_30_01",
@@ -134,8 +125,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2",
-        "thumbUri": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=300&h=300&fit=crop",
-        "caption": "Me time 🍷"
+        "thumbUri": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_28_01",
@@ -148,8 +138,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1483985988355-763728e1935b",
-        "thumbUri": "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=300&h=300&fit=crop",
-        "caption": "Retail therapy"
+        "thumbUri": "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_25_01",
@@ -162,8 +151,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop",
-        "durationSec": 60,
-        "caption": "Missing the mountains"
+        "durationSec": 60
     },
     {
         "id": "jan_22_01",
@@ -174,8 +162,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1519681393784-d120267933ba",
-        "thumbUri": "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=300&h=300&fit=crop",
-        "caption": "Sunset with you"
+        "thumbUri": "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_20_01",
@@ -191,8 +178,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1511765224389-37f0e77cf0eb",
-        "thumbUri": "https://images.unsplash.com/photo-1511765224389-37f0e77cf0eb?w=300&h=300&fit=crop",
-        "caption": "Party time! 🥂"
+        "thumbUri": "https://images.unsplash.com/photo-1511765224389-37f0e77cf0eb?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_18_01",
@@ -204,8 +190,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce",
-        "thumbUri": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&h=300&fit=crop",
-        "caption": "Coffee run ☕"
+        "thumbUri": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_15_01",
@@ -219,8 +204,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=300&h=300&fit=crop",
-        "durationSec": 45,
-        "caption": "Road trip vibes"
+        "durationSec": 45
     },
     {
         "id": "jan_12_01",
@@ -232,8 +216,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1511379938547-c1f69419868d",
-        "thumbUri": "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=300&h=300&fit=crop",
-        "caption": "Jam session 🎸"
+        "thumbUri": "https://images.unsplash.com/photo-1511379938547-c1f69419868d?w=300&h=300&fit=crop"
     },
     {
         "id": "jan_10_01",
@@ -294,8 +277,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1467810563316-b5476525c0f9",
-        "thumbUri": "https://images.unsplash.com/photo-1467810563316-b5476525c0f9?w=300&h=300&fit=crop",
-        "caption": "Happy New Year 2026! 🎉"
+        "thumbUri": "https://images.unsplash.com/photo-1467810563316-b5476525c0f9?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_28_01",
@@ -307,8 +289,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1496747611176-843222e1e57c",
-        "thumbUri": "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=300&h=300&fit=crop",
-        "caption": "Rehearsal flow"
+        "thumbUri": "https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_25_01",
@@ -322,8 +303,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1513297887119-d46091b24bfa",
-        "thumbUri": "https://images.unsplash.com/photo-1513297887119-d46091b24bfa?w=300&h=300&fit=crop",
-        "caption": "Office Christmas Party 🎄"
+        "thumbUri": "https://images.unsplash.com/photo-1513297887119-d46091b24bfa?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_22_01",
@@ -335,8 +315,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1485841890310-6b05b008cb6a",
-        "thumbUri": "https://images.unsplash.com/photo-1485841890310-6b05b008cb6a?w=300&h=300&fit=crop",
-        "caption": "Snow day!"
+        "thumbUri": "https://images.unsplash.com/photo-1485841890310-6b05b008cb6a?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_20_01",
@@ -349,8 +328,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/VolkswagenGTIReview.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=300&h=300&fit=crop",
-        "durationSec": 33,
-        "caption": "Cruising"
+        "durationSec": 33
     },
     {
         "id": "dec_18_01",
@@ -363,8 +341,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b",
-        "thumbUri": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=300&fit=crop",
-        "caption": "Cheers! 🍻"
+        "thumbUri": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_15_01",
@@ -375,8 +352,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7",
-        "thumbUri": "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=300&h=300&fit=crop",
-        "caption": "Kitty sitting"
+        "thumbUri": "https://images.unsplash.com/photo-1517487881594-2787fef5ebf7?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_12_01",
@@ -388,8 +364,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1497215842964-222b430dc0a8",
-        "thumbUri": "https://images.unsplash.com/photo-1497215842964-222b430dc0a8?w=300&h=300&fit=crop",
-        "caption": "New workspace"
+        "thumbUri": "https://images.unsplash.com/photo-1497215842964-222b430dc0a8?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_10_01",
@@ -401,8 +376,7 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1525498128493-380d1990a112?w=300&h=300&fit=crop",
-        "durationSec": 20,
-        "caption": "Early workout"
+        "durationSec": 20
     },
     {
         "id": "dec_08_01",
@@ -413,8 +387,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1489710437720-ebb67ec84dd2",
-        "thumbUri": "https://images.unsplash.com/photo-1489710437720-ebb67ec84dd2?w=300&h=300&fit=crop",
-        "caption": "Mood"
+        "thumbUri": "https://images.unsplash.com/photo-1489710437720-ebb67ec84dd2?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_05_01",
@@ -428,8 +401,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9",
-        "thumbUri": "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=300&h=300&fit=crop",
-        "caption": "Pizza night 🍕"
+        "thumbUri": "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_03_01",
@@ -441,8 +413,7 @@
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0",
-        "thumbUri": "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=300&h=300&fit=crop",
-        "caption": "Good vibes"
+        "thumbUri": "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=300&h=300&fit=crop"
     },
     {
         "id": "dec_01_01",
@@ -454,7 +425,6 @@
         "type": "video",
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
         "thumbUri": "https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=300&h=300&fit=crop",
-        "durationSec": 35,
-        "caption": "Hello December!"
+        "durationSec": 35
     }
 ]

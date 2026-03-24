@@ -16,7 +16,7 @@ import Animated, {
     Extrapolate
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -113,8 +113,7 @@ export default function UserTimelineView({
                 type: (ev.type === 'image' || ev.type === 'photo') ? 'photo' : 'video',
                 uri: ev.uri,
                 thumbUri: ev.thumbUri || ev.uri,
-                text: ev.textContent || ev.text || ev.caption,
-                caption: ev.caption || ev.textContent,
+                text: ev.textContent || ev.text,
                 durationSec: ev.durationSec,
                 title: ev.title,
                 timestamp: formatTimestamp(ev.timestamp),
@@ -134,8 +133,7 @@ export default function UserTimelineView({
                 id: ev.id,
                 type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : 'video',
                 uri: ev.uri,
-                text: ev.textContent || ev.text || ev.caption,
-                caption: ev.caption || ev.textContent,
+                text: ev.textContent || ev.text,
                 sender: ev.sender,
                 timestamp: formatTimestamp(ev.timestamp)
             } as MediaItem;
@@ -192,10 +190,6 @@ export default function UserTimelineView({
         return { opacity };
     });
 
-    const headerGradientAnimatedStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]);
-        return { opacity };
-    });
 
     const closeBtnBgAnimatedStyle = useAnimatedStyle(() => {
         // Use expandAnim instead of colorAnim to avoid legacy Animated.Value crash
@@ -248,30 +242,7 @@ export default function UserTimelineView({
                     </View>
                 </Animated.View>
 
-                <Animated.View
-                    pointerEvents="none"
-                    style={[
-                        headerGradientAnimatedStyle,
-                        {
-                            position: 'absolute',
-                            top: CLIPPING_START_Y,
-                            left: 0,
-                            right: 0,
-                            height: TARGET_SIZE + 60,
-                            zIndex: 90,
-                        }
-                    ]}
-                >
-                    <LinearGradient
-                        colors={[
-                            hexToRgba(bgColor, 1),
-                            hexToRgba(bgColor, 0.8),
-                            hexToRgba(bgColor, 0)
-                        ]}
-                        locations={[0, 0.4, 1]}
-                        style={{ flex: 1 }}
-                    />
-                </Animated.View>
+
 
                 <Animated.View
                     style={[

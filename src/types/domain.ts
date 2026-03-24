@@ -86,5 +86,8 @@ export interface TimelineEvent extends Message {
     userUniqueId: string; // Field still used in many files
     sender: 'me' | 'them'; // Derived from senderId vs current user
     timestamp: string; // Alias for sentAt
+    thumbUri?: string; // Thumbnail URL for videos/photos
+    text?: string; // Text content for notes
+    title?: string; // Title for audio messages
 }
 

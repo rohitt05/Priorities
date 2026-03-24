@@ -9,7 +9,6 @@
         "isPublic": false,
         "recipientId": "lana143",
         "uri": "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        "caption": "Watching Big Buck Bunny hdgh gg uhu uydue gyweguyw ygefheg ughweiug uguegug ughfue! 🐰",
         "likesCount": 12
     },
     {
@@ -22,7 +21,6 @@
         "isPublic": false,
         "recipientId": "lana143",
         "uri": "https://picsum.photos/seed/demo1/800/1200",
-        "caption": "Beautiful evening in Mumbai ✨",
         "likesCount": 45
     },
     {
@@ -35,7 +33,6 @@
         "isPublic": true,
         "recipientId": null,
         "uri": "https://picsum.photos/seed/demo2/800/1200",
-        "caption": "Exploring new places! 🌍",
         "likesCount": 8
     },
     {

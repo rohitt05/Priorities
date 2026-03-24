@@ -1,6 +1,6 @@
-import { TimelineEvent } from '@/features/timeline/utils/timelineCalendarLogic';
-
-export const TIMELINE_EVENTS: TimelineEvent[] = [
+// Mock timeline event data - typed as any[] since mock data omits DB-only fields (senderId, receiverId, sentAt)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const TIMELINE_EVENTS: any[] = [
     {
         "id": "ev_0025",
         "userUniqueId": "lana143",
@@ -16,8 +16,7 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e",
-        "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop",
-        "caption": "Weekend mood"
+        "thumbUri": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=300&h=300&fit=crop"
     },
     {
         "id": "ev_0016",
@@ -26,8 +25,7 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "sender": "them",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e",
-        "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop",
-        "caption": "Coffee time ☕"
+        "thumbUri": "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=300&h=300&fit=crop"
     },
     {
         "id": "ev_0017",
@@ -64,22 +62,6 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "durationSec": 2990
     },
     {
-        "id": "ev_0018",
-        "userUniqueId": "jane_doe",
-        "timestamp": "2025-09-21T01:33:00+05:30",
-        "sender": "them",
-        "type": "note",
-        "text": "Work mode 💻"
-    },
-    {
-        "id": "ev_0020",
-        "userUniqueId": "charlie_brown",
-        "timestamp": "2025-09-20T22:09:00+05:30",
-        "sender": "me",
-        "type": "note",
-        "text": "Work mode 💻"
-    },
-    {
         "id": "ev_0014",
         "userUniqueId": "jane_doe",
         "timestamp": "2025-09-20T13:24:00+05:30",
@@ -87,8 +69,7 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "type": "video",
         "durationSec": 24,
         "uri": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-        "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop",
-        "caption": "Adventure awaits"
+        "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
     },
     {
         "id": "ev_0021",
@@ -107,8 +88,7 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29",
-        "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop",
-        "caption": "Check this out"
+        "thumbUri": "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=300&h=300&fit=crop"
     },
     {
         "id": "ev_0013",
@@ -117,7 +97,6 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
         "sender": "me",
         "type": "photo",
         "uri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d",
-        "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop",
-        "caption": "Miss you 💕"
+        "thumbUri": "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=300&h=300&fit=crop"
     }
 ];
