@@ -1,13 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Pressable } from 'react-native';
+// src/features/profile/components/yourpriorities.tsx
+
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { User } from '@/types/domain';
-import usersData from '@/data/users.json';
 import { COLORS, SPACING, FONTS, FONT_SIZES } from '@/theme/theme';
-import { CURRENT_USER_ID } from '@/features/profile/utils/profileConstants';
+import { getMyPriorities } from '@/services/priorityService';
+import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 
 type YourPrioritiesProps = {
     user: User;
@@ -16,42 +18,60 @@ type YourPrioritiesProps = {
 
 export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthorizedAccess }) => {
     const router = useRouter();
+    const authId = useAuthUser(); // null while loading, UUID once resolved
     const [activeLongPressId, setActiveLongPressId] = useState<string | null>(null);
 
-    // Resolve full user objects for priorities
-    const prioritiesList = useMemo(() => {
-        const list = (user as any).priorities;
-        if (!list || !Array.isArray(list)) return [];
+    // Priorities of the profile being viewed (shown as the avatar list)
+    const [prioritiesList, setPrioritiesList] = useState<any[]>([]);
 
-        return list
-            .map((item) => {
-                const id = typeof item === 'string' ? item : item?.uniqueUserId || item?.id;
-                return (usersData as User[]).find((u) => u.uniqueUserId === id);
-            })
-            .filter((u): u is User => !!u);
-    }, [user]);
+    // The logged-in user's own priority UUIDs (used for access gate)
+    const [myPriorityIds, setMyPriorityIds] = useState<string[] | null>(null); // null = still loading
+    const [accessLoaded, setAccessLoaded] = useState(false);
 
-    // Determine title based on whether viewing own profile or another's
-    const title = useMemo(() => {
-        if (user.uniqueUserId === CURRENT_USER_ID) {
-            return "My Priorities";
+    // true only once authId has resolved AND matches this profile
+    const isOwner = !!authId && authId === user.id;
+
+    // Fetch priorities of the profile being viewed
+    useEffect(() => {
+        if (!user.id) return;
+        getMyPriorities(user.id)
+            .then((list) => setPrioritiesList(list))
+            .catch(() => setPrioritiesList([]));
+    }, [user.id]);
+
+    // Fetch the logged-in user's own priorities for access control
+    // Wait for authId to resolve before doing anything
+    useEffect(() => {
+        if (!authId) return; // still loading session — wait
+
+        if (isOwner) {
+            // Viewing own profile — owner can always navigate, no need to fetch
+            setMyPriorityIds([]);
+            setAccessLoaded(true);
+            return;
         }
-        const firstName = user.name ? user.name.split(' ')[0] : 'Their';
-        return `${firstName}'s Priorities`;
-    }, [user]);
 
-    // Current user's priorities for access control
-    const currentUserPriorities = useMemo(() => {
-        const me = (usersData as User[]).find(u => u.uniqueUserId === CURRENT_USER_ID);
-        return me?.priorities || [];
-    }, []);
+        // Viewing someone else's profile — fetch my priorities to check access
+        getMyPriorities(authId)
+            .then((list) => {
+                setMyPriorityIds(list.map((p) => p.id));
+                setAccessLoaded(true);
+            })
+            .catch(() => {
+                setMyPriorityIds([]);
+                setAccessLoaded(true);
+            });
+    }, [authId, isOwner]);
+
+    const title = isOwner
+        ? 'My Priorities'
+        : `${user.name ? user.name.split(' ')[0] : 'Their'}'s Priorities`;
 
     if (prioritiesList.length === 0) return null;
 
     return (
         <View style={styles.container}>
             <View style={styles.sectionContainer}>
-                {/* Dynamic Title */}
                 <Text style={styles.sectionTitle}>{title}</Text>
 
                 <ScrollView
@@ -60,14 +80,14 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                     contentContainerStyle={styles.scrollContent}
                     style={styles.scrollView}
                 >
-                    {prioritiesList.slice(0, 10).map((u: User, index: number) => {
+                    {prioritiesList.slice(0, 10).map((u, index: number) => {
                         const isBeingPressed = activeLongPressId === u.uniqueUserId;
 
                         return (
                             <View key={u.uniqueUserId} style={[styles.itemWrapper, isBeingPressed && { zIndex: 1000 }]}>
                                 {isBeingPressed && (
                                     <View style={styles.bubbleGhostWrapper}>
-                                        <Reanimated.View 
+                                        <Reanimated.View
                                             entering={FadeIn.duration(150)}
                                             exiting={FadeOut.duration(100)}
                                             style={styles.labelBubble}
@@ -86,9 +106,13 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         pressed && { transform: [{ scale: 0.94 }] }
                                     ]}
                                     onPress={() => {
-                                        const canNavigate = 
-                                            u.uniqueUserId === CURRENT_USER_ID || 
-                                            currentUserPriorities.includes(u.uniqueUserId);
+                                        // Block tap entirely until access data has loaded
+                                        if (!accessLoaded) return;
+
+                                        const canNavigate =
+                                            isOwner ||                          // viewing own profile → always allowed
+                                            u.id === authId ||                  // tapping yourself
+                                            (myPriorityIds ?? []).includes(u.id); // they're in my priorities
 
                                         if (canNavigate) {
                                             router.push({
@@ -147,12 +171,12 @@ const styles = StyleSheet.create({
     scrollContent: {
         paddingHorizontal: 30,
         gap: 24,
-        paddingTop: 45, // Enough room for the bubble inside the scroll container
+        paddingTop: 45,
         paddingBottom: 10,
         alignItems: 'center',
     },
     scrollView: {
-        marginTop: -35, // Pulls the scroll container up so items stay near the title
+        marginTop: -35,
         overflow: 'visible',
     },
     itemWrapper: {
@@ -164,7 +188,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: -48,
         width: 1000,
-        left: -470, // (1000 - 60) / 2 = 470. Perfectly centers the 1000px container over the 60px avatar.
+        left: -470,
         alignItems: 'center',
         justifyContent: 'center',
         pointerEvents: 'none',
@@ -201,8 +225,8 @@ const styles = StyleSheet.create({
     },
     rankNumber: {
         position: 'absolute',
-        bottom: -4, // Moved from top to bottom avoid overlap with label
-        right: -8, // Moved from left to right avoid overlap
+        bottom: -4,
+        right: -8,
         fontSize: 24,
         fontFamily: FONTS.bold,
         fontWeight: '900',
