@@ -6,6 +6,7 @@ import { TIMELINE_EVENTS as timelineEventsRaw } from '@/data/timelineData';
 import { FilmDTO, UserFilmCardDTO, TimelineEventDTO } from '@/types/dto';
 import { mapFilmDTOToFilm, mapUserFilmCardDTOToFilm, mapTimelineEventDTOToEvent } from '@/types/mappers';
 import { Film, TimelineEvent } from '@/types/domain';
+import { supabase } from '@/lib/supabase';
 
 export const filmService = {
     getFilmsByUserId: (userId: string): Film[] => {
@@ -39,5 +40,13 @@ export const filmService = {
     getAllTimelineEvents: (): TimelineEvent[] => {
         return (timelineEventsRaw as unknown as TimelineEventDTO[])
             .map(mapTimelineEventDTOToEvent);
+    },
+
+    getSignedUrl: async (path: string, expiresIn = 3600): Promise<string> => {
+        const { data, error } = await supabase.storage
+            .from('films')
+            .createSignedUrl(path, expiresIn);
+        if (error) throw error;
+        return data.signedUrl;
     }
 };

@@ -22,6 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
 import * as ImagePicker from 'expo-image-picker';
 import DatePicker from 'react-native-date-picker';
+import { updateProfile, uploadProfilePicture } from '@/services/profileService';
 
 const { height } = Dimensions.get('window');
 
@@ -162,21 +163,34 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
         if (!name.trim()) return;
         setIsSaving(true);
         try {
-            if (onSave) {
-                const dateString = birthday.toISOString().split('T')[0];
-                const updatedUser = {
-                    ...user,
-                    name: name.trim(),
-                    profilePicture: profileImage,
-                    birthday: dateString,
-                };
-                await onSave(updatedUser);
-            } else {
-                await new Promise(r => setTimeout(r, 800));
+            const dateString = birthday.toISOString().split('T')[0];
+            
+            let finalPicUrl = user?.profilePicture;
+            if (profileImage && !profileImage.startsWith('http')) {
+                finalPicUrl = await uploadProfilePicture(user.id, profileImage);
             }
+
+            await updateProfile(user.id, {
+                name: name.trim(),
+                birthday: dateString,
+                ...(finalPicUrl ? { profile_picture: finalPicUrl } : {})
+            });
+
+            const newlyUpdatedUser = {
+                ...user,
+                name: name.trim(),
+                birthday: dateString,
+                profilePicture: finalPicUrl || ''
+            };
+
+            if (onSave) {
+                await onSave(newlyUpdatedUser);
+            }
+            
             handleClose(); // Animate out on save
-        } catch (error) {
-            Alert.alert('Error', 'Failed to update.');
+        } catch (error: any) {
+            console.error('SAVE ERROR:', error);
+            Alert.alert('Error', `Failed to update: ${error?.message || JSON.stringify(error)}`);
             setIsSaving(false);
         }
     };
@@ -219,11 +233,17 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
 
                     {/* --- HERO IMAGE (70%) --- */}
                     <View style={{ flex: HERO_FLEX, position: 'relative' }}>
-                        <Image
-                            source={{ uri: profileImage }}
-                            style={StyleSheet.absoluteFillObject}
-                            resizeMode="cover"
-                        />
+                        {profileImage ? (
+                            <Image
+                                source={{ uri: profileImage }}
+                                style={StyleSheet.absoluteFillObject}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#E5E5EA', alignItems: 'center', justifyContent: 'center' }]}>
+                                <Feather name="image" size={48} color="#C7C7CC" />
+                            </View>
+                        )}
 
                         {/* Header Actions */}
                         <View style={styles.headerOverlay}>

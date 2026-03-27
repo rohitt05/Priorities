@@ -12,41 +12,62 @@ export const COLORS = {
     warning: '#DDB892', // Sand Tan
     error: '#BC8A5F', // Earth Red
 
-    // ✨ NEW: Extracted Pastel Palettes
     PALETTE: {
-        // Florest Moth
+        // User Dominant Colors
         woodland: '#44562F',
         asparagus: '#83934D',
         pineGlade: '#B8C88D',
         raffia: '#E9DFB4',
         desertSand: '#EFBFB3',
 
-        // Mint Marrow
         padua: '#A8E6CF',
         chromeWhite: '#DDEDC4',
         romantic: '#FFD4B8',
         cornflowerLilac: '#FFADAD',
         wildWatermelon: '#FF667D',
 
-        // Opal Gem Elegance
         jaggedIce: '#C9E6EE',
         linen: '#FAEEE5',
         azalea: '#FAD1D8',
         wePeep: '#F2C4D6',
         prelude: '#DBC0E7',
 
-        // Pastel Candy (Modified)
         kobi: '#F0B2C7',
         vanillaIce: '#F0C7DB',
         gallery: '#F0F0F0',
 
-        // ✨ NEW: Vibrant Additions
         coralRed: '#ff6e61',
         peachPuff: '#f7c5a6',
         warmSand: '#f2dfb1',
         softSage: '#b4d8b1',
         steelBlue: '#6b9cd1',
-    }
+
+        skySoft: '#b6e3f4',
+        lilacMist: '#c0aede',
+        peachCream: '#ffdfbf',
+        periwinkleGlow: '#d1d4f9',
+        blushPetal: '#ffd5dc',
+        roseCloud: '#f8c8dc',
+        aquaBreeze: '#a8d8ea',
+        lavenderBloom: '#e0bbe4',
+        plumVelvet: '#957dad',
+        coralBlush: '#ff9a9e',
+        skyTint: '#a2d2ff',
+        petalPink: '#fec8d8',
+        mulberrySoft: '#d291bc',
+        butterGlow: '#fff2cc',
+        meadowMint: '#b9fbc0',
+        cottonCandy: '#ffc6ff',
+        lemonHaze: '#fdffb6',
+        lilacHaze: '#bdb2ff',
+        cloudBlue: '#a0c4ff',
+        coralWarm: '#ffadad',
+        freshLime: '#caffbf',
+        lagoonMist: '#9bf6ff',
+        sugarPink: '#ffc8dd',
+        dewSage: '#d0f4de',
+        orchidMist: '#e4c1f9',
+    },
 };
 
 export const SPACING = {

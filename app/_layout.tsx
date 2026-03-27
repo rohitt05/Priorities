@@ -1,9 +1,11 @@
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { supabase } from '@/lib/supabase';
+import { Session } from '@supabase/supabase-js';
 
 // ✅ ADD THIS IMPORT
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
@@ -12,6 +14,10 @@ import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext
 SplashScreen.preventAutoHideAsync();
 
 export default function Layout() {
+    const [session, setSession] = useState<Session | null>(null);
+    const [sessionLoaded, setSessionLoaded] = useState(false);
+    const segments = useSegments();
+
     const [loaded, error] = useFonts({
         'DancingScript-Regular': require('../assets/fonts/DancingScript-Regular.ttf'),
         'DancingScript-Medium': require('../assets/fonts/DancingScript-Medium.ttf'),
@@ -20,12 +26,41 @@ export default function Layout() {
     });
 
     useEffect(() => {
-        if (loaded || error) {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setSession(session);
+            setSessionLoaded(true);
+        });
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        if ((loaded || error) && sessionLoaded) {
             SplashScreen.hideAsync();
         }
-    }, [loaded, error]);
+    }, [loaded, error, sessionLoaded]);
+
+    useEffect(() => {
+        if (!sessionLoaded) return;
+        
+        const inAuthGroup = segments[0] === 'auth';
+        
+        if (!session && !inAuthGroup) {
+            router.replace('/auth/signin');
+        } else if (session && inAuthGroup) {
+            router.replace('/(tabs)');
+        }
+    }, [session, sessionLoaded, segments]);
 
     if (!loaded && !error) {
+        return <View style={{ flex: 1, backgroundColor: 'white' }} />;
+    }
+
+    if (!sessionLoaded) {
         return <View style={{ flex: 1, backgroundColor: 'white' }} />;
     }
 

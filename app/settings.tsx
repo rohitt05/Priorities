@@ -18,11 +18,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
 import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
-import usersData from '@/data/users.json';
 import { User } from '@/types/userTypes';
+import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
 import { CURRENT_USER_ID } from '@/features/profile/utils/profileConstants';
+import { signOut } from '@/services/authService';
 
 const { width } = Dimensions.get('window');
 
@@ -95,12 +96,33 @@ function SettingsScreenContent() {
     const [pushEnabled, setPushEnabled] = useState(true);
     const [hapticsEnabled, setHapticsEnabled] = useState(true);
     const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-    const currentUser = useMemo(() => {
-        const user = (usersData as User[]).find((u) => u.uniqueUserId === CURRENT_USER_ID);
-        return user || (usersData[0] as User);
+    useEffect(() => {
+        const fetchUser = async () => {
+            const session = await supabase.auth.getSession();
+            const sessionUser = session.data.session?.user;
+            if (!sessionUser) return;
+
+            const { data: dbUser } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).single();
+            if (dbUser) {
+                setCurrentUser({
+                    id: dbUser.id,
+                    name: dbUser.name,
+                    uniqueUserId: dbUser.unique_user_id,
+                    profilePicture: dbUser.profile_picture || '',
+                    dominantColor: dbUser.dominant_color || '#44562F',
+                    gender: dbUser.gender || 'male',
+                    birthday: dbUser.birthday || undefined,
+                    partnerId: dbUser.partner_id || undefined,
+                    relationship: dbUser.relationship || undefined,
+                    priorities: [],
+                });
+            }
+        };
+        fetchUser();
     }, []);
 
     const hexToRgba = (hex: string, alpha: number) => {
@@ -196,7 +218,13 @@ function SettingsScreenContent() {
                     <SettingsRow icon="shield-checkmark-outline" label="privacy" onPress={() => { }} />
                 </Section>
 
-                <TouchableOpacity activeOpacity={0.8} style={styles.dangerButton} onPress={() => { }}>
+                <TouchableOpacity activeOpacity={0.8} style={styles.dangerButton} onPress={async () => {
+                    try {
+                        await signOut();
+                    } catch (e) {
+                        console.error("Sign out failed", e);
+                    }
+                }}>
                     <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
                     <Text style={styles.dangerText}>sign out</Text>
                 </TouchableOpacity>
@@ -222,10 +250,13 @@ function SettingsScreenContent() {
                 </View>
             </View>
 
-            {isEditing && (
+            {isEditing && currentUser && (
                 <EditProfileScreen
                     user={currentUser}
                     onBack={() => setIsEditing(false)}
+                    onSave={async (updatedUser) => {
+                        setCurrentUser(updatedUser);
+                    }}
                 />
             )}
 

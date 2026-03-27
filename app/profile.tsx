@@ -22,11 +22,11 @@ import Reanimated, {
     FadeOut,
 } from 'react-native-reanimated';
 
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
-import usersData from '@/data/users.json';
 import { User } from '@/types/userTypes';
+import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import AddPartnerModal from '@/features/partners/components/AddPartnerModal';
 import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
@@ -39,6 +39,7 @@ import YourPriorities from '@/features/profile/components/yourpriorities';
 import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
 import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
 import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
+
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -72,20 +73,9 @@ function ProfileScreenContent() {
         },
     });
 
-    // Capsule fades out + floats up slightly as user scrolls — iOS native feel
     const capsuleFadeStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(
-            scrollY.value,
-            [0, 70],
-            [1, 0],
-            Extrapolation.CLAMP
-        );
-        const translateY = interpolate(
-            scrollY.value,
-            [0, 100],
-            [0, -80],
-            Extrapolation.CLAMP
-        );
+        const opacity = interpolate(scrollY.value, [0, 70], [1, 0], Extrapolation.CLAMP);
+        const translateY = interpolate(scrollY.value, [0, 100], [0, -80], Extrapolation.CLAMP);
         return {
             opacity,
             transform: [{ translateY }],
@@ -93,25 +83,13 @@ function ProfileScreenContent() {
         };
     });
 
-    // Priorities fade out as you scroll down
     const prioritiesFadeStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(
-            scrollY.value,
-            [40, 120],
-            [1, 0],
-            Extrapolation.CLAMP
-        );
+        const opacity = interpolate(scrollY.value, [40, 120], [1, 0], Extrapolation.CLAMP);
         return { opacity };
     });
 
-    // Films section slides up to take the space of the faded priorities
     const filmsSlideUpStyle = useAnimatedStyle(() => {
-        const translateY = interpolate(
-            scrollY.value,
-            [40, 140],
-            [0, -130], // Approximate height of the YourPriorities section
-            Extrapolation.CLAMP
-        );
+        const translateY = interpolate(scrollY.value, [40, 140], [0, -130], Extrapolation.CLAMP);
         return { transform: [{ translateY }] };
     });
 
@@ -127,10 +105,82 @@ function ProfileScreenContent() {
         return () => subscription.remove();
     }, [isEditing]);
 
-    const currentUser = useMemo(() => {
-        const user = (usersData as User[]).find((u) => u.uniqueUserId === effectiveUserId);
-        return user || (usersData[0] as User);
-    }, [effectiveUserId]);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [partnerUser, setPartnerUser] = useState<User | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // useFocusEffect re-fetches every time screen comes into focus
+    // so profile picture updates from settings screen reflect immediately
+    useFocusEffect(
+        React.useCallback(() => {
+            let isMounted = true;
+            const fetchProfiles = async () => {
+                try {
+                    const sessionRes = await supabase.auth.getSession();
+                    const sessionUser = sessionRes.data.session?.user;
+                    if (!sessionUser) return;
+
+                    let queryCol = 'unique_user_id';
+                    let queryVal = effectiveUserId;
+                    if (isOwner && (!effectiveUserId || effectiveUserId === CURRENT_USER_ID)) {
+                        queryCol = 'id';
+                        queryVal = sessionUser.id;
+                    }
+
+                    const { data: dbUser } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq(queryCol, queryVal)
+                        .single();
+
+                    if (dbUser && isMounted) {
+                        const userObj: User = {
+                            id: dbUser.id,
+                            name: dbUser.name,
+                            uniqueUserId: dbUser.unique_user_id,
+                            profilePicture: dbUser.profile_picture || '',
+                            dominantColor: dbUser.dominant_color || '#44562F',
+                            gender: dbUser.gender || 'male',
+                            birthday: dbUser.birthday || undefined,
+                            partnerId: dbUser.partner_id || undefined,
+                            relationship: dbUser.relationship || undefined,
+                            priorities: [],
+                        };
+                        setCurrentUser(userObj);
+
+                        const partnerId = isOwner ? savedPartnerUniqueUserId : dbUser.partner_id;
+                        if (partnerId) {
+                            const { data: pDbUser } = await supabase
+                                .from('profiles')
+                                .select('*')
+                                .eq('unique_user_id', partnerId)
+                                .single();
+                            if (pDbUser && isMounted) {
+                                setPartnerUser({
+                                    id: pDbUser.id,
+                                    name: pDbUser.name,
+                                    uniqueUserId: pDbUser.unique_user_id,
+                                    profilePicture: pDbUser.profile_picture || '',
+                                    dominantColor: pDbUser.dominant_color || '#44562F',
+                                    gender: pDbUser.gender || 'female',
+                                    birthday: pDbUser.birthday || undefined,
+                                    partnerId: pDbUser.partner_id || undefined,
+                                    relationship: pDbUser.relationship || undefined,
+                                    priorities: [],
+                                });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                } finally {
+                    if (isMounted) setIsLoading(false);
+                }
+            };
+            fetchProfiles();
+            return () => { isMounted = false; };
+        }, [effectiveUserId, isOwner, savedPartnerUniqueUserId])
+    );
 
     const handleRemovePartner = async () => {
         try {
@@ -150,12 +200,6 @@ function ProfileScreenContent() {
         };
         loadPartner();
     }, []);
-
-    const partnerUser = useMemo(() => {
-        const partnerId = isOwner ? savedPartnerUniqueUserId : currentUser.partnerId;
-        if (!partnerId) return null;
-        return (usersData as User[]).find((u) => u.uniqueUserId === partnerId) || null;
-    }, [savedPartnerUniqueUserId, currentUser.partnerId, isOwner]);
 
     const lightDominantColor = useMemo(
         () => (currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)'),
@@ -184,34 +228,29 @@ function ProfileScreenContent() {
         ],
     });
 
-    if (!currentUser) return null;
-
     const relationshipLabel = useMemo(() => {
+        if (!currentUser) return '';
         if (isOwner) return 'Mine';
-        
         const ownerGender = currentUser.gender || 'male';
         const possessive = ownerGender === 'male' ? 'his' : (ownerGender === 'female' ? 'hers' : 'theirs');
-        
-        // If viewer is the partner
         if (CURRENT_USER_ID === currentUser.partnerId) {
             return `you're ${possessive}`;
         }
-        
-        // General viewer sees capitalized possessive
         return possessive.charAt(0).toUpperCase() + possessive.slice(1);
     }, [currentUser, isOwner]);
+
+    if (isLoading) return null;
+    if (!currentUser) return null;
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <StatusBar barStyle="dark-content" />
 
-            {/* Animated background wash */}
             <RNAnimated.View
                 style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]}
                 pointerEvents="none"
             />
 
-            {/* Sticky Top Bar that appears on scroll */}
             <ProfileStickyBar
                 user={currentUser}
                 isOwner={isOwner}
@@ -231,7 +270,6 @@ function ProfileScreenContent() {
                 scrollEventThrottle={16}
                 onScroll={scrollHandler}
             >
-                {/* Pull gesture only wraps the header */}
                 <GestureDetector gesture={panGesture}>
                     <View>
                         <ProfileHeader
@@ -243,15 +281,6 @@ function ProfileScreenContent() {
                     </View>
                 </GestureDetector>
 
-                {/*
-                    When NO partner: show the "+ partner" capsule in normal scroll flow.
-                    When partner EXISTS: capsule row is hidden — FloatingPartnerIcon
-                    renders outside the ScrollView below (absolute, screen-relative).
-                */}
-                {/*
-                    FloatingPartnerIcon is now INSIDE the ScrollView and rendered BEFORE Priorities.
-                    This ensures Priorities (with higher zIndex) sit on top of it.
-                */}
                 {partnerUser && (
                     <FloatingPartnerIcon
                         partnerUser={partnerUser}
@@ -279,14 +308,9 @@ function ProfileScreenContent() {
                     </Reanimated.View>
                 )}
 
-                <Reanimated.View 
-                    style={[
-                        prioritiesFadeStyle, 
-                        { zIndex: 100 } // Elevated stacking context above the partner icon
-                    ]}
-                >
-                    <YourPriorities 
-                        user={currentUser} 
+                <Reanimated.View style={[prioritiesFadeStyle, { zIndex: 100 }]}>
+                    <YourPriorities
+                        user={currentUser}
                         onUnauthorizedAccess={() => {
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                             if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
@@ -298,7 +322,6 @@ function ProfileScreenContent() {
                     />
                 </Reanimated.View>
 
-                {/* Wrapper to slide up the rest of the content */}
                 <Reanimated.View style={filmsSlideUpStyle}>
                     <FilmsInProfile
                         userId={currentUser.uniqueUserId}
@@ -309,9 +332,14 @@ function ProfileScreenContent() {
 
             </Reanimated.ScrollView>
 
-
             {isEditing && (
-                <EditProfileScreen user={currentUser} onBack={handleCloseEdit} />
+                <EditProfileScreen
+                    user={currentUser}
+                    onBack={handleCloseEdit}
+                    onSave={async (updatedUser) => {
+                        setCurrentUser(updatedUser);
+                    }}
+                />
             )}
 
             <AddPartnerModal
@@ -333,7 +361,7 @@ function ProfileScreenContent() {
 
             {showFlashBanner && (
                 <View style={styles.flashBannerContainer} pointerEvents="none">
-                    <Reanimated.View 
+                    <Reanimated.View
                         entering={FadeIn.duration(200).springify().damping(15).stiffness(150)}
                         exiting={FadeOut.duration(200)}
                         style={styles.flashBanner}
@@ -365,7 +393,6 @@ const styles = StyleSheet.create({
         paddingBottom: 20,
     },
     capsuleRow: {
-        // Only shown when no partner — "+ partner" capsule in scroll flow
         marginTop: -15,
         paddingHorizontal: 24,
         alignItems: 'flex-end',
