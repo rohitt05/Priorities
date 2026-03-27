@@ -1,3 +1,5 @@
+// src/contexts/VoiceNoteRecordingContext.tsx
+
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -15,7 +17,9 @@ import Animated, {
 import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { FONTS } from '@/theme/theme';
+import { supabase } from '@/lib/supabase';
 
 export type RecordingRect = {
     x: number;
@@ -25,8 +29,8 @@ export type RecordingRect = {
 };
 
 type StartFromRefParams = {
-    sourceId: string;
-    uri: string;
+    sourceId: string;   // receiver's UUID (item.id from PriorityCard)
+    uri: string;        // receiver's profile picture URI (for overlay display)
 };
 
 type VoiceNoteRecordingContextType = {
@@ -55,6 +59,9 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
 
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // ── expo-av recording ref ─────────────────────────────────
+    const recordingRef = useRef<Audio.Recording | null>(null);
 
     const overlayOpacity = useSharedValue(0);
     const dragX = useSharedValue(0);
@@ -112,6 +119,122 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
         }, 200);
     }, [dragX]);
 
+    // ── Start actual microphone recording ─────────────────────
+    const startAudioRecording = useCallback(async () => {
+        try {
+            // Request mic permission
+            const { granted } = await Audio.requestPermissionsAsync();
+            if (!granted) {
+                console.warn('[VoiceNote] Microphone permission denied');
+                return;
+            }
+
+            // Configure audio session for recording
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: true,
+                playsInSilentModeIOS: true,
+            });
+
+            const { recording } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            recordingRef.current = recording;
+        } catch (err) {
+            console.error('[VoiceNote] Failed to start recording:', err);
+        }
+    }, []);
+
+    // ── Stop recording and return URI + duration ──────────────
+    const stopAudioRecording = useCallback(async (): Promise<{ fileUri: string; durationSec: number } | null> => {
+        const recording = recordingRef.current;
+        if (!recording) return null;
+
+        try {
+            await recording.stopAndUnloadAsync();
+
+            // Reset audio session back to playback mode
+            await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+
+            const status = await recording.getStatusAsync();
+            const durationSec = Math.round((status.durationMillis ?? 0) / 1000);
+            const fileUri = recording.getURI() ?? '';
+
+            recordingRef.current = null;
+            return { fileUri, durationSec };
+        } catch (err) {
+            console.error('[VoiceNote] Failed to stop recording:', err);
+            recordingRef.current = null;
+            return null;
+        }
+    }, []);
+
+    // ── Upload to Supabase Storage + insert messages row ──────
+    // ── Upload to Supabase Storage ─────────────────────────────
+    const uploadAndSend = useCallback(async (
+        fileUri: string,
+        durationSec: number,
+        receiverId: string
+    ) => {
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const senderId = sessionData?.session?.user?.id;
+            if (!senderId) {
+                console.error('[VoiceNote] No authenticated user found');
+                return;
+            }
+
+            // ✅ Path: {senderId}/voice-notes/{timestamp}.m4a
+            // RLS policy checks (storage.foldername(name))[1] = auth.uid()
+            // so the FIRST folder must be the senderId
+            const fileName = `${senderId}/voice-notes/${Date.now()}.m4a`;
+
+            // ✅ React Native safe way to read a local file:// URI for upload
+            const response = await fetch(fileUri);
+            const arrayBuffer = await response.arrayBuffer();
+
+            const { error: uploadError } = await supabase.storage
+                .from('messages')
+                .upload(fileName, arrayBuffer, {
+                    contentType: 'audio/m4a',
+                    upsert: false,
+                });
+
+            if (uploadError) {
+                console.error('[VoiceNote] Upload failed:', uploadError);
+                return;
+            }
+
+            // 7-day signed URL (bucket is private)
+            const { data: signedData, error: signedError } = await supabase.storage
+                .from('messages')
+                .createSignedUrl(fileName, 60 * 60 * 24 * 7);
+
+            if (signedError || !signedData?.signedUrl) {
+                console.error('[VoiceNote] Failed to get signed URL:', signedError);
+                return;
+            }
+
+            const { error: insertError } = await supabase
+                .from('messages')
+                .insert({
+                    sender_id: senderId,
+                    receiver_id: receiverId,
+                    type: 'voice',
+                    uri: signedData.signedUrl,
+                    duration_sec: durationSec,
+                    disappeared: false,
+                });
+
+            if (insertError) {
+                console.error('[VoiceNote] Failed to insert message:', insertError);
+                return;
+            }
+
+            console.log('[VoiceNote] Sent successfully to', receiverId);
+        } catch (err) {
+            console.error('[VoiceNote] uploadAndSend error:', err);
+        }
+    }, []);
     const startFromRef = useCallback(
         (ref: React.RefObject<View | null>, params: StartFromRefParams) => {
             const node = ref.current as any;
@@ -130,9 +253,12 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
                 overlayOpacity.value = withTiming(1, { duration: 180 });
                 startTimer();
                 startPulse();
+
+                // ── Start the actual microphone ───────────────
+                startAudioRecording();
             });
         },
-        [dragX, overlayOpacity, startTimer, startPulse]
+        [dragX, overlayOpacity, startTimer, startPulse, startAudioRecording]
     );
 
     const updateDrag = useCallback((x: number) => {
@@ -148,11 +274,22 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
         stopPulse();
         overlayOpacity.value = withTiming(0, { duration: 180 });
         dragX.value = withSpring(0);
-        clearStateAfterHide();
 
-        console.log('[VoiceNote]', result, { activeSourceId });
+        // ── Stop recording and handle result ──────────────────
+        const receiverId = activeSourceId; // capture before clearStateAfterHide
+        const duration = recordingSeconds;  // capture current seconds
+
+        stopAudioRecording().then((audioResult) => {
+            if (result === 'send' && audioResult && receiverId) {
+                uploadAndSend(audioResult.fileUri, audioResult.durationSec || duration, receiverId);
+            }
+            // 'delete' and 'cancel' → recording is already stopped and discarded
+        });
+
+        clearStateAfterHide();
     },
-        [activeSourceId, clearStateAfterHide, dragX, overlayOpacity, stopPulse, stopTimer]
+        [activeSourceId, recordingSeconds, clearStateAfterHide, dragX, overlayOpacity,
+            stopPulse, stopTimer, stopAudioRecording, uploadAndSend]
     );
 
     const endFromTranslationX = useCallback((x: number) => {
@@ -186,7 +323,6 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
     });
 
     // --- BOTTOM INSTRUCTION TEXT FADE ---
-    // Fades out the instructions slightly when the user is actively swiping
     const instructionStyle = useAnimatedStyle(() => {
         const opacity = interpolate(Math.abs(dragX.value), [0, SWIPE_THRESHOLD], [1, 0.3], Extrapolation.CLAMP);
         return { opacity };
@@ -246,7 +382,7 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
                         </View>
                     </Animated.View>
 
-                    {/* Siri/Perplexity Style Audio Wave / Pulse Rings */}
+                    {/* Pulse Rings */}
                     <Animated.View style={[{
                         position: 'absolute',
                         left: rect.x, top: rect.y, width: rect.width, height: rect.height,
@@ -281,7 +417,7 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
                         <ExpoImage source={uri} style={{ width: '100%', height: '100%' }} contentFit="cover" />
                     </Animated.View>
 
-                    {/* Clean Bottom Instructions */}
+                    {/* Bottom Instructions */}
                     <Animated.View style={[styles.instructionsContainer, instructionStyle]}>
                         <View style={styles.instructionRow}>
                             <Feather name="chevron-left" size={16} color="rgba(255,255,255,0.7)" />
@@ -319,8 +455,6 @@ const styles = StyleSheet.create({
     },
     recordingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30', marginRight: 8 },
     timerText: { color: '#FFF', fontSize: 16, fontFamily: FONTS.bold, fontVariant: ['tabular-nums'] },
-
-    // Updated Icon Styles
     iconWrapper: {
         position: 'absolute',
         alignItems: 'center',
@@ -335,8 +469,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.3)',
     },
-
-    // New Bottom Instruction Styles
     instructionsContainer: {
         position: 'absolute',
         bottom: 80,
