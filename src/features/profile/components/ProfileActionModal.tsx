@@ -9,6 +9,9 @@ import {
     TouchableOpacity,
     Dimensions,
     Easing,
+    Alert,
+    Share,
+    Clipboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -19,18 +22,20 @@ import {
 import { useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import Reanimated from 'react-native-reanimated';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Share, Clipboard, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 
-import { COLORS, FONTS, FONT_SIZES } from '@/theme/theme';
+import { COLORS, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
+import { removePriority, blockUser } from '@/services/priorityService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = 260; // Shorter top-down height
+const SHEET_HEIGHT = 260;
 const SWIPE_CLOSE_THRESHOLD = 80;
 
 interface ActionOption {
     label: string;
+    shortLabel: string;
     icon: string;
     iconLibrary: 'Ionicons' | 'FontAwesome5' | 'MaterialCommunityIcons';
     color?: string;
@@ -40,8 +45,15 @@ interface ActionOption {
 interface ProfileActionModalProps {
     visible: boolean;
     onClose: () => void;
+    // @handle of the viewed user — used for Share/Copy display
     userId: string;
     userName: string;
+    // Real UUIDs needed for Supabase RPCs
+    authId: string;           // logged-in user's UUID
+    targetUUID: string;       // viewed user's UUID
+    // Called after a destructive action so the parent can navigate away / refresh
+    onRemoved?: () => void;
+    onBlocked?: () => void;
 }
 
 export default function ProfileActionModal({
@@ -49,11 +61,17 @@ export default function ProfileActionModal({
     onClose,
     userId,
     userName,
+    authId,
+    targetUUID,
+    onRemoved,
+    onBlocked,
 }: ProfileActionModalProps) {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
 
     const [isAboutView, setIsAboutView] = React.useState(false);
+    const [isLoading, setIsLoading] = React.useState(false);
 
     const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -70,6 +88,7 @@ export default function ProfileActionModal({
         if (visible) {
             swipeY.value = 0;
             setIsAboutView(false);
+            setIsLoading(false);
             Animated.parallel([
                 Animated.spring(slideAnim, {
                     toValue: 0,
@@ -111,9 +130,7 @@ export default function ProfileActionModal({
     const swipeGesture = Gesture.Pan()
         .activeOffsetY([10, 10])
         .onUpdate((event) => {
-            if (event.translationY > 0) {
-                swipeY.value = event.translationY;
-            }
+            if (event.translationY > 0) swipeY.value = event.translationY;
         })
         .onEnd((event) => {
             if (swipeY.value > SWIPE_CLOSE_THRESHOLD || event.velocityY > 800) {
@@ -123,10 +140,89 @@ export default function ProfileActionModal({
             }
         });
 
+    // ─── REMOVE FROM PRIORITIES ────────────────────────────
+    const handleRemove = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        Alert.alert(
+            `Remove ${userName}?`,
+            'They will be removed from your Priorities. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setIsLoading(true);
+                            await removePriority(authId, targetUUID);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            handleClose();
+                            onRemoved?.();
+                        } catch (e) {
+                            setIsLoading(false);
+                            Alert.alert('Error', 'Failed to remove. Please try again.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    // ─── BLOCK ─────────────────────────────────────────────
+    const handleBlock = () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+            `Block ${userName}?`,
+            'They won\'t be able to find you or interact with you on Priorities. They will also be removed from your Priorities list.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Block',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setIsLoading(true);
+                            await blockUser(authId, targetUUID);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            handleClose();
+                            onBlocked?.();
+                        } catch (e) {
+                            setIsLoading(false);
+                            Alert.alert('Error', 'Failed to block. Please try again.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    // ─── REPORT ────────────────────────────────────────────
+    const handleReport = () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+            `Report ${userName}`,
+            'Why are you reporting this account?',
+            [
+                { text: 'Spam or fake account', onPress: () => confirmReport('Spam or fake account') },
+                { text: 'Inappropriate content', onPress: () => confirmReport('Inappropriate content') },
+                { text: 'Harassment or bullying', onPress: () => confirmReport('Harassment or bullying') },
+                { text: 'Cancel', style: 'cancel' },
+            ]
+        );
+    };
+
+    const confirmReport = (reason: string) => {
+        Alert.alert(
+            'Report sent',
+            `Thanks for letting us know. We'll review this account for "${reason}".`,
+            [{ text: 'OK', onPress: handleClose }]
+        );
+    };
+
     const options: ActionOption[] = [
-        // Row 1: Common Actions
         {
             label: 'Copy User ID',
+            shortLabel: 'Copy',
             icon: 'copy-outline',
             iconLibrary: 'Ionicons',
             onPress: () => {
@@ -137,6 +233,7 @@ export default function ProfileActionModal({
         },
         {
             label: 'Share Profile',
+            shortLabel: 'Share',
             icon: 'share-outline',
             iconLibrary: 'Ionicons',
             onPress: async () => {
@@ -148,6 +245,7 @@ export default function ProfileActionModal({
         },
         {
             label: 'About this account',
+            shortLabel: 'Info',
             icon: 'information-circle-outline',
             iconLibrary: 'Ionicons',
             onPress: () => {
@@ -155,42 +253,36 @@ export default function ProfileActionModal({
                 setIsAboutView(true);
             },
         },
-        // Row 2: Moderation/Safety Actions (Red)
         {
             label: 'Remove from Priorities',
+            shortLabel: 'Remove',
             icon: 'account-remove-outline',
             iconLibrary: 'MaterialCommunityIcons',
             color: '#FF3B30',
-            onPress: () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                handleClose();
-            },
+            onPress: handleRemove,
         },
         {
             label: 'Report Account',
+            shortLabel: 'Report',
             icon: 'flag-outline',
             iconLibrary: 'Ionicons',
             color: '#FF3B30',
-            onPress: () => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                handleClose();
-            },
+            onPress: handleReport,
         },
         {
             label: 'Block',
+            shortLabel: 'Block',
             icon: 'block-helper',
             iconLibrary: 'MaterialCommunityIcons',
             color: '#FF3B30',
-            onPress: () => {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                handleClose();
-            },
+            onPress: handleBlock,
         },
     ];
 
     const renderIcon = (option: ActionOption) => {
-        const Lib = option.iconLibrary === 'Ionicons' ? Ionicons : 
-                    option.iconLibrary === 'FontAwesome5' ? FontAwesome5 : 
+        const Lib =
+            option.iconLibrary === 'Ionicons' ? Ionicons :
+                option.iconLibrary === 'FontAwesome5' ? FontAwesome5 :
                     MaterialCommunityIcons;
         return <Lib name={option.icon as any} size={22} color={option.color || COLORS.text} />;
     };
@@ -226,15 +318,13 @@ export default function ProfileActionModal({
                             <Animated.View
                                 style={[
                                     StyleSheet.absoluteFill,
-                                    styles.sheetBackground,
                                     { backgroundColor: animatedSheetBgColor }
                                 ]}
                             />
 
-                            {/* Content */}
                             {isAboutView ? (
                                 <View style={styles.aboutContainer}>
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         style={styles.aboutBackButton}
                                         onPress={() => setIsAboutView(false)}
                                     >
@@ -256,34 +346,33 @@ export default function ProfileActionModal({
                                         </View>
                                     </GestureDetector>
 
-                            <View style={styles.gridContainer}>
-                                {options.map((option, index) => (
-                                    <TouchableOpacity
-                                        key={index}
-                                        style={styles.gridItem}
-                                        activeOpacity={0.7}
-                                        onPress={option.onPress}
-                                    >
-                                        <View style={[
-                                            styles.iconContainer,
-                                            option.color ? { borderColor: option.color, borderWidth: 1 } : {}
-                                        ]}>
-                                            {renderIcon(option)}
-                                        </View>
-                                        <Text style={[
-                                            styles.gridLabel,
-                                            option.color ? { color: option.color } : {}
-                                        ]}>
-                                            {option.label === 'Copy User ID' ? 'Copy' : 
-                                             option.label === 'Share Profile' ? 'Share' : 
-                                             option.label === 'About this account' ? 'Info' : 
-                                             option.label === 'Remove from Priorities' ? 'Remove' : 
-                                             option.label === 'Report Account' ? 'Report' : 
-                                             option.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                                    <View style={styles.gridContainer}>
+                                        {options.map((option, index) => (
+                                            <TouchableOpacity
+                                                key={index}
+                                                style={[
+                                                    styles.gridItem,
+                                                    isLoading && option.color ? styles.gridItemDisabled : null,
+                                                ]}
+                                                activeOpacity={0.7}
+                                                onPress={option.onPress}
+                                                disabled={isLoading}
+                                            >
+                                                <View style={[
+                                                    styles.iconContainer,
+                                                    option.color ? { borderColor: option.color, borderWidth: 1 } : {}
+                                                ]}>
+                                                    {renderIcon(option)}
+                                                </View>
+                                                <Text style={[
+                                                    styles.gridLabel,
+                                                    option.color ? { color: option.color } : {}
+                                                ]}>
+                                                    {option.shortLabel}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
                                 </>
                             )}
                         </Reanimated.View>
@@ -319,9 +408,6 @@ const styles = StyleSheet.create({
     sheetWhiteBase: {
         backgroundColor: '#FFFFFF',
     },
-    sheetBackground: {
-        // This will be tinted by the profile's dominant color
-    },
     handleContainer: {
         width: '100%',
         alignItems: 'center',
@@ -340,10 +426,13 @@ const styles = StyleSheet.create({
         paddingTop: 4,
     },
     gridItem: {
-        width: '33.33%', // exactly 3 per row
+        width: '33.33%',
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 6,
+    },
+    gridItemDisabled: {
+        opacity: 0.4,
     },
     iconContainer: {
         width: 60,
@@ -402,11 +491,5 @@ const styles = StyleSheet.create({
         top: 20,
         left: 20,
         padding: 8,
-    },
-    separator: {
-        height: 1,
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        marginVertical: 4,
-        marginHorizontal: 12,
     },
 });

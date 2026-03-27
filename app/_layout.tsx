@@ -7,10 +7,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
-// ✅ ADD THIS IMPORT
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
+import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 
-// Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function Layout() {
@@ -46,9 +45,9 @@ export default function Layout() {
 
     useEffect(() => {
         if (!sessionLoaded) return;
-        
+
         const inAuthGroup = segments[0] === 'auth';
-        
+
         if (!session && !inAuthGroup) {
             router.replace('/auth/signin');
         } else if (session && inAuthGroup) {
@@ -66,14 +65,11 @@ export default function Layout() {
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            {/* ✅ WRAP THE STACK — sits at root so blur covers the entire app */}
-            <VoiceNoteRecordingProvider>
-                <Stack
-                    screenOptions={{
-                        headerShown: false,
-                    }}
-                />
-            </VoiceNoteRecordingProvider>
+            <PrioritiesRefreshProvider>
+                <VoiceNoteRecordingProvider>
+                    <Stack screenOptions={{ headerShown: false }} />
+                </VoiceNoteRecordingProvider>
+            </PrioritiesRefreshProvider>
         </GestureHandlerRootView>
     );
 }

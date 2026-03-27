@@ -12,7 +12,6 @@ import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBar
 import { UserTimelineProvider, useUserTimeline } from '@/contexts/UserTimelineContext';
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 import { MediaInboxProvider } from '@/contexts/MediaInboxContext';
-import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext'; // 🆕
 
 
 const { Navigator } = createMaterialTopTabNavigator();
@@ -224,9 +223,9 @@ export default function TabLayout() {
                 <MediaInboxProvider>
                     <UserTimelineProvider>
                         <VoiceNoteRecordingProvider>
-                            <PrioritiesRefreshProvider>
-                                <TabLayoutContent />
-                            </PrioritiesRefreshProvider>
+
+                            <TabLayoutContent />
+
                         </VoiceNoteRecordingProvider>
                     </UserTimelineProvider>
                 </MediaInboxProvider>

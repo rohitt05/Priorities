@@ -22,7 +22,7 @@ import Reanimated, {
     FadeOut,
 } from 'react-native-reanimated';
 
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
 import { User } from '@/types/userTypes';
@@ -40,11 +40,14 @@ import YourPriorities from '@/features/profile/components/yourpriorities';
 import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
 import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
 import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
+import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
     const authId = useAuthUser(); // real UUID from session
+    const router = useRouter();
+    const { triggerRefresh } = usePrioritiesRefresh();
 
     // If no userId param = viewing own profile
     // If userId param exists = viewing someone else's profile (it's their @handle)
@@ -358,6 +361,16 @@ function ProfileScreenContent() {
                 onClose={() => setIsActionModalVisible(false)}
                 userId={currentUser.uniqueUserId}
                 userName={currentUser.name}
+                authId={authId}
+                targetUUID={currentUser.id}
+                onRemoved={() => {
+                    triggerRefresh();
+                    router.back();
+                }}
+                onBlocked={() => {
+                    triggerRefresh();
+                    router.back();
+                }}
             />
 
             {showFlashBanner && (
