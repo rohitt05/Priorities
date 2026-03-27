@@ -250,12 +250,6 @@ const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; s
 SeenIndicator.displayName = 'SeenIndicator';
 
 
-// ─── PriorityCard ────────────────────────────────────────────────────────────
-// unreadMedia & sentStatus are passed as props from the parent so that
-// React.memo can actually compare them and trigger a re-render when
-// MediaInboxContext updates. Previously they were read *inside* the memo'd
-// component — invisible to the comparator — so the indicator never appeared.
-
 interface PriorityCardProps {
     item: any;
     isActive: boolean;
@@ -296,11 +290,11 @@ const PriorityCard = React.memo(
             startFromRef(imageWrapperRef, { sourceId: item.id, uri: item.profilePicture });
         }, [item.id, item.profilePicture, startFromRef]);
 
+        // ✅ FIX: use item.id (UUID) not uniqueUserId — must match sender_id key in unreadMessages
         const handleSendStatus = useCallback(() => {
-            const userId = item.uniqueUserId || item.id;
-            recordMessageSent(userId);
-            setTimeout(() => simulateCounterpartSeen(userId), 3000);
-        }, [item.id, item.uniqueUserId, recordMessageSent, simulateCounterpartSeen]);
+            recordMessageSent(item.id);
+            setTimeout(() => simulateCounterpartSeen(item.id), 3000);
+        }, [item.id, recordMessageSent, simulateCounterpartSeen]);
 
         const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
         const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
@@ -322,7 +316,6 @@ const PriorityCard = React.memo(
             .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
             .onFinalize(() => { 'worklet'; runOnJS(stopCallVibration)(); });
 
-        // ─── Pending card ─────────────────────────────────────────
         if (item.isPending) {
             return (
                 <View style={styles.cardContainer}>
@@ -404,13 +397,13 @@ const PriorityCard = React.memo(
                     userColor={dominantColor}
                     onClose={() => {
                         setViewingMedia(false);
-                        markAsSeen(item.uniqueUserId || item.id);
+                        // ✅ FIX: use item.id (UUID) not uniqueUserId
+                        markAsSeen(item.id);
                     }}
                 />
             </View>
         );
     },
-    // ✅ Now correctly compares unreadMedia and sentStatus as props
     (prev, next) =>
         prev.isActive === next.isActive &&
         prev.item.id === next.item.id &&
@@ -544,12 +537,10 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         router.push({ pathname: '/VoiceMessage' as any, params: { recipient: selectedUser.name } });
     }, [selectedUser, router]);
 
-    // ✅ unreadMedia and sentStatus are derived here in the parent and passed
-    // as explicit props so PriorityCard's memo comparator can detect changes.
+    // ✅ FIX: use item.id (UUID) exclusively — matches sender_id key in unreadMessages map
     const renderItem = useCallback(({ item, index }: any) => {
-        const userId = item.uniqueUserId || item.id;
-        const unreadMedia = unreadMessages[userId] ?? null;
-        const sentStatus = myLastSentStatus[userId] ?? 'none';
+        const unreadMedia = unreadMessages[item.id] ?? null;
+        const sentStatus = myLastSentStatus[item.id] ?? 'none';
         return (
             <PriorityCard
                 item={item}
@@ -561,13 +552,14 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         );
     }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus]);
 
+    // ✅ FIX: use item.id (UUID) for left/right unread counts too
     const leftUnread = useMemo(() => {
         let count = 0;
         let firstIndex = -1;
         let lastUnreadIndex = -1;
         for (let i = 0; i < activeIndex; i++) {
             const user = displayPriorities[i];
-            if (unreadMessages[user.uniqueUserId || user.id]) {
+            if (unreadMessages[user.id]) {
                 if (firstIndex === -1) firstIndex = i;
                 lastUnreadIndex = i;
                 count++;
@@ -582,7 +574,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         let firstIndex = -1;
         for (let i = activeIndex + 1; i < displayPriorities.length; i++) {
             const user = displayPriorities[i];
-            if (unreadMessages[user.uniqueUserId || user.id]) {
+            if (unreadMessages[user.id]) {
                 if (firstIndex === -1) firstIndex = i;
                 count++;
             }
