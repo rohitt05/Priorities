@@ -31,7 +31,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { Profile, PriorityUserWithPost } from '@/types/domain';
+import { Profile, PriorityUserWithPost, Message, MediaType } from '@/types/domain';
 import PriorityMenuModal, { AnchorPosition } from './PriorityMenuModal';
 import { TapHoldProvider, TapHoldContext, TapHoldImage } from '@/contexts/TapHoldViewer';
 import { useVoiceNoteRecording } from '@/contexts/VoiceNoteRecordingContext';
@@ -199,9 +199,6 @@ const OptionsButton = React.memo(({ onPress, size }: {
 OptionsButton.displayName = 'OptionsButton';
 
 
-import { MediaType } from '@/types/domain';
-
-
 const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; size: number; onPress: () => void }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
 
@@ -253,164 +250,174 @@ const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; s
 SeenIndicator.displayName = 'SeenIndicator';
 
 
-const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
+// ─── PriorityCard ────────────────────────────────────────────────────────────
+// unreadMedia & sentStatus are passed as props from the parent so that
+// React.memo can actually compare them and trigger a re-render when
+// MediaInboxContext updates. Previously they were read *inside* the memo'd
+// component — invisible to the comparator — so the indicator never appeared.
+
+interface PriorityCardProps {
     item: any;
     isActive: boolean;
     onOptionsPress: (anchor: AnchorPosition) => void;
-}) => {
-    const dominantColor = item.dominantColor || COLORS.primary;
-    const router = useRouter();
-    const tapHoldContext = useContext(TapHoldContext);
-    const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800];
+    unreadMedia: Message | null;
+    sentStatus: 'none' | 'sent' | 'seen';
+}
 
-    const startCallVibration = () => { Vibration.vibrate(VIBRATION_PATTERN, true); };
-    const stopCallVibration = () => { Vibration.cancel(); };
+const PriorityCard = React.memo(
+    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus }: PriorityCardProps) => {
+        const dominantColor = item.dominantColor || COLORS.primary;
+        const router = useRouter();
+        const tapHoldContext = useContext(TapHoldContext);
+        const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800];
 
-    const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
-    const { unreadMessages, myLastSentStatus, markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
-    const imageWrapperRef = useRef<View | null>(null);
+        const startCallVibration = () => { Vibration.vibrate(VIBRATION_PATTERN, true); };
+        const stopCallVibration = () => { Vibration.cancel(); };
 
-    const recordingForThisCard = isGlobalRecording && activeSourceId === item.id;
+        const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
+        const { markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
+        const imageWrapperRef = useRef<View | null>(null);
 
-    const unreadMedia = unreadMessages[item.uniqueUserId || item.id];
-    const sentStatus = myLastSentStatus[item.uniqueUserId || item.id] || 'none';
+        const recordingForThisCard = isGlobalRecording && activeSourceId === item.id;
 
-    const [viewingMedia, setViewingMedia] = useState(false);
+        const [viewingMedia, setViewingMedia] = useState(false);
 
-    const handleSingleTap = useCallback(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
-        router.push({ pathname: '/FilmMyDay' as any, params: { recipient: item.name } });
-    }, [item.name, router]);
+        const handleSingleTap = useCallback(() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+            router.push({ pathname: '/FilmMyDay' as any, params: { recipient: item.name } });
+        }, [item.name, router]);
 
-    const handleDoubleTap = useCallback(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
-        tapHoldContext?.showImage(item.profilePicture);
-    }, [item.profilePicture, tapHoldContext]);
+        const handleDoubleTap = useCallback(() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
+            tapHoldContext?.showImage(item.profilePicture);
+        }, [item.profilePicture, tapHoldContext]);
 
-    const startRecording = useCallback(() => {
-        startFromRef(imageWrapperRef, { sourceId: item.id, uri: item.profilePicture });
-    }, [item.id, item.profilePicture, startFromRef]);
+        const startRecording = useCallback(() => {
+            startFromRef(imageWrapperRef, { sourceId: item.id, uri: item.profilePicture });
+        }, [item.id, item.profilePicture, startFromRef]);
 
-    const handleSendStatus = useCallback(() => {
-        const userId = item.uniqueUserId || item.id;
-        recordMessageSent(userId);
-        setTimeout(() => simulateCounterpartSeen(userId), 3000);
-    }, [item.id, item.uniqueUserId, recordMessageSent, simulateCounterpartSeen]);
+        const handleSendStatus = useCallback(() => {
+            const userId = item.uniqueUserId || item.id;
+            recordMessageSent(userId);
+            setTimeout(() => simulateCounterpartSeen(userId), 3000);
+        }, [item.id, item.uniqueUserId, recordMessageSent, simulateCounterpartSeen]);
 
-    const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
-    const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
-    const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
+        const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
+        const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
+        const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
-    const panGesture = Gesture.Pan()
-        .activateAfterLongPress(350)
-        .onStart(() => runOnJS(startRecording)())
-        .onUpdate((e) => runOnJS(updateDrag)(e.translationX))
-        .onEnd((e) => {
-            if (e.translationX > 50) runOnJS(handleSendStatus)();
-            runOnJS(endFromTranslationX)(e.translationX);
-        });
+        const panGesture = Gesture.Pan()
+            .activateAfterLongPress(350)
+            .onStart(() => runOnJS(startRecording)())
+            .onUpdate((e) => runOnJS(updateDrag)(e.translationX))
+            .onEnd((e) => {
+                if (e.translationX > 50) runOnJS(handleSendStatus)();
+                runOnJS(endFromTranslationX)(e.translationX);
+            });
 
-    const composedGesture = Gesture.Exclusive(panGesture, tapGestures);
+        const composedGesture = Gesture.Exclusive(panGesture, tapGestures);
 
-    const callVibrationGesture = Gesture.LongPress()
-        .minDuration(400)
-        .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
-        .onFinalize(() => { 'worklet'; runOnJS(stopCallVibration)(); });
+        const callVibrationGesture = Gesture.LongPress()
+            .minDuration(400)
+            .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
+            .onFinalize(() => { 'worklet'; runOnJS(stopCallVibration)(); });
 
-    // ─── Pending card ─────────────────────────────────────────
-    if (item.isPending) {
-        return (
-            <View style={styles.cardContainer}>
-                <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-                <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
-                <View style={styles.imageWrapper}>
-                    <Animated.View
-                        style={[{
-                            zIndex: Z_INDEX.IMAGE,
-                            opacity: 0.35,
-                            flex: 1,
-                            width: '100%',
-                            height: '100%',
-                            borderRadius: LAYOUT.IMAGE_SIZE / 2,
-                            overflow: 'hidden',
-                        }]}
-                    >
-                        <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
-                    </Animated.View>
-                    <View style={styles.pendingOverlay} pointerEvents="none">
-                        <Ionicons name="hourglass-outline" size={28} color="rgba(255,255,255,0.9)" />
+        // ─── Pending card ─────────────────────────────────────────
+        if (item.isPending) {
+            return (
+                <View style={styles.cardContainer}>
+                    <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
+                    <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
+                    <View style={styles.imageWrapper}>
+                        <Animated.View
+                            style={[{
+                                zIndex: Z_INDEX.IMAGE,
+                                opacity: 0.35,
+                                flex: 1,
+                                width: '100%',
+                                height: '100%',
+                                borderRadius: LAYOUT.IMAGE_SIZE / 2,
+                                overflow: 'hidden',
+                            }]}
+                        >
+                            <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                        </Animated.View>
+                        <View style={styles.pendingOverlay} pointerEvents="none">
+                            <Ionicons name="hourglass-outline" size={28} color="rgba(255,255,255,0.9)" />
+                        </View>
                     </View>
                 </View>
-            </View>
-        );
-    }
+            );
+        }
 
-    return (
-        <View style={styles.cardContainer}>
-            <GestureDetector gesture={callVibrationGesture}>
-                <View style={StyleSheet.absoluteFill} />
-            </GestureDetector>
-
-            <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-            <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
-
-            <View style={styles.imageWrapper}>
-                <GestureDetector gesture={composedGesture}>
-                    <Animated.View
-                        collapsable={false}
-                        ref={imageWrapperRef as any}
-                        style={[{
-                            zIndex: Z_INDEX.IMAGE,
-                            opacity: recordingForThisCard ? 0 : 1,
-                            flex: 1,
-                            width: '100%',
-                            height: '100%',
-                            borderRadius: LAYOUT.IMAGE_SIZE / 2,
-                            overflow: 'hidden',
-                        }]}
-                    >
-                        <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
-                    </Animated.View>
+        return (
+            <View style={styles.cardContainer}>
+                <GestureDetector gesture={callVibrationGesture}>
+                    <View style={StyleSheet.absoluteFill} />
                 </GestureDetector>
 
-                {!recordingForThisCard && <CallIcons visible={isActive} />}
-                {!recordingForThisCard && isActive && (
-                    <OptionsButton size={LAYOUT.IMAGE_SIZE} onPress={onOptionsPress} />
-                )}
-                {!recordingForThisCard && unreadMedia && isActive && (
-                    <UnreadIndicator
-                        type={unreadMedia.type}
-                        size={LAYOUT.IMAGE_SIZE}
-                        onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            setViewingMedia(true);
-                        }}
-                    />
-                )}
-                {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && (
-                    <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} />
-                )}
-            </View>
+                <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
+                <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
 
-            <ViewMessageModal
-                visible={viewingMedia}
-                media={unreadMedia || null}
-                userName={item.name}
-                userColor={dominantColor}
-                onClose={() => {
-                    setViewingMedia(false);
-                    markAsSeen(item.uniqueUserId || item.id);
-                }}
-            />
-        </View>
-    );
-},
-    // ✅ FIX: profilePicture added so card re-renders when image loads after accept
+                <View style={styles.imageWrapper}>
+                    <GestureDetector gesture={composedGesture}>
+                        <Animated.View
+                            collapsable={false}
+                            ref={imageWrapperRef as any}
+                            style={[{
+                                zIndex: Z_INDEX.IMAGE,
+                                opacity: recordingForThisCard ? 0 : 1,
+                                flex: 1,
+                                width: '100%',
+                                height: '100%',
+                                borderRadius: LAYOUT.IMAGE_SIZE / 2,
+                                overflow: 'hidden',
+                            }]}
+                        >
+                            <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                        </Animated.View>
+                    </GestureDetector>
+
+                    {!recordingForThisCard && <CallIcons visible={isActive} />}
+                    {!recordingForThisCard && isActive && (
+                        <OptionsButton size={LAYOUT.IMAGE_SIZE} onPress={onOptionsPress} />
+                    )}
+                    {!recordingForThisCard && unreadMedia && isActive && (
+                        <UnreadIndicator
+                            type={unreadMedia.type}
+                            size={LAYOUT.IMAGE_SIZE}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setViewingMedia(true);
+                            }}
+                        />
+                    )}
+                    {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && (
+                        <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} />
+                    )}
+                </View>
+
+                <ViewMessageModal
+                    visible={viewingMedia}
+                    media={unreadMedia || null}
+                    userName={item.name}
+                    userColor={dominantColor}
+                    onClose={() => {
+                        setViewingMedia(false);
+                        markAsSeen(item.uniqueUserId || item.id);
+                    }}
+                />
+            </View>
+        );
+    },
+    // ✅ Now correctly compares unreadMedia and sentStatus as props
     (prev, next) =>
         prev.isActive === next.isActive &&
         prev.item.id === next.item.id &&
         prev.item.hasNewPost === next.item.hasNewPost &&
-        prev.item.profilePicture === next.item.profilePicture
+        prev.item.profilePicture === next.item.profilePicture &&
+        prev.unreadMedia?.id === next.unreadMedia?.id &&
+        prev.sentStatus === next.sentStatus
 );
 PriorityCard.displayName = 'PriorityCard';
 
@@ -469,7 +476,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
 
     const flatListRef = useRef<GHFlatList>(null);
 
-    const { unreadMessages } = useMediaInbox();
+    const { unreadMessages, myLastSentStatus } = useMediaInbox();
 
     useEffect(() => {
         AsyncStorage.getItem(PINNED_KEY).then(val => { if (val) setPinnedId(val); });
@@ -537,13 +544,22 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         router.push({ pathname: '/VoiceMessage' as any, params: { recipient: selectedUser.name } });
     }, [selectedUser, router]);
 
-    const renderItem = useCallback(({ item, index }: any) => (
-        <PriorityCard
-            item={item}
-            isActive={index === activeIndex}
-            onOptionsPress={(anchor: AnchorPosition) => openPinSheetForUser(item, anchor)}
-        />
-    ), [activeIndex, openPinSheetForUser]);
+    // ✅ unreadMedia and sentStatus are derived here in the parent and passed
+    // as explicit props so PriorityCard's memo comparator can detect changes.
+    const renderItem = useCallback(({ item, index }: any) => {
+        const userId = item.uniqueUserId || item.id;
+        const unreadMedia = unreadMessages[userId] ?? null;
+        const sentStatus = myLastSentStatus[userId] ?? 'none';
+        return (
+            <PriorityCard
+                item={item}
+                isActive={index === activeIndex}
+                onOptionsPress={(anchor: AnchorPosition) => openPinSheetForUser(item, anchor)}
+                unreadMedia={unreadMedia}
+                sentStatus={sentStatus}
+            />
+        );
+    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus]);
 
     const leftUnread = useMemo(() => {
         let count = 0;
