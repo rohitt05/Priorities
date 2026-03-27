@@ -1,8 +1,7 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import React, { useState, useEffect } from 'react';
-import { FontAwesome6 } from '@expo/vector-icons';
-import { COLORS } from '@/theme/theme';
+import { COLORS, FONTS, FONT_SIZES } from '@/theme/theme';
 import FloatingSearch from '@/components/ui/FloatingSearch';
 import PriorityList from '@/features/partners/components/PriorityList';
 import { PriorityUserWithPost } from '@/types/domain';
@@ -14,15 +13,17 @@ import { useSharedValue } from 'react-native-reanimated';
 import { getMyPriorities, getOutgoingPendingRequests } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
+import { FontAwesome6 } from '@expo/vector-icons';
 
 
 export default function HomeScreen() {
     const router = useRouter();
     const [priorities, setPriorities] = useState<PriorityUserWithPost[]>([]);
     const [activeUser, setActiveUser] = useState<PriorityUserWithPost | null>(null);
+    const [isLoaded, setIsLoaded] = useState(false);
     const scrollX = useSharedValue(0);
     const { handleColorChange } = useBackground();
-    const { refreshKey } = usePrioritiesRefresh(); // 🆕
+    const { refreshKey } = usePrioritiesRefresh();
 
 
     useEffect(() => {
@@ -51,10 +52,12 @@ export default function HomeScreen() {
                 setPriorities([...(real as PriorityUserWithPost[]), ...filteredPending]);
             } catch (error) {
                 console.error('Error loading priorities:', error);
+            } finally {
+                setIsLoaded(true);
             }
         };
         loadPriorities();
-    }, [refreshKey]); // 🆕 re-runs whenever triggerRefresh() is called
+    }, [refreshKey]);
 
 
     const hasPriorities = priorities.length > 0;
@@ -90,8 +93,17 @@ export default function HomeScreen() {
                 />
             )}
 
-            {!hasPriorities && (
-                <View style={styles.pointerContainer}>
+            {isLoaded && !hasPriorities && (
+                <View style={styles.emptyContainer} pointerEvents="none">
+                    <Text style={styles.emptyTitle}>Add people who matter</Text>
+                    <Text style={styles.emptySubtitle}>
+                        Tap on the search icon below{'\n'}to add your priorities
+                    </Text>
+                </View>
+            )}
+
+            {isLoaded && !hasPriorities && (
+                <View style={styles.pointerContainer} pointerEvents="none">
                     <FontAwesome6
                         name="hand-point-right"
                         size={32}
@@ -121,9 +133,35 @@ const styles = StyleSheet.create({
         paddingBottom: 100,
         width: '100%',
     },
+    emptyContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 100,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+    },
+    emptyTitle: {
+        fontFamily: FONTS.bold,
+        fontSize: 20,
+        color: COLORS.text,
+        textAlign: 'center',
+        letterSpacing: -0.4,
+        opacity: 0.85,
+    },
+    emptySubtitle: {
+        fontFamily: FONTS.bold,
+        fontSize: FONT_SIZES.sm,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        lineHeight: 22,
+        opacity: 0.6,
+    },
     pointerContainer: {
         position: 'absolute',
-        bottom: 120,
+        bottom: 70,
         right: 80,
         alignItems: 'center',
         opacity: 0.3,

@@ -32,10 +32,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { COLORS, FONTS } from '@/theme/theme';
 import { searchUsers } from '@/services/profileService';
-import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest } from '@/services/priorityService';
+import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyPriorities } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import ReceivedPriorityRequests from './ReceivedPriorityRequests';
-import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext'; // 🆕
+import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -58,10 +58,20 @@ interface SearchResultCardProps {
     onAddPress: (user: User) => void;
     hasSentRequest: boolean;
     onAcceptPress: (user: User) => void;
+    isAlreadyPriority: boolean;
 }
 
 
-const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress, hasSentRequest, onAcceptPress }: SearchResultCardProps) => {
+const SearchResultCard = ({
+    item,
+    index,
+    scrollY,
+    onPress,
+    onAddPress,
+    hasSentRequest,
+    onAcceptPress,
+    isAlreadyPriority,
+}: SearchResultCardProps) => {
     const ITEM_H = 80;
     const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -99,7 +109,20 @@ const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress, hasSentRe
                 </View>
             </Pressable>
 
-            {hasSentRequest ? (
+            {isAlreadyPriority ? (
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.resultAcceptButton,
+                        styles.viewProfileButton,
+                        { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                    ]}
+                    onPress={() => onPress(item.unique_user_id)}
+                >
+                    <Text style={[styles.resultAcceptText, { color: COLORS.primary }]}>
+                        View Profile
+                    </Text>
+                </Pressable>
+            ) : hasSentRequest ? (
                 <Pressable
                     style={({ pressed }) => [
                         styles.resultAcceptButton,
@@ -129,7 +152,7 @@ const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress, hasSentRe
 const FloatingSearch = () => {
     const router = useRouter();
     const isFocused = useIsFocused();
-    const { triggerRefresh } = usePrioritiesRefresh(); // 🆕
+    const { triggerRefresh } = usePrioritiesRefresh();
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -140,10 +163,9 @@ const FloatingSearch = () => {
     const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [isSending, setIsSending] = useState(false);
-
-    // 🆕 track whether we're in "accept flow" (came from Accept button) vs "add flow"
     const [isAcceptFlow, setIsAcceptFlow] = useState(false);
     const [pendingAcceptRequest, setPendingAcceptRequest] = useState<any | null>(null);
+    const [existingPriorityIds, setExistingPriorityIds] = useState<Set<string>>(new Set());
 
     const requestListOpacity = useSharedValue(0);
     const expandAnim = useRef(new RNAnimated.Value(0)).current;
@@ -162,13 +184,17 @@ const FloatingSearch = () => {
     }, []);
 
 
-    // ─── Load incoming requests ───────────────────────────────
+    // ─── Load incoming requests + existing priorities ─────────
     const loadIncomingRequests = async () => {
         if (!currentUserId) return;
         try {
-            const requests = await getIncomingRequests(currentUserId);
+            const [requests, myPriorities] = await Promise.all([
+                getIncomingRequests(currentUserId),
+                getMyPriorities(currentUserId),
+            ]);
             setIncomingRequests(requests);
             setHasNewRequests(requests.length > 0);
+            setExistingPriorityIds(new Set((myPriorities as any[]).map(p => p.id)));
         } catch (err) {
             console.error('Error loading requests:', err);
         }
@@ -231,8 +257,8 @@ const FloatingSearch = () => {
         setFilteredUsers([]);
         setSelectedUser(null);
         setRelationship('');
-        setIsAcceptFlow(false);       // 🆕
-        setPendingAcceptRequest(null); // 🆕
+        setIsAcceptFlow(false);
+        setPendingAcceptRequest(null);
     };
 
 
@@ -273,19 +299,17 @@ const FloatingSearch = () => {
 
 
     const handleAddPress = (user: User) => {
-        setIsAcceptFlow(false); // 🆕 normal add flow
+        setIsAcceptFlow(false);
         setSelectedUser(user);
     };
 
 
-    // 🆕 Accept from search — show relationship prompt first, then accept + save relation
     const handleAcceptFromSearch = async (user: User) => {
         if (!currentUserId) return;
         const matchingRequest = incomingRequests.find(
             (req) => req.sender_id === user.id || req.profiles?.id === user.id
         );
         if (!matchingRequest) return;
-        // Store the request, show relationship prompt
         setPendingAcceptRequest(matchingRequest);
         setIsAcceptFlow(true);
         setSelectedUser(user);
@@ -306,13 +330,12 @@ const FloatingSearch = () => {
     });
 
 
-    // ─── Send priority request (Add flow) ────────────────────
+    // ─── Send / Accept priority ───────────────────────────────
     const handleSavePriority = async () => {
         if (!selectedUser || !relationship || !currentUserId) return;
         setIsSending(true);
         try {
             if (isAcceptFlow && pendingAcceptRequest) {
-                // 🆕 Accept flow: accept the request then save relationship label
                 await acceptPriorityRequest(
                     pendingAcceptRequest.id,
                     pendingAcceptRequest.sender_id,
@@ -320,10 +343,9 @@ const FloatingSearch = () => {
                 );
                 setIncomingRequests(prev => prev.filter(r => r.id !== pendingAcceptRequest.id));
             } else {
-                // Normal add flow: send a new request
                 await sendPriorityRequest(currentUserId, selectedUser.id);
             }
-            triggerRefresh(); // 🆕 immediately re-renders PriorityList on home
+            triggerRefresh();
             setIsExpanded(false);
             resetSearch();
         } catch (err: any) {
@@ -334,7 +356,7 @@ const FloatingSearch = () => {
     };
 
 
-    // Build a Set of sender IDs from incomingRequests for O(1) lookup
+    // O(1) lookup sets
     const incomingRequestSenderIds = new Set(
         incomingRequests.map(req => req.sender_id ?? req.profiles?.id)
     );
@@ -397,7 +419,7 @@ const FloatingSearch = () => {
                     { width: searchBarWidth, borderRadius: borderRadius, bottom: bottomPosition }
                 ]}
             >
-                {/* Relationship Input Overlay — shown for both Add and Accept flows */}
+                {/* Relationship Input Overlay */}
                 {selectedUser && (
                     <RNAnimated.View
                         style={[
@@ -408,12 +430,8 @@ const FloatingSearch = () => {
                             }
                         ]}
                     >
-                        {/* 🆕 Title changes based on flow */}
                         <Text style={styles.relTitle}>
-                            {isAcceptFlow
-                                ? `Who is ${selectedUser.name} to you?`
-                                : `Who is ${selectedUser.name} to you?`
-                            }
+                            Who is {selectedUser.name} to you?
                         </Text>
                         <TextInput
                             ref={relInputRef}
@@ -465,6 +483,7 @@ const FloatingSearch = () => {
                                     onAddPress={handleAddPress}
                                     hasSentRequest={incomingRequestSenderIds.has(item.id)}
                                     onAcceptPress={handleAcceptFromSearch}
+                                    isAlreadyPriority={existingPriorityIds.has(item.id)}
                                 />
                             )}
                             onScroll={resultScrollHandler}
@@ -584,6 +603,11 @@ const styles = StyleSheet.create({
     },
     acceptButtonHighlight: {
         backgroundColor: '#433D35',
+    },
+    viewProfileButton: {
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: COLORS.primary,
     },
     resultAcceptText: {
         color: COLORS.background,
