@@ -30,7 +30,8 @@ import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import AddPartnerModal from '@/features/partners/components/AddPartnerModal';
 import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
-import { CURRENT_USER_ID, PARTNER_KEY, BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
+import { PARTNER_KEY, BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
+import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
 import { useProfilePull } from '@/features/profile/hooks/useProfilePull';
 import { ProfileHeader } from '@/features/profile/components/ProfileHeader';
@@ -43,8 +44,12 @@ import ProfileActionModal from '@/features/profile/components/ProfileActionModal
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
-    const effectiveUserId = userId || CURRENT_USER_ID;
-    const isOwner = effectiveUserId === CURRENT_USER_ID;
+    const authId = useAuthUser(); // real UUID from session
+
+    // If no userId param = viewing own profile
+    // If userId param exists = viewing someone else's profile (it's their @handle)
+    const isOwner = !userId;
+    const effectiveUserId = userId || authId || '';
 
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
     const [isEditing, setIsEditing] = useState(false);
@@ -109,28 +114,21 @@ function ProfileScreenContent() {
     const [partnerUser, setPartnerUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // useFocusEffect re-fetches every time screen comes into focus
+    // Re-fetches every time screen comes into focus
     // so profile picture updates from settings screen reflect immediately
     useFocusEffect(
         React.useCallback(() => {
+            if (!authId) return; // wait for session to resolve
+
             let isMounted = true;
             const fetchProfiles = async () => {
                 try {
-                    const sessionRes = await supabase.auth.getSession();
-                    const sessionUser = sessionRes.data.session?.user;
-                    if (!sessionUser) return;
-
-                    let queryCol = 'unique_user_id';
-                    let queryVal = effectiveUserId;
-                    if (isOwner && (!effectiveUserId || effectiveUserId === CURRENT_USER_ID)) {
-                        queryCol = 'id';
-                        queryVal = sessionUser.id;
-                    }
-
+                    // Owner: fetch by real UUID
+                    // Viewer: fetch by @handle from route params
                     const { data: dbUser } = await supabase
                         .from('profiles')
                         .select('*')
-                        .eq(queryCol, queryVal)
+                        .eq(isOwner ? 'id' : 'unique_user_id', isOwner ? authId : effectiveUserId)
                         .single();
 
                     if (dbUser && isMounted) {
@@ -179,13 +177,14 @@ function ProfileScreenContent() {
             };
             fetchProfiles();
             return () => { isMounted = false; };
-        }, [effectiveUserId, isOwner, savedPartnerUniqueUserId])
+        }, [authId, effectiveUserId, isOwner, savedPartnerUniqueUserId])
     );
 
     const handleRemovePartner = async () => {
         try {
             await AsyncStorage.removeItem(PARTNER_KEY);
             setSavedPartnerUniqueUserId(null);
+            setPartnerUser(null);
         } catch (e) {
             console.error('Failed to remove partner:', e);
         }
@@ -233,13 +232,15 @@ function ProfileScreenContent() {
         if (isOwner) return 'Mine';
         const ownerGender = currentUser.gender || 'male';
         const possessive = ownerGender === 'male' ? 'his' : (ownerGender === 'female' ? 'hers' : 'theirs');
-        if (CURRENT_USER_ID === currentUser.partnerId) {
+        // Check if logged-in user is the partner using real authId
+        if (authId === currentUser.partnerId) {
             return `you're ${possessive}`;
         }
         return possessive.charAt(0).toUpperCase() + possessive.slice(1);
-    }, [currentUser, isOwner]);
+    }, [currentUser, isOwner, authId]);
 
-    if (isLoading) return null;
+    // Wait for auth session to resolve before rendering
+    if (!authId || isLoading) return null;
     if (!currentUser) return null;
 
     return (
@@ -345,7 +346,7 @@ function ProfileScreenContent() {
             <AddPartnerModal
                 visible={isAddPartnerVisible}
                 onClose={() => setIsAddPartnerVisible(false)}
-                currentUserUniqueUserId={CURRENT_USER_ID}
+                currentUserUniqueUserId={currentUser?.uniqueUserId || ''}
                 onSelectPartner={(selectedUserId) => {
                     setSavedPartnerUniqueUserId(selectedUserId);
                     AsyncStorage.setItem(PARTNER_KEY, selectedUserId).catch(() => { });

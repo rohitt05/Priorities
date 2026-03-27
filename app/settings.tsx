@@ -15,14 +15,12 @@ import { useRouter } from 'expo-router';
 import { ScrollView } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
 import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
 import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
-import { CURRENT_USER_ID } from '@/features/profile/utils/profileConstants';
 import { signOut } from '@/services/authService';
 
 const { width } = Dimensions.get('window');
