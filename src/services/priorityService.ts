@@ -37,12 +37,21 @@ export async function getMyPriorities(userId: string) {
 
     if (error) throw error;
 
-    return (data ?? []).map((row) => ({
-        ...(row.profiles as any),
-        rank: row.rank,
-        pinned: row.is_pinned,
-        priorityRowId: row.id,
-    }));
+    return (data ?? []).map((row) => {
+        const p = row.profiles as any;
+        return {
+            id: p.id,
+            uniqueUserId: p.unique_user_id,
+            name: p.name,
+            profilePicture: p.profile_picture,   // ✅ was spreading as profile_picture
+            dominantColor: p.dominant_color,    // ✅ was spreading as dominant_color
+            relationship: p.relationship ?? null,
+            partnerId: p.partner_id ?? null,
+            rank: row.rank,
+            pinned: row.is_pinned,
+            priorityRowId: row.id,
+        };
+    });
 }
 
 
@@ -110,10 +119,22 @@ export async function getOutgoingPendingRequests(userId: string) {
     if (error) throw error;
 
     const all = data ?? [];
-    return all.filter((req) => {
-        const sentAt = new Date(req.created_at).getTime();
-        return Date.now() - sentAt < TEMP_WINDOW_MS;
-    });
+    return all
+        .filter((req) => {
+            const sentAt = new Date(req.created_at).getTime();
+            return Date.now() - sentAt < TEMP_WINDOW_MS;
+        })
+        .map((req) => {
+            const p = req.profiles as any;
+            return {
+                id: req.id,
+                uniqueUserId: p.unique_user_id,
+                name: p.name,
+                profilePicture: p.profile_picture,   // ✅ remap for consistency
+                dominantColor: p.dominant_color,    // ✅ remap for consistency
+                isPending: true,
+            };
+        });
 }
 
 
@@ -131,6 +152,7 @@ export async function acceptPriorityRequest(
     });
     if (error) throw error;
 }
+
 
 // ─── DECLINE REQUEST ───────────────────────────────────────
 export async function declinePriorityRequest(requestId: string) {
