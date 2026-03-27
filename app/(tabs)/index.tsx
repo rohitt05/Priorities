@@ -1,21 +1,19 @@
 import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesome6 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '@/theme/theme';
 import FloatingSearch from '@/components/ui/FloatingSearch';
 import PriorityList from '@/features/partners/components/PriorityList';
-import { Profile, PriorityUserWithPost } from '@/types/domain';
+import { PriorityUserWithPost } from '@/types/domain';
 import { useBackground } from '@/contexts/BackgroundContext';
-import usersData from '@/data/users.json';
 import FilmSwiperBlob from '@/features/film-my-day/components/FilmSwiperBlob';
 import FilmMyDay from '@/features/film-my-day/components/FilmMyDayContent';
 import { useRouter } from 'expo-router';
-import { useSharedValue, runOnJS } from 'react-native-reanimated';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { useSharedValue } from 'react-native-reanimated';
+import { getMyPriorities } from '@/services/priorityService';
+import { getCurrentUserId } from '@/services/authService';
 
-const PRIORITIES_KEY = '@priorities_list';
 
 export default function HomeScreen() {
     const router = useRouter();
@@ -24,20 +22,14 @@ export default function HomeScreen() {
     const scrollX = useSharedValue(0);
     const { handleColorChange } = useBackground();
 
-    // Load priorities on mount
+
+    // ─── Load priorities from Supabase on mount ───────────────
     useEffect(() => {
         const loadPriorities = async () => {
             try {
-                const saved = await AsyncStorage.getItem(PRIORITIES_KEY);
-                if (saved) {
-                    const parsed = JSON.parse(saved) as Profile[];
-                    const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
-                    const synced = parsed.map(savedUser => {
-                        const latestUser = data.find((u: any) => u.uniqueUserId === savedUser.uniqueUserId);
-                        return latestUser ? { ...savedUser, ...latestUser } : savedUser;
-                    });
-                    setPriorities(synced);
-                }
+                const userId = await getCurrentUserId();
+                const data = await getMyPriorities(userId);
+                setPriorities(data as PriorityUserWithPost[]);
             } catch (error) {
                 console.error('Error loading priorities:', error);
             }
@@ -45,24 +37,12 @@ export default function HomeScreen() {
         loadPriorities();
     }, []);
 
-    // Save priorities
-    useEffect(() => {
-        if (priorities.length > 0) {
-            AsyncStorage.setItem(PRIORITIES_KEY, JSON.stringify(priorities)).catch(console.error);
-        }
-    }, [priorities]);
-
-    const handleAddPriority = (user: Profile) => {
-        if (!priorities.find(p => p.id === user.id)) {
-            setPriorities(prev => [user as any as PriorityUserWithPost, ...prev]);
-        }
-    };
 
     const hasPriorities = priorities.length > 0;
 
+
     return (
         <View style={styles.container}>
-            {/* Main Content Area */}
             <View style={styles.mainContent}>
                 <PriorityList
                     priorities={priorities}
@@ -101,13 +81,14 @@ export default function HomeScreen() {
                     />
                 </View>
             )}
-            <FilmMyDay />
-            <FloatingSearch onAddPriority={handleAddPriority} />
 
+            <FilmMyDay />
+            <FloatingSearch />
             <StatusBar style="auto" />
         </View>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: {
@@ -118,7 +99,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingBottom: 100, // Standard padding
+        paddingBottom: 100,
         width: '100%',
     },
     pointerContainer: {

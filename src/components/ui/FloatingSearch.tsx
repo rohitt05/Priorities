@@ -13,7 +13,8 @@ import {
     FlatList,
     InteractionManager,
     StatusBar,
-    BackHandler
+    BackHandler,
+    Alert
 } from 'react-native';
 import ReAnimated, {
     useSharedValue,
@@ -30,14 +31,23 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { COLORS, FONTS } from '@/theme/theme';
+import { searchUsers } from '@/services/profileService';
+import { sendPriorityRequest, getIncomingRequests } from '@/services/priorityService';
+import { getCurrentUserId } from '@/services/authService';
+import ReceivedPriorityRequests from './ReceivedPriorityRequests';
+
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 
 interface User {
     id: string;
-    uniqueUserId: string;
+    unique_user_id: string;
     name: string;
-    profilePicture: string;
-    dominantColor: string;
+    profile_picture: string;
+    dominant_color: string;
 }
+
 
 interface SearchResultCardProps {
     item: User;
@@ -46,6 +56,7 @@ interface SearchResultCardProps {
     onPress: (userId: string) => void;
     onAddPress: (user: User) => void;
 }
+
 
 const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress }: SearchResultCardProps) => {
     const ITEM_H = 80;
@@ -69,22 +80,19 @@ const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress }: SearchR
             Extrapolate.CLAMP
         );
 
-        return {
-            opacity,
-            transform: [{ scale }]
-        };
+        return { opacity, transform: [{ scale }] };
     });
 
     return (
         <ReAnimated.View style={[styles.resultCard, animatedStyle]}>
             <Pressable
                 style={styles.userInfoContainer}
-                onPress={() => onPress(item.uniqueUserId)}
+                onPress={() => onPress(item.unique_user_id)}
             >
-                <Image source={{ uri: item.profilePicture }} style={styles.resultAvatar} />
+                <Image source={{ uri: item.profile_picture }} style={styles.resultAvatar} />
                 <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.name}</Text>
-                    <Text style={styles.userId}>@{item.uniqueUserId}</Text>
+                    <Text style={styles.userId}>@{item.unique_user_id}</Text>
                 </View>
             </Pressable>
             <Pressable
@@ -99,38 +107,22 @@ const SearchResultCard = ({ item, index, scrollY, onPress, onAddPress }: SearchR
         </ReAnimated.View>
     );
 };
-import usersData from '@/data/users.json';
-import receivedPriorityRequests from '@/data/receivedPriorityRequests.json';
-import ReceivedPriorityRequests from './ReceivedPriorityRequests';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-import { Profile } from '@/types/domain';
-
-interface FloatingSearchProps {
-    onAddPriority?: (user: Profile) => void;
-}
-
-const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
+const FloatingSearch = () => {
     const router = useRouter();
     const isFocused = useIsFocused();
     const [isExpanded, setIsExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-
-    useEffect(() => {
-        if (!isFocused && isExpanded) {
-            setIsExpanded(false);
-        }
-    }, [isFocused]);
-    const [filteredUsers, setFilteredUsers] = useState<Profile[]>([]);
-    const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+    const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [relationship, setRelationship] = useState('');
-    const [hasNewRequests, setHasNewRequests] = useState(true);
-    const CURRENT_USER_ID = "rohit123";
-    const myRequests = (receivedPriorityRequests as any)[CURRENT_USER_ID] || [];
+    const [hasNewRequests, setHasNewRequests] = useState(false);
+    const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [isSending, setIsSending] = useState(false);
 
     const requestListOpacity = useSharedValue(0);
-
     const expandAnim = useRef(new RNAnimated.Value(0)).current;
     const keyboardOffset = useRef(new RNAnimated.Value(0)).current;
     const resultsAnim = useRef(new RNAnimated.Value(0)).current;
@@ -138,46 +130,67 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
     const inputRef = useRef<TextInput>(null);
     const relInputRef = useRef<TextInput>(null);
 
+
+    // ─── Load current user ID on mount ───────────────────────
+    useEffect(() => {
+        getCurrentUserId()
+            .then(setCurrentUserId)
+            .catch(console.error);
+    }, []);
+
+
+    // ─── Load incoming requests ───────────────────────────────
+    const loadIncomingRequests = async () => {
+        if (!currentUserId) return;
+        try {
+            const requests = await getIncomingRequests(currentUserId);
+            setIncomingRequests(requests);
+            setHasNewRequests(requests.length > 0);
+        } catch (err) {
+            console.error('Error loading requests:', err);
+        }
+    };
+
+    useEffect(() => {
+        if (currentUserId) loadIncomingRequests();
+    }, [currentUserId]);
+
+
+    useEffect(() => {
+        if (!isFocused && isExpanded) setIsExpanded(false);
+    }, [isFocused]);
+
+
     useEffect(() => {
         const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
         const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-        const showSubscription = Keyboard.addListener(showEvent, (e) => {
+        const showSub = Keyboard.addListener(showEvent, (e) => {
             RNAnimated.spring(keyboardOffset, {
                 toValue: e.endCoordinates.height + (Platform.OS === 'ios' ? 20 : 10),
-                friction: 8,
-                tension: 40,
-                useNativeDriver: false,
+                friction: 8, tension: 40, useNativeDriver: false,
             }).start();
         });
-
-        const hideSubscription = Keyboard.addListener(hideEvent, () => {
+        const hideSub = Keyboard.addListener(hideEvent, () => {
             RNAnimated.spring(keyboardOffset, {
-                toValue: 0,
-                friction: 8,
-                tension: 40,
-                useNativeDriver: false,
+                toValue: 0, friction: 8, tension: 40, useNativeDriver: false,
             }).start();
         });
 
-        return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
-        };
+        return () => { showSub.remove(); hideSub.remove(); };
     }, []);
+
 
     useEffect(() => {
         RNAnimated.spring(expandAnim, {
             toValue: isExpanded ? 1 : 0,
-            friction: 8,
-            tension: 40,
-            useNativeDriver: false, // width/borderRadius require JS driver
+            friction: 8, tension: 40, useNativeDriver: false,
         }).start();
 
         if (isExpanded) {
             setHasNewRequests(false);
             requestListOpacity.value = withTiming(1, { duration: 400 });
-            // Wait for animation to finish before focusing
+            loadIncomingRequests();
             const task = InteractionManager.runAfterInteractions(() => {
                 inputRef.current?.focus();
             });
@@ -189,6 +202,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         }
     }, [isExpanded]);
 
+
     const resetSearch = () => {
         setSearchQuery('');
         setFilteredUsers([]);
@@ -196,74 +210,75 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         setRelationship('');
     };
 
+
     useEffect(() => {
         RNAnimated.timing(resultsAnim, {
             toValue: (filteredUsers.length > 0 && !selectedUser) ? 1 : 0,
-            duration: 200,
-            useNativeDriver: true,
+            duration: 200, useNativeDriver: true,
         }).start();
     }, [filteredUsers, selectedUser]);
+
 
     useEffect(() => {
         RNAnimated.spring(relationshipAnim, {
             toValue: selectedUser ? 1 : 0,
-            friction: 8,
-            tension: 40,
-            useNativeDriver: true,
+            friction: 8, tension: 40, useNativeDriver: true,
         }).start();
 
-        if (selectedUser) {
-            setTimeout(() => relInputRef.current?.focus(), 100);
-        }
+        if (selectedUser) setTimeout(() => relInputRef.current?.focus(), 100);
     }, [selectedUser]);
 
-    const handleSearch = (text: string) => {
+
+    // ─── Search real Supabase profiles ────────────────────────
+    const handleSearch = async (text: string) => {
         setSearchQuery(text);
         requestListOpacity.value = withTiming(text.length > 0 ? 0 : 1, { duration: 300 });
         if (text.length > 0) {
-            const data = Array.isArray(usersData) ? usersData : (usersData as any).default || [];
-            const filtered = data.filter((user: Profile) =>
-                user.uniqueUserId.toLowerCase().includes(text.toLowerCase())
-            );
-            setFilteredUsers(filtered);
+            try {
+                const excludeIds = currentUserId ? [currentUserId] : [];
+                const results = await searchUsers(text, excludeIds);
+                setFilteredUsers(results as User[]);
+            } catch (err) {
+                console.error('Search error:', err);
+            }
         } else {
             setFilteredUsers([]);
         }
     };
 
-    const handleAddPress = (user: Profile) => {
+
+    const handleAddPress = (user: User) => {
         setSelectedUser(user);
     };
 
 
     useEffect(() => {
         if (!isExpanded) return;
-
-        const onBackPress = () => {
-            setIsExpanded(false);
-            return true; // Prevent default behavior
-        };
-
+        const onBackPress = () => { setIsExpanded(false); return true; };
         const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
         return () => backHandler.remove();
     }, [isExpanded]);
 
+
     const resultScrollY = useSharedValue(0);
     const resultScrollHandler = useAnimatedScrollHandler({
-        onScroll: (event: any) => {
-            resultScrollY.value = event.contentOffset.y;
-        },
+        onScroll: (event: any) => { resultScrollY.value = event.contentOffset.y; },
     });
 
-    const handleSavePriority = () => {
-        if (selectedUser && relationship) {
-            onAddPriority?.({
-                ...selectedUser,
-                relationship: relationship
-            } as any); // Type cast to allow temporary relationship field
+
+    // ─── Send real priority request ───────────────────────────
+    const handleSavePriority = async () => {
+        if (!selectedUser || !relationship || !currentUserId) return;
+        setIsSending(true);
+        try {
+            await sendPriorityRequest(currentUserId, selectedUser.id);
+            setIsExpanded(false);
+            resetSearch();
+        } catch (err: any) {
+            Alert.alert('Error', err.message || 'Could not send request');
+        } finally {
+            setIsSending(false);
         }
-        setIsExpanded(false);
-        resetSearch();
     };
 
 
@@ -271,35 +286,26 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         inputRange: [0, 1],
         outputRange: [60, SCREEN_WIDTH - 40],
     });
-
     const borderRadius = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [30, 20],
     });
-
-    const hitSlop = { top: 20, bottom: 20, left: 20, right: 20 };
-
     const bottomPosition = RNAnimated.add(new RNAnimated.Value(30), keyboardOffset);
-
     const overlayOpacity = expandAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [0, 1],
     });
+    const hitSlop = { top: 20, bottom: 20, left: 20, right: 20 };
+
 
     return (
         <>
             {/* Fullscreen Blurred Overlay */}
             <RNAnimated.View
                 pointerEvents={isExpanded ? 'auto' : 'none'}
-                style={[
-                    styles.fullscreenOverlay,
-                    { opacity: overlayOpacity }
-                ]}
+                style={[styles.fullscreenOverlay, { opacity: overlayOpacity }]}
             >
-                <Pressable
-                    style={StyleSheet.absoluteFill}
-                    onPress={() => setIsExpanded(false)}
-                >
+                <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsExpanded(false)}>
                     <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill}>
                         <LinearGradient
                             colors={['rgba(253, 252, 240, 0.95)', 'rgba(253, 252, 240, 0.7)', 'rgba(253, 252, 240, 0.4)']}
@@ -311,21 +317,18 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                 </Pressable>
             </RNAnimated.View>
 
-            {isExpanded && myRequests.length > 0 && (
+            {isExpanded && incomingRequests.length > 0 && (
                 <RNAnimated.View
                     style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: keyboardOffset,
-                        zIndex: 2500
+                        position: 'absolute', top: 0, left: 0, right: 0,
+                        bottom: keyboardOffset, zIndex: 2500
                     }}
                     pointerEvents="box-none"
                 >
                     <ReceivedPriorityRequests
-                        requests={myRequests}
+                        requests={incomingRequests}
                         opacity={requestListOpacity}
+                        onRequestsChange={setIncomingRequests}
                     />
                 </RNAnimated.View>
             )}
@@ -333,11 +336,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
             <RNAnimated.View
                 style={[
                     styles.container,
-                    {
-                        width: searchBarWidth,
-                        borderRadius: borderRadius,
-                        bottom: bottomPosition,
-                    }
+                    { width: searchBarWidth, borderRadius: borderRadius, bottom: bottomPosition }
                 ]}
             >
                 {/* Relationship Input Overlay */}
@@ -347,12 +346,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                             styles.relationshipContainer,
                             {
                                 opacity: relationshipAnim,
-                                transform: [{
-                                    translateY: relationshipAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [20, 0]
-                                    })
-                                }]
+                                transform: [{ translateY: relationshipAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
                             }
                         ]}
                     >
@@ -366,13 +360,13 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                             onChangeText={setRelationship}
                         />
                         <Pressable
-                            style={({ pressed }) => [
-                                styles.saveButton,
-                                { opacity: pressed ? 0.8 : 1 }
-                            ]}
+                            style={({ pressed }) => [styles.saveButton, { opacity: pressed || isSending ? 0.7 : 1 }]}
                             onPress={handleSavePriority}
+                            disabled={isSending}
                         >
-                            <Text style={styles.saveButtonText}>Add to Priorities</Text>
+                            <Text style={styles.saveButtonText}>
+                                {isSending ? 'Sending...' : 'Send Request'}
+                            </Text>
                         </Pressable>
                     </RNAnimated.View>
                 )}
@@ -384,12 +378,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                             styles.resultsContainer,
                             {
                                 opacity: resultsAnim,
-                                transform: [{
-                                    translateY: resultsAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [10, 0]
-                                    })
-                                }]
+                                transform: [{ translateY: resultsAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }]
                             }
                         ]}
                     >
@@ -404,10 +393,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                                     onPress={(userId) => {
                                         setIsExpanded(false);
                                         resetSearch();
-                                        router.push({
-                                            pathname: '/profile',
-                                            params: { userId }
-                                        });
+                                        router.push({ pathname: '/profile', params: { userId } });
                                     }}
                                     onAddPress={handleAddPress}
                                 />
@@ -425,10 +411,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                     </RNAnimated.View>
                 )}
 
-                <View style={[
-                    styles.searchBar,
-                    { paddingRight: isExpanded ? 5 : 0 } // Sublte right offset when expanded
-                ]}>
+                <View style={[styles.searchBar, { paddingRight: isExpanded ? 5 : 0 }]}>
                     {isExpanded && (
                         <TextInput
                             ref={inputRef}
@@ -444,19 +427,16 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
                     )}
 
                     <Pressable
-                        style={({ pressed }) => [
-                            styles.iconButton,
-                            { opacity: pressed ? 0.6 : 1 }
-                        ]}
+                        style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.6 : 1 }]}
                         onPress={() => isExpanded ? (selectedUser ? setSelectedUser(null) : setIsExpanded(false)) : setIsExpanded(true)}
                         hitSlop={hitSlop}
                     >
                         <Ionicons
-                            name={isExpanded ? (selectedUser ? "arrow-back" : "close") : "search"}
+                            name={isExpanded ? (selectedUser ? 'arrow-back' : 'close') : 'search'}
                             size={28}
                             color={COLORS.background}
                         />
-                        {!isExpanded && hasNewRequests && myRequests.length > 0 && (
+                        {!isExpanded && hasNewRequests && incomingRequests.length > 0 && (
                             <View style={styles.newRequestIndicator}>
                                 <Ionicons name="add" size={10} color={COLORS.primary} />
                             </View>
@@ -467,6 +447,7 @@ const FloatingSearch = ({ onAddPriority }: FloatingSearchProps) => {
         </>
     );
 };
+
 
 const styles = StyleSheet.create({
     container: {
@@ -480,8 +461,8 @@ const styles = StyleSheet.create({
         position: 'absolute',
         width: SCREEN_WIDTH * 1.5,
         height: SCREEN_HEIGHT * 2,
-        bottom: -500, // Far enough down to cover everything
-        right: -100, // Wide enough to cover everything
+        bottom: -500,
+        right: -100,
         zIndex: 1999,
     },
     iconButton: {
@@ -504,7 +485,7 @@ const styles = StyleSheet.create({
         left: 0,
         width: SCREEN_WIDTH - 40,
         maxHeight: 400,
-        justifyContent: 'flex-end', // Push items down to the search bar
+        justifyContent: 'flex-end',
     },
     resultsListContent: {
         flexGrow: 1,
@@ -558,7 +539,7 @@ const styles = StyleSheet.create({
         right: 0,
         width: SCREEN_WIDTH - 40,
         backgroundColor: COLORS.secondary,
-        borderRadius: 20, // Rounded borders
+        borderRadius: 20,
         padding: 24,
         borderWidth: 1,
         borderColor: 'rgba(0, 0, 0, 0.05)',
@@ -580,7 +561,7 @@ const styles = StyleSheet.create({
     relInput: {
         height: 50,
         backgroundColor: 'rgba(255, 255, 255, 0.3)',
-        borderRadius: 12, // Rounded input
+        borderRadius: 12,
         paddingHorizontal: 16,
         fontSize: 15,
         fontFamily: FONTS.regular,
@@ -592,7 +573,7 @@ const styles = StyleSheet.create({
     saveButton: {
         backgroundColor: COLORS.primary,
         height: 50,
-        borderRadius: 25, // Fully rounded button
+        borderRadius: 25,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -617,7 +598,7 @@ const styles = StyleSheet.create({
     avatar: {
         width: 48,
         height: 48,
-        borderRadius: 24, // Circular avatar
+        borderRadius: 24,
         backgroundColor: 'rgba(255, 255, 255, 0.5)',
     },
     userInfo: {
@@ -663,5 +644,6 @@ const styles = StyleSheet.create({
         zIndex: 100,
     },
 });
+
 
 export default FloatingSearch;
