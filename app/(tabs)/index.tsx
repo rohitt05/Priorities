@@ -34,17 +34,15 @@ export default function HomeScreen() {
                 const real = await getMyPriorities(userId);
                 const pending = await getOutgoingPendingRequests(userId);
 
-                const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => {
-                    const profile = req.profiles;
-                    return {
-                        id: profile.id,
-                        uniqueUserId: profile.unique_user_id,
-                        name: profile.name,
-                        profilePicture: profile.profile_picture,
-                        dominantColor: profile.dominant_color ?? COLORS.primary,
-                        isPending: true,
-                    };
-                });
+                // pending is already mapped — no .profiles key exists
+                const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => ({
+                    id: req.id,
+                    uniqueUserId: req.uniqueUserId,
+                    name: req.name,
+                    profilePicture: req.profilePicture,
+                    dominantColor: req.dominantColor ?? COLORS.primary,
+                    isPending: true,
+                }));
 
                 const realIds = new Set((real as any[]).map((r: any) => r.id));
                 const filteredPending = pendingUsers.filter(p => !realIds.has(p.id));

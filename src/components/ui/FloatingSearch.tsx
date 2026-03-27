@@ -194,7 +194,7 @@ const FloatingSearch = () => {
             ]);
             setIncomingRequests(requests);
             setHasNewRequests(requests.length > 0);
-            setExistingPriorityIds(new Set((myPriorities as any[]).map(p => p.id)));
+            setExistingPriorityIds(new Set((myPriorities as any[]).filter(p => p?.id).map(p => p.id)));
         } catch (err) {
             console.error('Error loading requests:', err);
         }

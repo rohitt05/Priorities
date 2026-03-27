@@ -37,21 +37,23 @@ export async function getMyPriorities(userId: string) {
 
     if (error) throw error;
 
-    return (data ?? []).map((row) => {
-        const p = row.profiles as any;
-        return {
-            id: p.id,
-            uniqueUserId: p.unique_user_id,
-            name: p.name,
-            profilePicture: p.profile_picture,   // ✅ was spreading as profile_picture
-            dominantColor: p.dominant_color,    // ✅ was spreading as dominant_color
-            relationship: p.relationship ?? null,
-            partnerId: p.partner_id ?? null,
-            rank: row.rank,
-            pinned: row.is_pinned,
-            priorityRowId: row.id,
-        };
-    });
+    return (data ?? [])
+        .filter((row) => row.profiles != null)          // ← guard: skip orphaned rows
+        .map((row) => {
+            const p = row.profiles as any;
+            return {
+                id: p.id,
+                uniqueUserId: p.unique_user_id,
+                name: p.name,
+                profilePicture: p.profile_picture,
+                dominantColor: p.dominant_color,
+                relationship: p.relationship ?? null,
+                partnerId: p.partner_id ?? null,
+                rank: row.rank,
+                pinned: row.is_pinned,
+                priorityRowId: row.id,
+            };
+        });
 }
 
 
@@ -92,7 +94,9 @@ export async function getIncomingRequests(userId: string) {
         .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data ?? [];
+
+    // guard: skip any request whose sender profile was deleted
+    return (data ?? []).filter((req) => req.profiles != null);
 }
 
 
@@ -121,6 +125,7 @@ export async function getOutgoingPendingRequests(userId: string) {
     const all = data ?? [];
     return all
         .filter((req) => {
+            if (req.profiles == null) return false;     // ← guard: skip null profiles
             const sentAt = new Date(req.created_at).getTime();
             return Date.now() - sentAt < TEMP_WINDOW_MS;
         })
@@ -130,8 +135,8 @@ export async function getOutgoingPendingRequests(userId: string) {
                 id: req.id,
                 uniqueUserId: p.unique_user_id,
                 name: p.name,
-                profilePicture: p.profile_picture,   // ✅ remap for consistency
-                dominantColor: p.dominant_color,    // ✅ remap for consistency
+                profilePicture: p.profile_picture,
+                dominantColor: p.dominant_color,
                 isPending: true,
             };
         });
