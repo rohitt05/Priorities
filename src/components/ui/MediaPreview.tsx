@@ -18,6 +18,7 @@ import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import * as MediaLibrary from 'expo-media-library';
 import StoryTextOverlay, { StoryTextOverlayRef } from './StoryTextOverlay';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { supabase } from '@/lib/supabase';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -26,7 +27,7 @@ interface MediaPreviewProps {
     isFrontCamera: boolean;
     onDiscard: () => void;
     onSave: () => void;
-    recipient?: string; // ✅ ADDED: Optional recipient prop
+    recipient?: string; // name string passed from FilmMyDay
 }
 
 const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
@@ -34,9 +35,10 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     isFrontCamera,
     onDiscard,
     onSave,
-    recipient, // ✅ ADDED: Destructured recipient
+    recipient,
 }) => {
     const [isSaving, setIsSaving] = useState(false);
+    const [isSending, setIsSending] = useState(false); // ✅ NEW: separate sending state
     const [permissionResponse, requestPermission] = MediaLibrary.usePermissions();
     const [isMuted, setIsMuted] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -45,25 +47,21 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const overlayRef = useRef<StoryTextOverlayRef>(null);
     const [isEditingText, setIsEditingText] = useState(false);
 
-    // Use ref to track if component is mounted
     const isMountedRef = useRef(true);
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const isVideo = capturedMedia?.type === 'video';
     const videoSource = isVideo ? capturedMedia.uri : null;
 
-    // Create video player with optimized settings
     const player = useVideoPlayer(videoSource, (player) => {
         player.loop = true;
         player.muted = isMuted;
         player.volume = isMuted ? 0 : 1;
-
         if (videoSource) {
             player.play();
         }
     });
 
-    // Update player mute state when isMuted changes
     useEffect(() => {
         if (player && isVideo && isMountedRef.current) {
             try {
@@ -75,24 +73,18 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         }
     }, [isMuted, player, isVideo]);
 
-    // Track video progress for timeline
     useEffect(() => {
         if (!player || !isVideo) return;
 
         progressIntervalRef.current = setInterval(() => {
             if (!isMountedRef.current) return;
-
             try {
                 if (player.status === 'readyToPlay') {
                     setCurrentTime(player.currentTime);
                     setDuration(player.duration);
-
-                    if (!isVideoReady) {
-                        setIsVideoReady(true);
-                    }
+                    if (!isVideoReady) setIsVideoReady(true);
                 }
             } catch (error) {
-                // Player has been released, clear interval
                 if (progressIntervalRef.current) {
                     clearInterval(progressIntervalRef.current);
                     progressIntervalRef.current = null;
@@ -108,32 +100,16 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         };
     }, [player, isVideo, isVideoReady]);
 
-    // Cleanup on unmount - ROBUST VERSION
     useEffect(() => {
         return () => {
             isMountedRef.current = false;
-
-            // Clear interval first
             if (progressIntervalRef.current) {
                 clearInterval(progressIntervalRef.current);
                 progressIntervalRef.current = null;
             }
-
-            // Then cleanup player with try-catch
             if (player) {
-                try {
-                    player.pause();
-                } catch (error) {
-                    // Player may already be released
-                    console.log('Player pause skipped - already released');
-                }
-
-                try {
-                    player.release();
-                } catch (error) {
-                    // Player may already be released
-                    console.log('Player release skipped - already released');
-                }
+                try { player.pause(); } catch (error) { }
+                try { player.release(); } catch (error) { }
             }
         };
     }, [player]);
@@ -146,6 +122,105 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
         return () => backHandler.remove();
     }, [onDiscard]);
+
+    // ✅ NEW: Upload media to Supabase and insert into messages table
+    const sendToRecipient = async () => {
+        if (!capturedMedia || !recipient) {
+            // No recipient → fall back to original onSave (save to gallery)
+            onSave();
+            return;
+        }
+
+        setIsSending(true);
+        try {
+            // 1. Get logged-in user's UUID
+            const { data: sessionData } = await supabase.auth.getSession();
+            const senderId = sessionData?.session?.user?.id;
+            if (!senderId) {
+                Alert.alert('Error', 'You must be logged in to send media.');
+                return;
+            }
+
+            // 2. Resolve recipient name → UUID from profiles table
+            const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('name', recipient)
+                .single();
+
+            if (profileError || !profileData?.id) {
+                console.error('[MediaPreview] Could not find recipient profile:', profileError);
+                Alert.alert('Error', `Could not find user "${recipient}".`);
+                return;
+            }
+            const receiverId = profileData.id;
+
+            // 3. Determine mime type and file extension
+            const isVideoFile = capturedMedia.type === 'video';
+            const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
+            const ext = isVideoFile ? 'mp4' : 'jpg';
+            const messageType = isVideoFile ? 'video' : 'photo';
+
+            // 4. Build storage path: {senderId}/media/{timestamp}.ext
+            // RLS: (storage.foldername(name))[1] = auth.uid() — first folder must be senderId
+            const fileName = `${senderId}/media/${Date.now()}.${ext}`;
+
+            // 5. Read file and upload to messages bucket
+            const response = await fetch(capturedMedia.uri);
+            const arrayBuffer = await response.arrayBuffer();
+
+            const { error: uploadError } = await supabase.storage
+                .from('messages')
+                .upload(fileName, arrayBuffer, {
+                    contentType: mimeType,
+                    upsert: false,
+                });
+
+            if (uploadError) {
+                console.error('[MediaPreview] Upload failed:', uploadError);
+                Alert.alert('Error', 'Failed to upload media. Please try again.');
+                return;
+            }
+
+            // 6. Create a 7-day signed URL (bucket is private)
+            const { data: signedData, error: signedError } = await supabase.storage
+                .from('messages')
+                .createSignedUrl(fileName, 60 * 60 * 24 * 7);
+
+            if (signedError || !signedData?.signedUrl) {
+                console.error('[MediaPreview] Failed to get signed URL:', signedError);
+                Alert.alert('Error', 'Failed to process media. Please try again.');
+                return;
+            }
+
+            // 7. Insert into messages table
+            const { error: insertError } = await supabase
+                .from('messages')
+                .insert({
+                    sender_id: senderId,
+                    receiver_id: receiverId,
+                    type: messageType,
+                    uri: signedData.signedUrl,
+                    duration_sec: isVideoFile ? Math.round(duration) || null : null,
+                    disappeared: false,
+                });
+
+            if (insertError) {
+                console.error('[MediaPreview] Failed to insert message:', insertError);
+                Alert.alert('Error', 'Failed to send message. Please try again.');
+                return;
+            }
+
+            console.log('[MediaPreview] Sent successfully to', recipient, receiverId);
+            Alert.alert('Sent!', `Your ${messageType} was sent to ${recipient.split(' ')[0]}.`);
+            onDiscard(); // go back to camera after send
+        } catch (err) {
+            console.error('[MediaPreview] sendToRecipient error:', err);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            if (isMountedRef.current) setIsSending(false);
+        }
+    };
 
     const handleDownload = async () => {
         if (!capturedMedia) return;
@@ -217,18 +292,16 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                         />
                     )}
 
-                {/* Interactive Text Overlay */}
-                <StoryTextOverlay 
-                    ref={overlayRef} 
-                    onOpenEditor={() => setIsEditingText(true)}
-                    onCloseEditor={() => setIsEditingText(false)}
-                    mediaUri={capturedMedia.uri}
-                    mediaType={capturedMedia.type}
-                />
-            </View>
+                    <StoryTextOverlay
+                        ref={overlayRef}
+                        onOpenEditor={() => setIsEditingText(true)}
+                        onCloseEditor={() => setIsEditingText(false)}
+                        mediaUri={capturedMedia.uri}
+                        mediaType={capturedMedia.type}
+                    />
+                </View>
 
-            {/* ✅ Moved Video Controls Overlay to higher layer - Hide when editing */}
-            {isVideo && isVideoReady && !isEditingText && (
+                {isVideo && isVideoReady && !isEditingText && (
                     <View style={styles.videoControlsOverlay} pointerEvents="box-none">
                         <TouchableOpacity
                             style={styles.muteButton}
@@ -273,7 +346,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             <Feather name="trash-2" size={24} color="#FF4040" />
                         </TouchableOpacity>
 
-                        {/* RIGHT GROUP: Download + Send/Film Button */}
+                        {/* RIGHT GROUP: Edit + Download + Send Button */}
                         <View style={styles.rightGroup}>
                             {/* Edit Button */}
                             <TouchableOpacity
@@ -298,15 +371,20 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                                 )}
                             </TouchableOpacity>
 
-                            {/* ✅ UPDATED: Dynamic Text Capsule Button */}
+                            {/* ✅ UPDATED: Send button now calls sendToRecipient */}
                             <TouchableOpacity
-                                style={styles.capsuleButton}
-                                onPress={onSave}
+                                style={[styles.capsuleButton, isSending && { opacity: 0.6 }]}
+                                onPress={sendToRecipient}
                                 activeOpacity={0.7}
+                                disabled={isSending}
                             >
-                                <Text style={styles.capsuleButtonText}>
-                                    {recipient ? `Send ${recipient.split(' ')[0]}` : '+ Film of the Day'}
-                                </Text>
+                                {isSending ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Text style={styles.capsuleButtonText}>
+                                        {recipient ? `Send ${recipient.split(' ')[0]}` : '+ Film of the Day'}
+                                    </Text>
+                                )}
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -349,8 +427,6 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%'
     },
-
-    // Video Controls Overlay
     videoControlsOverlay: {
         position: 'absolute',
         top: STATUS_BAR_HEIGHT + 26,
@@ -394,8 +470,6 @@ const styles = StyleSheet.create({
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 3,
     },
-
-    // Controls Layout
     bottomControls: {
         paddingHorizontal: 24,
         paddingBottom: 50,
@@ -408,15 +482,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         width: '100%',
     },
-
-    // Right Side Grouping
     rightGroup: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
     },
-
-    // Button Styles
     deleteButton: {
         width: 56,
         height: 56,
