@@ -11,8 +11,9 @@ import FilmSwiperBlob from '@/features/film-my-day/components/FilmSwiperBlob';
 import FilmMyDay from '@/features/film-my-day/components/FilmMyDayContent';
 import { useRouter } from 'expo-router';
 import { useSharedValue } from 'react-native-reanimated';
-import { getMyPriorities } from '@/services/priorityService';
+import { getMyPriorities, getOutgoingPendingRequests } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
+import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 
 export default function HomeScreen() {
@@ -21,21 +22,39 @@ export default function HomeScreen() {
     const [activeUser, setActiveUser] = useState<PriorityUserWithPost | null>(null);
     const scrollX = useSharedValue(0);
     const { handleColorChange } = useBackground();
+    const { refreshKey } = usePrioritiesRefresh(); // 🆕
 
 
-    // ─── Load priorities from Supabase on mount ───────────────
     useEffect(() => {
         const loadPriorities = async () => {
             try {
                 const userId = await getCurrentUserId();
-                const data = await getMyPriorities(userId);
-                setPriorities(data as PriorityUserWithPost[]);
+
+                const real = await getMyPriorities(userId);
+                const pending = await getOutgoingPendingRequests(userId);
+
+                const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => {
+                    const profile = req.profiles;
+                    return {
+                        id: profile.id,
+                        uniqueUserId: profile.unique_user_id,
+                        name: profile.name,
+                        profilePicture: profile.profile_picture,
+                        dominantColor: profile.dominant_color ?? COLORS.primary,
+                        isPending: true,
+                    };
+                });
+
+                const realIds = new Set((real as any[]).map((r: any) => r.id));
+                const filteredPending = pendingUsers.filter(p => !realIds.has(p.id));
+
+                setPriorities([...(real as PriorityUserWithPost[]), ...filteredPending]);
             } catch (error) {
                 console.error('Error loading priorities:', error);
             }
         };
         loadPriorities();
-    }, []);
+    }, [refreshKey]); // 🆕 re-runs whenever triggerRefresh() is called
 
 
     const hasPriorities = priorities.length > 0;

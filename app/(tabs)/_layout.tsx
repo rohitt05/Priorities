@@ -12,9 +12,12 @@ import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBar
 import { UserTimelineProvider, useUserTimeline } from '@/contexts/UserTimelineContext';
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 import { MediaInboxProvider } from '@/contexts/MediaInboxContext';
+import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext'; // 🆕
+
 
 const { Navigator } = createMaterialTopTabNavigator();
 export const MaterialTopTabs = withLayoutContext(Navigator);
+
 
 const TransparentTheme = {
     ...DefaultTheme,
@@ -23,6 +26,7 @@ const TransparentTheme = {
         background: 'transparent',
     },
 };
+
 
 const ZigzagScribble = ({ color, opacity, style }: any) => (
     <View style={[{ flexDirection: 'row', height: 14, alignItems: 'center' }, style]}>
@@ -45,6 +49,7 @@ const ZigzagScribble = ({ color, opacity, style }: any) => (
         ))}
     </View>
 );
+
 
 const ScribbleIndicator = ({ state, position, layout }: any) => {
     const tabCount = state.routes.length || 2;
@@ -85,9 +90,10 @@ const ScribbleIndicator = ({ state, position, layout }: any) => {
     );
 };
 
+
 function TabLayoutContent() {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
-    const { priorities, scrollToUserIndex } = useUserTimeline(); // ✅ Extract priorities and scroll function
+    const { priorities, scrollToUserIndex } = useUserTimeline();
     const { width } = Dimensions.get('window');
     const { tabBarAnim } = useTabBarVisibility();
 
@@ -218,7 +224,9 @@ export default function TabLayout() {
                 <MediaInboxProvider>
                     <UserTimelineProvider>
                         <VoiceNoteRecordingProvider>
-                            <TabLayoutContent />
+                            <PrioritiesRefreshProvider>
+                                <TabLayoutContent />
+                            </PrioritiesRefreshProvider>
                         </VoiceNoteRecordingProvider>
                     </UserTimelineProvider>
                 </MediaInboxProvider>
@@ -226,6 +234,7 @@ export default function TabLayout() {
         </BackgroundProvider>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: { flex: 1 },

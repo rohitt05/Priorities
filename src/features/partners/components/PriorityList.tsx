@@ -29,7 +29,7 @@ import { Feather, MaterialCommunityIcons, Entypo, Ionicons } from '@expo/vector-
 import { COLORS, FONTS } from '@/theme/theme';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // 🔄 NEW
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Profile, PriorityUserWithPost } from '@/types/domain';
 import PriorityMenuModal, { AnchorPosition } from './PriorityMenuModal';
@@ -39,11 +39,12 @@ import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
 import usersData from '@/data/users.json';
 
+
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-const PINNED_KEY = 'priority_pinned_id'; // 🔄 NEW
+const PINNED_KEY = 'priority_pinned_id';
 
 const LAYOUT = {
     CARD_WIDTH: SCREEN_WIDTH * 0.74,
@@ -66,12 +67,14 @@ const Z_INDEX = {
 
 const BLOB_PATH = 'M46.3,-76.3C59.5,-69.1,69.7,-56.3,77.3,-42.3C84.9,-28.3,89.9,-13.1,88.6,1.4C87.3,15.9,79.7,29.7,70.3,41.9C60.9,54.1,49.7,64.7,37.1,71.2C24.5,77.7,10.5,80.1,-2.9,78.8C-16.3,77.5,-29.1,72.5,-41.4,65.6C-53.7,58.7,-65.5,49.9,-74.1,38.6C-82.7,27.3,-88.1,13.5,-86.9,0.3C-85.7,-12.9,-77.9,-25.5,-68.2,-36.2C-58.5,-46.9,-46.9,-55.7,-34.5,-63.3C-22.1,-70.9,-8.9,-77.3,5.6,-78.7C20.1,-80.1,40.2,-76.5,46.3,-76.3Z';
 
+
 export interface PriorityListProps {
     priorities: PriorityUserWithPost[];
     onColorChange?: (color: string) => void;
     onActiveUserChange?: (user: PriorityUserWithPost) => void;
     scrollX?: SharedValue<number>;
 }
+
 
 const calculateOptionsButtonPosition = (size: number, angleDeg: number = -45, buttonRadius: number = 18) => {
     const radius = size / 2;
@@ -81,6 +84,7 @@ const calculateOptionsButtonPosition = (size: number, angleDeg: number = -45, bu
         left: radius + radius * Math.cos(angleRad) - buttonRadius,
     };
 };
+
 
 const BlobBackground = React.memo(({ color, size, isActive }: { color: string; size: number; isActive: boolean }) => {
     if (!isActive) return null;
@@ -94,6 +98,7 @@ const BlobBackground = React.memo(({ color, size, isActive }: { color: string; s
     );
 });
 BlobBackground.displayName = 'BlobBackground';
+
 
 const CurvedText = React.memo(({ text, width, color, isActive }: { text: string; width: number; color?: string; isActive: boolean }) => {
     const scale = useSharedValue(isActive ? 1 : 0);
@@ -119,13 +124,9 @@ const CurvedText = React.memo(({ text, width, color, isActive }: { text: string;
         <Animated.View pointerEvents="none" style={[styles.curvedTextWrapper, { width: svgWidth, height: textRadius * 0.5 }, animatedStyle]}>
             <Svg width={svgWidth} height={textRadius + 10} viewBox={`0 0 ${svgWidth} ${textRadius + 10}`}>
                 <Defs><Path id="outerArc" d={d} fill="none" /></Defs>
-                
-                {/* 🆕 Shadow/Dancing Layer: Using the script font and slightly offset */}
                 <SvgText fill={COLORS.textSecondary} fontSize="56" fontFamily="DancingScript-Bold" opacity="0.3" textAnchor="middle" letterSpacing="1" dy="10">
                     <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
                 </SvgText>
-
-                {/* Main Name Layer */}
                 <SvgText fill={COLORS.primary} fontSize="34" fontFamily={FONTS.bold} fontWeight="900" textAnchor="middle" letterSpacing="2">
                     <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
                 </SvgText>
@@ -134,6 +135,7 @@ const CurvedText = React.memo(({ text, width, color, isActive }: { text: string;
     );
 });
 CurvedText.displayName = 'CurvedText';
+
 
 const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
     const scale = useSharedValue(visible ? 1 : 0);
@@ -165,6 +167,7 @@ const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
 });
 CallIcons.displayName = 'CallIcons';
 
+
 const OptionsButton = React.memo(({ onPress, size }: {
     onPress: (anchor: AnchorPosition) => void;
     size: number;
@@ -195,12 +198,13 @@ const OptionsButton = React.memo(({ onPress, size }: {
 });
 OptionsButton.displayName = 'OptionsButton';
 
+
 import { MediaType } from '@/types/domain';
+
 
 const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; size: number; onPress: () => void }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
 
-    // Determine color and icon based on type, with fallbacks
     let accentColor = '#007AFF';
     let iconName = 'notifications';
 
@@ -228,7 +232,6 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
                 <Ionicons name={iconName as any} size={11} color={accentColor} />
                 <View style={[styles.thoughtDotIndicator, { backgroundColor: accentColor }]} />
             </View>
-
             <View style={styles.thoughtBubblesTrail}>
                 <View style={styles.thoughtBubbleSmall} />
                 <View style={styles.thoughtBubbleTiny} />
@@ -237,6 +240,7 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
     );
 });
 UnreadIndicator.displayName = 'UnreadIndicator';
+
 
 const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; size: number }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 20), [size]);
@@ -248,6 +252,7 @@ const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; s
 });
 SeenIndicator.displayName = 'SeenIndicator';
 
+
 const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     item: any;
     isActive: boolean;
@@ -256,17 +261,10 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     const dominantColor = item.dominantColor || COLORS.primary;
     const router = useRouter();
     const tapHoldContext = useContext(TapHoldContext);
-    const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800]; // Phone call rhythm
+    const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800];
 
-    const startCallVibration = () => {
-        console.log(`[Vibration] Initiating call for: ${item.name}`);
-        Vibration.vibrate(VIBRATION_PATTERN, true);
-    };
-
-    const stopCallVibration = () => {
-        console.log(`[Vibration] Ended focus for: ${item.name}`);
-        Vibration.cancel();
-    };
+    const startCallVibration = () => { Vibration.vibrate(VIBRATION_PATTERN, true); };
+    const stopCallVibration = () => { Vibration.cancel(); };
 
     const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
     const { unreadMessages, myLastSentStatus, markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
@@ -296,7 +294,6 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
     const handleSendStatus = useCallback(() => {
         const userId = item.uniqueUserId || item.id;
         recordMessageSent(userId);
-        // Simulate them seeing it after a few seconds
         setTimeout(() => simulateCounterpartSeen(userId), 3000);
     }, [item.id, item.uniqueUserId, recordMessageSent, simulateCounterpartSeen]);
 
@@ -309,11 +306,7 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
         .onStart(() => runOnJS(startRecording)())
         .onUpdate((e) => runOnJS(updateDrag)(e.translationX))
         .onEnd((e) => {
-            // Check if it was a "Send" action (positive X translation typically in VoiceNote)
-            // For now we assume if it ended and it wasn't cancelled, it was sent.
-            if (e.translationX > 50) {
-                runOnJS(handleSendStatus)();
-            }
+            if (e.translationX > 50) runOnJS(handleSendStatus)();
             runOnJS(endFromTranslationX)(e.translationX);
         });
 
@@ -321,18 +314,39 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
 
     const callVibrationGesture = Gesture.LongPress()
         .minDuration(400)
-        .onStart(() => {
-            'worklet';
-            runOnJS(startCallVibration)();
-        })
-        .onFinalize(() => {
-            'worklet';
-            runOnJS(stopCallVibration)();
-        });
+        .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
+        .onFinalize(() => { 'worklet'; runOnJS(stopCallVibration)(); });
+
+    // ─── Pending card ─────────────────────────────────────────
+    if (item.isPending) {
+        return (
+            <View style={styles.cardContainer}>
+                <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
+                <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
+                <View style={styles.imageWrapper}>
+                    <Animated.View
+                        style={[{
+                            zIndex: Z_INDEX.IMAGE,
+                            opacity: 0.35,
+                            flex: 1,
+                            width: '100%',
+                            height: '100%',
+                            borderRadius: LAYOUT.IMAGE_SIZE / 2,
+                            overflow: 'hidden',
+                        }]}
+                    >
+                        <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                    </Animated.View>
+                    <View style={styles.pendingOverlay} pointerEvents="none">
+                        <Ionicons name="hourglass-outline" size={28} color="rgba(255,255,255,0.9)" />
+                    </View>
+                </View>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.cardContainer}>
-            {/* Background Trigger Zone: Captures tap/hold around the content */}
             <GestureDetector gesture={callVibrationGesture}>
                 <View style={StyleSheet.absoluteFill} />
             </GestureDetector>
@@ -345,7 +359,15 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
                     <Animated.View
                         collapsable={false}
                         ref={imageWrapperRef as any}
-                        style={[{ zIndex: Z_INDEX.IMAGE, opacity: recordingForThisCard ? 0 : 1, flex: 1, width: '100%', height: '100%', borderRadius: LAYOUT.IMAGE_SIZE / 2, overflow: 'hidden' }]}
+                        style={[{
+                            zIndex: Z_INDEX.IMAGE,
+                            opacity: recordingForThisCard ? 0 : 1,
+                            flex: 1,
+                            width: '100%',
+                            height: '100%',
+                            borderRadius: LAYOUT.IMAGE_SIZE / 2,
+                            overflow: 'hidden',
+                        }]}
                     >
                         <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
                     </Animated.View>
@@ -383,20 +405,27 @@ const PriorityCard = React.memo(({ item, isActive, onOptionsPress }: {
         </View>
     );
 },
-    (prev, next) => prev.isActive === next.isActive && prev.item.id === next.item.id && prev.item.hasNewPost === next.item.hasNewPost
+    // ✅ FIX: profilePicture added so card re-renders when image loads after accept
+    (prev, next) =>
+        prev.isActive === next.isActive &&
+        prev.item.id === next.item.id &&
+        prev.item.hasNewPost === next.item.hasNewPost &&
+        prev.item.profilePicture === next.item.profilePicture
 );
 PriorityCard.displayName = 'PriorityCard';
+
 
 const hexToRgba = (hex: string, alpha: number) => {
     if (!hex || hex[0] !== '#') return `rgba(0,0,0,${alpha})`;
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
+
+
 const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColor }: { direction: 'left' | 'right', count: number, onPress: () => void, bgColor: string }) => {
     const indicatorColor = hexToRgba(bgColor, 0.85);
-
     return (
         <TouchableOpacity
             activeOpacity={0.8}
@@ -425,6 +454,7 @@ const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColo
 });
 PriorityMessageIndicator.displayName = 'PriorityMessageIndicator';
 
+
 const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorChange, onActiveUserChange, scrollX }) => {
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => { if (scrollX) scrollX.value = event.contentOffset.x; },
@@ -441,14 +471,10 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
 
     const { unreadMessages } = useMediaInbox();
 
-    // 🔄 NEW: load persisted pinnedId on mount
     useEffect(() => {
-        AsyncStorage.getItem(PINNED_KEY).then(val => {
-            if (val) setPinnedId(val);
-        });
+        AsyncStorage.getItem(PINNED_KEY).then(val => { if (val) setPinnedId(val); });
     }, []);
 
-    // 🔄 NEW: save pinnedId whenever it changes
     useEffect(() => {
         if (pinnedId) AsyncStorage.setItem(PINNED_KEY, pinnedId);
         else AsyncStorage.removeItem(PINNED_KEY);
@@ -484,7 +510,11 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         }
     }).current;
 
-    const getItemLayout = useCallback((_: any, index: number) => ({ length: LAYOUT.FULL_ITEM_WIDTH, offset: LAYOUT.FULL_ITEM_WIDTH * index, index }), []);
+    const getItemLayout = useCallback((_: any, index: number) => ({
+        length: LAYOUT.FULL_ITEM_WIDTH,
+        offset: LAYOUT.FULL_ITEM_WIDTH * index,
+        index,
+    }), []);
 
     const openPinSheetForUser = useCallback((user: PriorityUserWithPost, anchor: AnchorPosition) => {
         setSelectedUser(user);
@@ -498,9 +528,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         setTimeout(() => flatListRef.current?.scrollToIndex({ index: centerIndex, animated: true }), 100);
     }, [selectedUser, centerIndex]);
 
-    const handleUnpin = useCallback(() => {
-        setPinnedId(null);
-    }, []);
+    const handleUnpin = useCallback(() => { setPinnedId(null); }, []);
 
     const handleMicPress = useCallback(() => {
         setIsPinSheetVisible(false);
@@ -609,6 +637,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     );
 };
 
+
 const PriorityList: React.FC<PriorityListProps> = (props) => {
     return (
         <GestureHandlerRootView style={styles.rootContainer}>
@@ -618,6 +647,7 @@ const PriorityList: React.FC<PriorityListProps> = (props) => {
         </GestureHandlerRootView>
     );
 };
+
 
 const styles = StyleSheet.create({
     rootContainer: { flex: 1 },
@@ -635,119 +665,32 @@ const styles = StyleSheet.create({
     callIconSpacer: { width: 12 },
     optionsButton: { position: 'absolute', zIndex: Z_INDEX.OPTIONS_BUTTON, elevation: 10 },
     optionsIconBlur: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255, 255, 255, 0.9)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3.84, elevation: 5, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.5)' },
-    thoughtBubbleContainer: {
+    thoughtBubbleContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR, alignItems: 'center' },
+    thoughtMainBubble: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20, gap: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 6, borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)' },
+    thoughtDotIndicator: { width: 6, height: 6, borderRadius: 3 },
+    thoughtBubblesTrail: { alignItems: 'center', marginTop: 1, marginRight: -10 },
+    thoughtBubbleSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', marginBottom: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 2 },
+    thoughtBubbleTiny: { width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: '#FFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 },
+    seenLabelContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR, backgroundColor: 'rgba(255, 255, 255, 0.9)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+    seenText: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+    edgeIndicatorContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR },
+    indicatorLeft: { top: 80, left: 0 },
+    indicatorRight: { bottom: 80, right: 0 },
+    indicatorGroup: { width: 42, height: 42 },
+    indicatorCircle: { position: 'absolute', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    indicatorDot: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
+    indicatorCountTextSmall: { fontSize: 12, fontFamily: FONTS.bold, color: COLORS.text, fontWeight: '800' },
+    pendingOverlay: {
         position: 'absolute',
-        zIndex: Z_INDEX.INDICATOR,
-        alignItems: 'center',
-    },
-    thoughtMainBubble: {
-        backgroundColor: '#FFF',
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 10,
-        paddingVertical: 7,
-        borderRadius: 20,
-        gap: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 3,
-        elevation: 6,
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.03)',
-    },
-    thoughtDotIndicator: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-    },
-    thoughtBubblesTrail: {
-        alignItems: 'center',
-        marginTop: 1,
-        marginRight: -10, // Offset to point naturally toward the avatar center
-    },
-    thoughtBubbleSmall: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#FFF',
-        marginBottom: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-        elevation: 2,
-    },
-    thoughtBubbleTiny: {
-        width: 3.5,
-        height: 3.5,
-        borderRadius: 2,
-        backgroundColor: '#FFF',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-        elevation: 1,
-    },
-    seenLabelContainer: {
-        position: 'absolute',
-        zIndex: Z_INDEX.INDICATOR,
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    seenText: {
-        fontSize: 10,
-        fontFamily: FONTS.bold,
-        color: COLORS.textSecondary,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    edgeIndicatorContainer: {
-        position: 'absolute',
-        zIndex: Z_INDEX.INDICATOR,
-    },
-    indicatorLeft: {
-        top: 80, // Moved more upwards
+        top: 0,
         left: 0,
-    },
-    indicatorRight: {
-        bottom: 80, // Moved more downwards
         right: 0,
-    },
-    indicatorGroup: {
-         width: 42,
-         height: 42,
-    },
-    indicatorCircle: {
-        position: 'absolute',
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        alignItems: 'center',
+        bottom: 0,
+        borderRadius: LAYOUT.IMAGE_SIZE / 2,
         justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-    },
-    indicatorDot: {
-        position: 'absolute',
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-    },
-    indicatorCountTextSmall: {
-        fontSize: 12,
-        fontFamily: FONTS.bold,
-        color: COLORS.text,
-        fontWeight: '800',
+        alignItems: 'center',
+        zIndex: Z_INDEX.IMAGE + 1,
+        backgroundColor: 'rgba(0,0,0,0.15)',
     },
 });
 

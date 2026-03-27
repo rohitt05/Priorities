@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard, Easing } from 'react-native';
 import { signUp } from '@/services/authService';
 import { updateProfile, uploadProfilePicture, isHandleAvailable } from '@/services/profileService';
@@ -12,7 +12,9 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
+
 const PALETTE = Object.values(COLORS.PALETTE);
+
 
 const STEPS = [
     { key: 'name', label: 'What should we call you?' },
@@ -22,6 +24,7 @@ const STEPS = [
     { key: 'birthday', label: 'When is your birthday?' },
     { key: 'picture', label: 'Add a beautiful photo' },
 ];
+
 
 export default function SignUpScreen() {
     const [stepIndex, setStepIndex] = useState(0);
@@ -39,6 +42,7 @@ export default function SignUpScreen() {
 
     const currentStepObj = STEPS[stepIndex];
 
+
     const pickImage = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -53,6 +57,7 @@ export default function SignUpScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
     };
+
 
     const animateTransition = (direction: 'next' | 'prev', callback: () => void) => {
         const offset = direction === 'next' ? -50 : 50;
@@ -70,16 +75,17 @@ export default function SignUpScreen() {
         });
     };
 
+
     const nextStep = async () => {
         if (loading) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        
-        if (currentStepObj.key === 'name' && !name) {
+
+        if (currentStepObj.key === 'name' && !name.trim()) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             return Alert.alert('Required', 'Please enter your name');
         }
         if (currentStepObj.key === 'handle') {
-            if (!handle) return Alert.alert('Required', 'Handle is required');
+            if (!handle.trim()) return Alert.alert('Required', 'Handle is required');
             setLoading(true);
             const available = await isHandleAvailable(handle).catch(() => false);
             setLoading(false);
@@ -90,13 +96,14 @@ export default function SignUpScreen() {
         }
         if (currentStepObj.key === 'email' && (!email || !email.includes('@'))) return Alert.alert('Invalid', 'Valid email required');
         if (currentStepObj.key === 'password' && password.length < 6) return Alert.alert('Short', 'Password must be at least 6 characters');
-        
+
         if (stepIndex < STEPS.length - 1) {
             animateTransition('next', () => setStepIndex(stepIndex + 1));
         } else {
             finalizeSignUp();
         }
     };
+
 
     const prevStep = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -107,6 +114,7 @@ export default function SignUpScreen() {
         }
     };
 
+
     const finalizeSignUp = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setLoading(true);
@@ -114,25 +122,49 @@ export default function SignUpScreen() {
             // Pick every next 3rd color by counting rows
             const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
             const totalUsers = count || 0;
-            const skipCount = 3; // jump 3 colors at a time
+            const skipCount = 3;
             const colorIndex = (totalUsers * skipCount) % PALETTE.length;
             const deterministicColor = PALETTE[colorIndex];
 
             const signupData = await signUp(email, password, name, handle, deterministicColor);
-            
             const user = signupData.user;
-            if (user) {
-                const updates: any = {};
-                if (birthday) updates.birthday = birthday;
-                
-                if (Object.keys(updates).length > 0) {
-                    await updateProfile(user.id, updates);
-                }
 
+            if (user) {
+                // Set unique_user_id directly — excluded from updateProfile's Pick type by design
+                const { error: handleError } = await supabase
+                    .from('profiles')
+                    .update({ unique_user_id: handle })
+                    .eq('id', user.id);
+                if (handleError) throw handleError;
+
+                // Update allowed profile fields
+                await updateProfile(user.id, {
+                    name,
+                    dominant_color: deterministicColor,
+                    ...(birthday ? { birthday } : {}),
+                });
+
+                // Upload picture with retry
                 if (imageUri) {
-                    await uploadProfilePicture(user.id, imageUri);
+                    let attempts = 0;
+                    let uploadError: any = null;
+                    while (attempts < 3) {
+                        try {
+                            await uploadProfilePicture(user.id, imageUri);
+                            uploadError = null;
+                            break;
+                        } catch (e) {
+                            uploadError = e;
+                            attempts++;
+                            await new Promise(res => setTimeout(res, 600 * attempts));
+                        }
+                    }
+                    if (uploadError) {
+                        console.warn('Profile picture upload failed:', uploadError.message);
+                    }
                 }
             }
+
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             // Will navigate to tabs or login based on layout state
         } catch (error: any) {
@@ -143,34 +175,91 @@ export default function SignUpScreen() {
         }
     };
 
+
     const renderInput = () => {
         switch (currentStepObj.key) {
-            case 'name': return <TextInput style={styles.input} placeholder="John Doe" placeholderTextColor="rgba(44,39,32,0.4)" value={name} onChangeText={setName} autoFocus />;
-            case 'handle': return <TextInput style={styles.input} placeholder="johndoe" placeholderTextColor="rgba(44,39,32,0.4)" value={handle} onChangeText={setHandle} autoCapitalize="none" autoFocus />;
-            case 'email': return <TextInput style={styles.input} placeholder="john@example.com" placeholderTextColor="rgba(44,39,32,0.4)" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoFocus />;
-            case 'password': return <TextInput style={styles.input} placeholder="••••••••" placeholderTextColor="rgba(44,39,32,0.4)" value={password} onChangeText={setPassword} secureTextEntry autoFocus />;
-            case 'birthday': return <TextInput style={styles.input} placeholder="YYYY-MM-DD" placeholderTextColor="rgba(44,39,32,0.4)" value={birthday} onChangeText={setBirthday} autoFocus />;
-            case 'picture': return (
-                <View style={styles.imagePickerOuter}>
-                    <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
-                        {imageUri ? (
-                            <Image source={imageUri} style={styles.image} contentFit="cover" transition={300} />
-                        ) : (
-                            <Feather name="camera" size={36} color={COLORS.textSecondary} />
-                        )}
-                    </TouchableOpacity>
-                    <Text style={styles.imageSubtext}>{imageUri ? 'Looking good!' : 'Tap to select'}</Text>
-                </View>
-            );
+            case 'name':
+                return (
+                    <TextInput
+                        style={styles.input}
+                        placeholder="John Doe"
+                        placeholderTextColor="rgba(44,39,32,0.4)"
+                        value={name}
+                        onChangeText={setName}
+                        autoFocus
+                    />
+                );
+            case 'handle':
+                return (
+                    <TextInput
+                        style={styles.input}
+                        placeholder="johndoe"
+                        placeholderTextColor="rgba(44,39,32,0.4)"
+                        value={handle}
+                        onChangeText={setHandle}
+                        autoCapitalize="none"
+                        autoFocus
+                    />
+                );
+            case 'email':
+                return (
+                    <TextInput
+                        style={styles.input}
+                        placeholder="john@example.com"
+                        placeholderTextColor="rgba(44,39,32,0.4)"
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoFocus
+                    />
+                );
+            case 'password':
+                return (
+                    <TextInput
+                        style={styles.input}
+                        placeholder="••••••••"
+                        placeholderTextColor="rgba(44,39,32,0.4)"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                        autoFocus
+                    />
+                );
+            case 'birthday':
+                return (
+                    <TextInput
+                        style={styles.input}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor="rgba(44,39,32,0.4)"
+                        value={birthday}
+                        onChangeText={setBirthday}
+                        autoFocus
+                    />
+                );
+            case 'picture':
+                return (
+                    <View style={styles.imagePickerOuter}>
+                        <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+                            {imageUri ? (
+                                <Image source={imageUri} style={styles.image} contentFit="cover" transition={300} />
+                            ) : (
+                                <Feather name="camera" size={36} color={COLORS.textSecondary} />
+                            )}
+                        </TouchableOpacity>
+                        <Text style={styles.imageSubtext}>{imageUri ? 'Looking good!' : 'Tap to select'}</Text>
+                    </View>
+                );
         }
     };
+
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
             <LinearGradient colors={['#FDFCF0', '#F7F4E9', '#E9DFB4']} style={StyleSheet.absoluteFillObject} />
-            
+
             <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={prevStep} hitSlop={{top:20, bottom:20, left:20, right:20}}>
+                <TouchableOpacity style={styles.backButton} onPress={prevStep} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
                     <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
                 <View style={styles.progressContainer}>
@@ -181,21 +270,23 @@ export default function SignUpScreen() {
             <View style={styles.content}>
                 <Animated.View style={[{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }, styles.card]}>
                     <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-                    
+
                     <Text style={styles.title}>{currentStepObj.label}</Text>
-                    
+
                     <View style={styles.inputContainer}>
                         {renderInput()}
                     </View>
 
-                    <TouchableOpacity 
-                        style={[styles.button, loading && { opacity: 0.7 }]} 
-                        onPress={nextStep} 
+                    <TouchableOpacity
+                        style={[styles.button, loading && { opacity: 0.7 }]}
+                        onPress={nextStep}
                         disabled={loading}
                         activeOpacity={0.8}
                     >
                         {loading ? <ActivityIndicator color={COLORS.surface} /> : (
-                            <Text style={styles.buttonText}>{stepIndex === STEPS.length - 1 ? 'Finish & Enter' : 'Continue'}</Text>
+                            <Text style={styles.buttonText}>
+                                {stepIndex === STEPS.length - 1 ? 'Finish & Enter' : 'Continue'}
+                            </Text>
                         )}
                     </TouchableOpacity>
 
@@ -209,6 +300,7 @@ export default function SignUpScreen() {
         </KeyboardAvoidingView>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
@@ -240,7 +332,7 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: SPACING.xl,
         justifyContent: 'center',
-        paddingBottom: 100, // push up
+        paddingBottom: 100,
     },
     card: {
         borderRadius: 24,
@@ -254,10 +346,10 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.05,
         shadowRadius: 20,
     },
-    title: { 
-        fontSize: FONT_SIZES.xl, 
-        fontFamily: FONTS.bold, 
-        color: COLORS.primary, 
+    title: {
+        fontSize: FONT_SIZES.xl,
+        fontFamily: FONTS.bold,
+        color: COLORS.primary,
         marginBottom: SPACING.xxl,
         letterSpacing: -0.5,
         textAlign: 'center',
@@ -265,29 +357,29 @@ const styles = StyleSheet.create({
     inputContainer: {
         marginBottom: SPACING.xl,
     },
-    input: { 
-        borderBottomWidth: 1.5, 
-        borderColor: 'rgba(44,39,32,0.15)', 
-        paddingVertical: SPACING.md, 
+    input: {
+        borderBottomWidth: 1.5,
+        borderColor: 'rgba(44,39,32,0.15)',
+        paddingVertical: SPACING.md,
         fontSize: 22,
         fontFamily: FONTS.semibold,
         color: COLORS.primary,
         textAlign: 'center',
     },
-    button: { 
-        backgroundColor: COLORS.primary, 
-        paddingVertical: 18, 
-        borderRadius: 16, 
-        alignItems: 'center', 
+    button: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 18,
+        borderRadius: 16,
+        alignItems: 'center',
         shadowColor: COLORS.primary,
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.2,
         shadowRadius: 12,
         elevation: 6,
     },
-    buttonText: { 
-        color: COLORS.surface, 
-        fontFamily: FONTS.bold, 
+    buttonText: {
+        color: COLORS.surface,
+        fontFamily: FONTS.bold,
         fontSize: FONT_SIZES.md,
         letterSpacing: 1,
     },
@@ -330,5 +422,5 @@ const styles = StyleSheet.create({
         fontSize: FONT_SIZES.sm,
         fontFamily: FONTS.medium,
         color: COLORS.textSecondary,
-    }
+    },
 });

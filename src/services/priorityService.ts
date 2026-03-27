@@ -124,14 +124,13 @@ export async function acceptPriorityRequest(
     senderId: string,
     receiverId: string
 ) {
-    const { error } = await supabase.rpc('accept_priority_request', {
+    const { error } = await (supabase.rpc as any)('accept_priority_request', {
         p_request_id: requestId,
         p_sender_id: senderId,
         p_receiver_id: receiverId,
     });
     if (error) throw error;
 }
-
 
 // ─── DECLINE REQUEST ───────────────────────────────────────
 export async function declinePriorityRequest(requestId: string) {
@@ -185,7 +184,7 @@ export async function setPinned(userId: string, priorityUserId: string | null) {
 // ─── REMOVE PRIORITY (UNFRIEND) ────────────────────────────
 // Uses SECURITY DEFINER RPC to delete both directions
 export async function removePriority(userId: string, priorityUserId: string) {
-    const { error } = await supabase.rpc('remove_priority', {
+    const { error } = await (supabase.rpc as any)('remove_priority', {
         p_user_id: userId,
         p_priority_user_id: priorityUserId,
     });
@@ -196,7 +195,7 @@ export async function removePriority(userId: string, priorityUserId: string) {
 // ─── BLOCK USER ────────────────────────────────────────────
 // Uses SECURITY DEFINER RPC to block, remove priorities, cancel requests
 export async function blockUser(blockerId: string, blockedId: string) {
-    const { error } = await supabase.rpc('block_user', {
+    const { error } = await (supabase.rpc as any)('block_user', {
         p_blocker_id: blockerId,
         p_blocked_id: blockedId,
     });

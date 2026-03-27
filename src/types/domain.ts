@@ -79,6 +79,7 @@ export interface PriorityUserWithPost extends Profile {
     hasNewPost?: boolean;
     pinned?: boolean;
     rank?: number;
+    isPending?: boolean; // true = request sent, not yet accepted (24hr temp window)
 }
 
 // Backward compatibility for existing Timeline logic
@@ -90,4 +91,3 @@ export interface TimelineEvent extends Message {
     text?: string; // Text content for notes
     title?: string; // Title for audio messages
 }
-
