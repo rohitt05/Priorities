@@ -15,6 +15,7 @@ export interface Profile {
     priorities?: string[]; // Kept for backward compatibility with mock data logic
     partnerId?: string; // Optional partner link
     relationship?: string; // Relationship label (e.g., "GF", "Wife") - STRICTLY for couples/dating only
+    phoneNumber?: string; // User's phone number for security/recovery
 }
 
 
@@ -66,8 +67,9 @@ export interface Message {
     textContent?: string;
     durationSec?: number;
     sentAt: string;
-    seenAt?: string | null; // Used for "seen" badges
+    seenAt?: string | null; // Used for "seen badge"
     disappeared?: boolean; // Snapchat-style logic
+    reaction?: string | null; // Emoji reaction
 }
 
 /**

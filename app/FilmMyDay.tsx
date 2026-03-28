@@ -54,7 +54,7 @@ const MIN_RECORDING_DURATION = 1000;
 
 const FilmMyDayContent = () => {
     const router = useRouter();
-    const { recipient } = useLocalSearchParams<{ recipient?: string }>();
+    const { recipient, recipientId } = useLocalSearchParams<{ recipient?: string; recipientId?: string }>();
     const cameraRef = useRef<CameraView>(null);
 
     // --- CAMERA STATE ---
@@ -422,7 +422,8 @@ const FilmMyDayContent = () => {
             isFrontCamera={capturedMedia.facing === 'front'}
             onDiscard={handleDiscard}
             onSave={saveMedia}
-            recipient={recipient} // ✅ SUCCESSFULLY PASSING RECIPIENT DOWN TO THE PREVIEW NOW
+            recipient={recipient}
+            recipientId={recipientId}
         />;
     }
 

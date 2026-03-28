@@ -39,7 +39,6 @@ import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
 import usersData from '@/data/users.json';
 
-
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -67,14 +66,12 @@ const Z_INDEX = {
 
 const BLOB_PATH = 'M46.3,-76.3C59.5,-69.1,69.7,-56.3,77.3,-42.3C84.9,-28.3,89.9,-13.1,88.6,1.4C87.3,15.9,79.7,29.7,70.3,41.9C60.9,54.1,49.7,64.7,37.1,71.2C24.5,77.7,10.5,80.1,-2.9,78.8C-16.3,77.5,-29.1,72.5,-41.4,65.6C-53.7,58.7,-65.5,49.9,-74.1,38.6C-82.7,27.3,-88.1,13.5,-86.9,0.3C-85.7,-12.9,-77.9,-25.5,-68.2,-36.2C-58.5,-46.9,-46.9,-55.7,-34.5,-63.3C-22.1,-70.9,-8.9,-77.3,5.6,-78.7C20.1,-80.1,40.2,-76.5,46.3,-76.3Z';
 
-
 export interface PriorityListProps {
     priorities: PriorityUserWithPost[];
     onColorChange?: (color: string) => void;
     onActiveUserChange?: (user: PriorityUserWithPost) => void;
     scrollX?: SharedValue<number>;
 }
-
 
 const calculateOptionsButtonPosition = (size: number, angleDeg: number = -45, buttonRadius: number = 18) => {
     const radius = size / 2;
@@ -84,7 +81,6 @@ const calculateOptionsButtonPosition = (size: number, angleDeg: number = -45, bu
         left: radius + radius * Math.cos(angleRad) - buttonRadius,
     };
 };
-
 
 const BlobBackground = React.memo(({ color, size, isActive }: { color: string; size: number; isActive: boolean }) => {
     if (!isActive) return null;
@@ -98,7 +94,6 @@ const BlobBackground = React.memo(({ color, size, isActive }: { color: string; s
     );
 });
 BlobBackground.displayName = 'BlobBackground';
-
 
 const CurvedText = React.memo(({ text, width, color, isActive }: { text: string; width: number; color?: string; isActive: boolean }) => {
     const scale = useSharedValue(isActive ? 1 : 0);
@@ -136,7 +131,6 @@ const CurvedText = React.memo(({ text, width, color, isActive }: { text: string;
 });
 CurvedText.displayName = 'CurvedText';
 
-
 const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
     const scale = useSharedValue(visible ? 1 : 0);
     const opacity = useSharedValue(visible ? 1 : 0);
@@ -167,7 +161,6 @@ const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
 });
 CallIcons.displayName = 'CallIcons';
 
-
 const OptionsButton = React.memo(({ onPress, size }: {
     onPress: (anchor: AnchorPosition) => void;
     size: number;
@@ -197,7 +190,6 @@ const OptionsButton = React.memo(({ onPress, size }: {
     );
 });
 OptionsButton.displayName = 'OptionsButton';
-
 
 const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; size: number; onPress: () => void }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 28), [size]);
@@ -238,24 +230,26 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
 });
 UnreadIndicator.displayName = 'UnreadIndicator';
 
-
-const SeenIndicator = React.memo(({ status, size }: { status: 'sent' | 'seen'; size: number }) => {
+const SeenIndicator = React.memo(({ status, size }: { status: string; size: number }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 20), [size]);
+    const isEmoji = status !== 'sent' && status !== 'seen';
+
     return (
-        <View style={[styles.seenLabelContainer, position]}>
-            <Text style={styles.seenText}>{status === 'seen' ? 'Seen' : 'Sent'}</Text>
+        <View style={[styles.seenLabelContainer, position, isEmoji && styles.emojiIndicator]}>
+            <Text style={[styles.seenText, isEmoji && styles.emojiIndicatorText]}>
+                {status === 'seen' ? 'Seen' : (status === 'sent' ? 'Sent' : status)}
+            </Text>
         </View>
     );
 });
 SeenIndicator.displayName = 'SeenIndicator';
-
 
 interface PriorityCardProps {
     item: any;
     isActive: boolean;
     onOptionsPress: (anchor: AnchorPosition) => void;
     unreadMedia: Message | null;
-    sentStatus: 'none' | 'sent' | 'seen';
+    sentStatus: string;
 }
 
 const PriorityCard = React.memo(
@@ -278,8 +272,14 @@ const PriorityCard = React.memo(
 
         const handleSingleTap = useCallback(() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
-            router.push({ pathname: '/FilmMyDay' as any, params: { recipient: item.name } });
-        }, [item.name, router]);
+            router.push({
+                pathname: '/FilmMyDay' as any,
+                params: {
+                    recipient: item.name,
+                    recipientId: item.id
+                }
+            });
+        }, [item.id, item.name, router]);
 
         const handleDoubleTap = useCallback(() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
@@ -290,11 +290,9 @@ const PriorityCard = React.memo(
             startFromRef(imageWrapperRef, { sourceId: item.id, uri: item.profilePicture });
         }, [item.id, item.profilePicture, startFromRef]);
 
-        // ✅ FIX: use item.id (UUID) not uniqueUserId — must match sender_id key in unreadMessages
         const handleSendStatus = useCallback(() => {
             recordMessageSent(item.id);
-            setTimeout(() => simulateCounterpartSeen(item.id), 3000);
-        }, [item.id, recordMessageSent, simulateCounterpartSeen]);
+        }, [item.id, recordMessageSent]);
 
         const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
         const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
@@ -397,7 +395,6 @@ const PriorityCard = React.memo(
                     userColor={dominantColor}
                     onClose={() => {
                         setViewingMedia(false);
-                        // ✅ FIX: use item.id (UUID) not uniqueUserId
                         markAsSeen(item.id);
                     }}
                 />
@@ -414,7 +411,6 @@ const PriorityCard = React.memo(
 );
 PriorityCard.displayName = 'PriorityCard';
 
-
 const hexToRgba = (hex: string, alpha: number) => {
     if (!hex || hex[0] !== '#') return `rgba(0,0,0,${alpha})`;
     const r = parseInt(hex.slice(1, 3), 16);
@@ -422,7 +418,6 @@ const hexToRgba = (hex: string, alpha: number) => {
     const b = parseInt(hex.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
-
 
 const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColor }: { direction: 'left' | 'right', count: number, onPress: () => void, bgColor: string }) => {
     const indicatorColor = hexToRgba(bgColor, 0.85);
@@ -453,7 +448,6 @@ const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColo
     );
 });
 PriorityMessageIndicator.displayName = 'PriorityMessageIndicator';
-
 
 const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorChange, onActiveUserChange, scrollX }) => {
     const scrollHandler = useAnimatedScrollHandler({
@@ -537,8 +531,8 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         router.push({ pathname: '/VoiceMessage' as any, params: { recipient: selectedUser.name } });
     }, [selectedUser, router]);
 
-    // ✅ FIX: use item.id (UUID) exclusively — matches sender_id key in unreadMessages map
     const renderItem = useCallback(({ item, index }: any) => {
+        // unreadMessages[item.id] is a single Message object (or undefined) — pass directly
         const unreadMedia = unreadMessages[item.id] ?? null;
         const sentStatus = myLastSentStatus[item.id] ?? 'none';
         return (
@@ -552,7 +546,6 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         );
     }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus]);
 
-    // ✅ FIX: use item.id (UUID) for left/right unread counts too
     const leftUnread = useMemo(() => {
         let count = 0;
         let firstIndex = -1;
@@ -645,7 +638,6 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     );
 };
 
-
 const PriorityList: React.FC<PriorityListProps> = (props) => {
     return (
         <GestureHandlerRootView style={styles.rootContainer}>
@@ -655,7 +647,6 @@ const PriorityList: React.FC<PriorityListProps> = (props) => {
         </GestureHandlerRootView>
     );
 };
-
 
 const styles = StyleSheet.create({
     rootContainer: { flex: 1 },
@@ -699,6 +690,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         zIndex: Z_INDEX.IMAGE + 1,
         backgroundColor: 'rgba(0,0,0,0.15)',
+    },
+    emojiIndicator: {
+        backgroundColor: 'rgba(255, 255, 255, 1)',
+        paddingHorizontal: 6,
+        paddingVertical: 6,
+        borderRadius: 20,
+        width: 38,
+        height: 38,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.05)',
+    },
+    emojiIndicatorText: {
+        fontSize: 18,
     },
 });
 

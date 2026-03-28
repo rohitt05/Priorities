@@ -16,9 +16,14 @@ import {
     TextInput,
     ScrollView
 } from 'react-native';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING } from '@/theme/theme';
 import { Link } from 'expo-router';
+import * as Contacts from 'expo-contacts';
+import * as SMS from 'expo-sms';
+import { User } from '@/types/userTypes';
+import { updateProfile } from '@/services/profileService';
+import { Alert, ActivityIndicator } from 'react-native';
 
 const { height } = Dimensions.get('window');
 const SHEET_HEIGHT = height * 0.8;
@@ -38,19 +43,29 @@ const COUNTRIES = [
 interface SecurityBottomSheetProps {
     isVisible: boolean;
     onClose: () => void;
+    user: User | null;
 }
 
-const SecurityBottomSheet = ({ isVisible, onClose }: SecurityBottomSheetProps) => {
+const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetProps) => {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [phoneNumber, setPhoneNumber] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
     const [countryCode, setCountryCode] = useState('+91');
     const [countryFlag, setCountryFlag] = useState('🇮🇳');
     const [showCountryPicker, setShowCountryPicker] = useState(false);
     const [contactSync, setContactSync] = useState(false);
     const [hiddenMode, setHiddenMode] = useState(false);
+    const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     const panY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+
+    useEffect(() => {
+        if (user?.phoneNumber) {
+            setPhoneNumber(user.phoneNumber);
+        }
+    }, [user]);
 
     useEffect(() => {
         if (isVisible) {
@@ -98,6 +113,68 @@ const SecurityBottomSheet = ({ isVisible, onClose }: SecurityBottomSheetProps) =
             },
         })
     ).current;
+
+    const handleSyncContacts = async (syncing: boolean) => {
+        setContactSync(syncing);
+        if (!syncing) {
+            setContacts([]);
+            return;
+        }
+
+        setIsSyncing(true);
+        try {
+            const { status } = await Contacts.requestPermissionsAsync();
+            if (status === 'granted') {
+                const { data } = await Contacts.getContactsAsync({
+                    fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+                });
+                if (data.length > 0) {
+                    // Filter contacts that have phone numbers
+                    const validContacts = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
+                    // Sort by name
+                    const sorted = validContacts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                    setContacts(sorted.slice(0, 50)); // only first 50 for quick rendering
+                }
+            } else {
+                Alert.alert('Permission denied', 'We need access to your contacts to connect with friends.');
+                setContactSync(false);
+            }
+        } catch (err) {
+            console.error('Failed to fetch contacts:', err);
+            setContactSync(false);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleInvite = async (contact: Contacts.Contact) => {
+        if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) return;
+        const number = contact.phoneNumbers[0].number;
+        if (!number) return;
+
+        const isAvailable = await SMS.isAvailableAsync();
+        if (isAvailable) {
+            await SMS.sendSMSAsync([number], `Hey! Join me on Priorities - the app for our circle. Download it here: https://priorities-app.com`);
+        } else {
+            Alert.alert('SMS unavailable', 'Your device does not support sending SMS.');
+        }
+    };
+
+    const handleSaveAndDone = async () => {
+        if (!user) return;
+        setIsSaving(true);
+        try {
+            await updateProfile(user.id, {
+                phone_number: phoneNumber ? (countryCode + phoneNumber) : null,
+            });
+            handleClose();
+        } catch (err) {
+            console.error('Failed to update phone number:', err);
+            handleClose(); // Close anyway, but log the error
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const SecurityOption = ({
         icon,
@@ -152,8 +229,12 @@ const SecurityBottomSheet = ({ isVisible, onClose }: SecurityBottomSheetProps) =
                     <View style={styles.header}>
                         <View style={styles.handleBar} />
                         <Text style={styles.title}>security & privacy</Text>
-                        <TouchableOpacity style={styles.doneButton} onPress={handleClose}>
-                            <Text style={styles.doneText}>done</Text>
+                        <TouchableOpacity style={styles.doneButton} onPress={handleSaveAndDone} disabled={isSaving}>
+                            {isSaving ? (
+                                <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : (
+                                <Text style={styles.doneText}>done</Text>
+                            )}
                         </TouchableOpacity>
                     </View>
 
@@ -243,7 +324,7 @@ const SecurityBottomSheet = ({ isVisible, onClose }: SecurityBottomSheetProps) =
                                     icon="people-outline"
                                     label="contact sync"
                                     value={contactSync}
-                                    onValueChange={setContactSync}
+                                    onValueChange={handleSyncContacts}
                                 />
                                 <View style={styles.divider} />
                                 <SecurityOption
@@ -269,6 +350,47 @@ const SecurityBottomSheet = ({ isVisible, onClose }: SecurityBottomSheetProps) =
                                 <Text style={styles.infoText}>• sync contacts to find and connect with friends who are already here.</Text>
                                 <Text style={styles.infoText}>• when active, your profile won't appear in explore or search results.</Text>
                             </View>
+
+                            {contactSync && (
+                                <View style={styles.contactListSection}>
+                                    <View style={styles.contactListHeader}>
+                                        <Text style={styles.contactListTitle}>invite contacts</Text>
+                                        {isSyncing && <ActivityIndicator size="small" color={COLORS.primary} />}
+                                    </View>
+
+                                    {contacts.length > 0 ? (
+                                        <View style={styles.contactCard}>
+                                            {contacts.map((contact, idx) => (
+                                                <React.Fragment key={(contact as any).id || idx}>
+                                                    <View style={styles.contactRow}>
+                                                        <View style={styles.contactAvatar}>
+                                                            <Text style={styles.contactAvatarText}>
+                                                                {contact.name?.charAt(0).toUpperCase() || '?'}
+                                                            </Text>
+                                                        </View>
+                                                        <View style={styles.contactInfo}>
+                                                            <Text style={styles.contactName}>{contact.name}</Text>
+                                                            <Text style={styles.contactPhone}>{contact.phoneNumbers?.[0]?.number}</Text>
+                                                        </View>
+                                                        <TouchableOpacity
+                                                            style={styles.inviteButton}
+                                                            onPress={() => handleInvite(contact)}
+                                                        >
+                                                            <Text style={styles.inviteButtonText}>invite</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                    {idx < contacts.length - 1 && <View style={[styles.divider, { marginLeft: 52 }]} />}
+                                                </React.Fragment>
+                                            ))}
+                                        </View>
+                                    ) : !isSyncing ? (
+                                        <View style={styles.noContactsContainer}>
+                                            <MaterialIcons name="people-outline" size={32} color={COLORS.textSecondary} opacity={0.3} />
+                                            <Text style={styles.noContactsText}>no contacts found with phone numbers</Text>
+                                        </View>
+                                    ) : null}
+                                </View>
+                            )}
                         </View>
                     </ScrollView>
                 </Animated.View>
@@ -472,5 +594,95 @@ const styles = StyleSheet.create({
         lineHeight: 16,
         textTransform: 'lowercase',
         opacity: 0.8,
-    }
+    },
+    contactListSection: {
+        marginTop: 24,
+        marginBottom: 32,
+    },
+    contactListHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    contactListTitle: {
+        fontSize: 12,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+        textTransform: 'lowercase',
+        letterSpacing: 0.5,
+    },
+    contactCard: {
+        backgroundColor: '#FFF',
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(0,0,0,0.05)',
+    },
+    contactRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+    },
+    contactAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    contactAvatarText: {
+        fontSize: 16,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+    },
+    contactInfo: {
+        flex: 1,
+    },
+    contactName: {
+        fontSize: 16,
+        fontFamily: FONTS.bold,
+        color: COLORS.text,
+        textTransform: 'lowercase',
+    },
+    contactPhone: {
+        fontSize: 12,
+        fontFamily: FONTS.regular,
+        color: COLORS.textSecondary,
+        marginTop: 2,
+    },
+    inviteButton: {
+        backgroundColor: 'rgba(0,0,0,0.04)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(0,0,0,0.04)',
+    },
+    inviteButtonText: {
+        fontSize: 13,
+        fontFamily: FONTS.bold,
+        color: COLORS.primary,
+        textTransform: 'lowercase',
+    },
+    noContactsContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40,
+        backgroundColor: 'rgba(0,0,0,0.02)',
+        borderRadius: 20,
+        borderStyle: 'dashed',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.1)',
+    },
+    noContactsText: {
+        marginTop: 12,
+        fontSize: 13,
+        fontFamily: FONTS.regular,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+    },
 });

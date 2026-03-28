@@ -74,6 +74,7 @@ export default function AudioPlayer({
                             if (status.didJustFinish) {
                                 setIsPlaying(false);
                                 setPosition(0);
+                                sound?.setPositionAsync(0);
                             }
                         }
                     }
@@ -87,6 +88,10 @@ export default function AudioPlayer({
                         await soundRef.current.pauseAsync();
                         setIsPlaying(false);
                     } else {
+                        // If we are at the end, reset to beginning before playing
+                        if (status.positionMillis >= (status.durationMillis || 0)) {
+                            await soundRef.current.setPositionAsync(0);
+                        }
                         await soundRef.current.playAsync();
                         setIsPlaying(true);
                     }

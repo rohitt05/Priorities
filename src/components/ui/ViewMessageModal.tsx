@@ -19,6 +19,7 @@ import EmojiScatterOverlay from '@/features/timeline/components/EmojiScatterOver
 import { Message } from '@/types/domain';
 import { MediaItem } from '@/types/mediaTypes';
 import { COLORS, SPACING, FONTS } from '@/theme/theme';
+import { useMediaInbox } from '@/contexts/MediaInboxContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -34,6 +35,7 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
     const [isClosing, setIsClosing] = useState(false);
     const [isReady, setIsReady] = useState(false);
     const [isEmojiVisible, setIsEmojiVisible] = useState(false);
+    const { reactToMessage } = useMediaInbox();
 
     // Reset state when visible changes
     useEffect(() => {
@@ -70,11 +72,27 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
     };
 
     // Helper to get a very light version of the color for the background
-    const lightColor = userColor + '20'; // 12% opacity hex
+    const lightColor = userColor + '15'; // ~8% opacity hex
 
-    const timeOptions = ['5m ago', '12m ago', '25m ago', '45m ago', '1h ago', '2h ago', '4h ago'];
-    const timeIndex = userName.length % timeOptions.length;
-    const timeAgo = timeOptions[timeIndex];
+    const formatRelativeTime = (dateString: string) => {
+        try {
+            const now = new Date();
+            const sentAt = new Date(dateString);
+            const diffMs = now.getTime() - sentAt.getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMins / 60);
+            const diffDays = Math.floor(diffHours / 24);
+
+            if (diffMins < 1) return 'now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            return `${diffDays}d ago`;
+        } catch (e) {
+            return 'just now';
+        }
+    };
+
+    const timeAgo = formatRelativeTime(media.sentAt);
 
     return (
         <Modal
@@ -84,13 +102,16 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
             onRequestClose={handleClose}
             statusBarTranslucent
         >
-            <View style={styles.backdrop}>
+            <View style={[
+                styles.backdrop,
+                media.type === 'voice' ? styles.backdropCentered : styles.backdropShifted
+            ]}>
                 <LinearGradient
                     colors={[`${userColor}B0`, `${userColor}50`, 'rgba(0,0,0,0.85)']}
                     style={StyleSheet.absoluteFill}
                 />
                 <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.01)" translucent />
-                
+
                 <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
 
                 <View style={styles.contentWrapper}>
@@ -100,56 +121,59 @@ export const ViewMessageModal = ({ visible, media, userName, userColor, onClose 
                     </View>
 
                     <View style={[styles.cardContainer, media.type === 'voice' && styles.cardContainerAudio]}>
-                    <LinearGradient
-                        colors={[userColor, lightColor, '#FFFFFF']}
-                        style={StyleSheet.absoluteFill}
-                    />
-                    
-                    <View style={styles.mediaContainer}>
-                        {media.type === 'video' && (
-                            <VideoPlayer 
-                                mediaItem={mediaItem} 
-                                isFocused={true} 
-                                autoPlay={true} 
-                                onReady={handleMediaReady} 
-                                themeColor={userColor}
-                            />
-                        )}
-                        {(media.type as string === 'photo' || media.type as string === 'image') && (
-                            <PhotoViewer mediaItem={mediaItem} onDragDown={handleClose} onReady={handleMediaReady} />
-                        )}
-                        {media.type === 'voice' && (
-                            <View style={styles.voiceOverlay}>
-                                <AudioPlayer 
-                                    mediaItem={mediaItem} 
-                                    autoPlay={true} 
+                        <LinearGradient
+                            colors={[userColor, lightColor, '#FFFFFF']}
+                            style={StyleSheet.absoluteFill}
+                        />
+
+                        <View style={styles.mediaContainer}>
+                            {media.type === 'video' && (
+                                <VideoPlayer
+                                    mediaItem={mediaItem}
+                                    isFocused={true}
+                                    autoPlay={true}
                                     onReady={handleMediaReady}
                                     themeColor={userColor}
                                 />
+                            )}
+                            {(media.type as string === 'photo' || media.type as string === 'image') && (
+                                <PhotoViewer mediaItem={mediaItem} onDragDown={handleClose} onReady={handleMediaReady} />
+                            )}
+                            {media.type === 'voice' && (
+                                <View style={styles.voiceOverlay}>
+                                    <AudioPlayer
+                                        mediaItem={mediaItem}
+                                        autoPlay={true}
+                                        onReady={handleMediaReady}
+                                        themeColor={userColor}
+                                    />
+                                </View>
+                            )}
+                        </View>
+
+                        {!isReady && (
+                            <View style={styles.loaderContainer}>
+                                <ActivityIndicator size="large" color={userColor} />
                             </View>
                         )}
                     </View>
 
-                    {!isReady && (
-                        <View style={styles.loaderContainer}>
-                            <ActivityIndicator size="large" color={userColor} />
-                        </View>
-                    )}
+                    <View style={styles.outsideContainer}>
+                        <TouchableOpacity onPress={(() => setIsEmojiVisible(true))} style={styles.emojiButtonGlass}>
+                            <Text style={styles.emojiIcon}>😊</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-
-                <View style={styles.outsideContainer}>
-                    <TouchableOpacity onPress={(() => setIsEmojiVisible(true))} style={styles.emojiButtonGlass}>
-                        <Text style={styles.emojiIcon}>😊</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
 
                 <EmojiScatterOverlay
                     visible={isEmojiVisible}
                     onClose={() => setIsEmojiVisible(false)}
                     onSelect={(emoji) => {
-                        console.log('Selected emoji:', emoji);
+                        if (media) {
+                            reactToMessage(media.senderId, emoji);
+                        }
                         setIsEmojiVisible(false);
+                        handleClose();
                     }}
                 />
             </View>
@@ -161,8 +185,14 @@ const styles = StyleSheet.create({
     backdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'center',
         alignItems: 'center',
+    },
+    backdropCentered: {
+        justifyContent: 'center',
+    },
+    backdropShifted: {
+        justifyContent: 'flex-start',
+        paddingTop: SCREEN_HEIGHT * 0.11,
     },
     cardContainer: {
         width: SCREEN_WIDTH * 0.9,
@@ -177,7 +207,7 @@ const styles = StyleSheet.create({
         elevation: 10,
     },
     cardContainerAudio: {
-        height: SCREEN_WIDTH * 0.9, 
+        height: SCREEN_WIDTH * 0.9,
         borderRadius: 32,
     },
     outsideContainer: {
@@ -192,12 +222,12 @@ const styles = StyleSheet.create({
     absoluteHeader: {
         position: 'absolute',
         top: -30,
-        left: -10, 
+        left: -10,
         flexDirection: 'row',
         alignItems: 'flex-start',
         zIndex: 100,
         elevation: 10,
-        width: '100%', 
+        width: '100%',
     },
     userNameAbsolute: {
         fontSize: 54,

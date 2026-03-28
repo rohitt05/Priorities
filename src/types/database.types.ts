@@ -221,6 +221,7 @@ export type Database = {
                     text_content: string | null
                     type: string
                     uri: string | null
+                    reaction: string | null
                 }
                 Insert: {
                     disappeared?: boolean
@@ -233,6 +234,7 @@ export type Database = {
                     text_content?: string | null
                     type: string
                     uri?: string | null
+                    reaction?: string | null
                 }
                 Update: {
                     disappeared?: boolean
@@ -245,6 +247,7 @@ export type Database = {
                     text_content?: string | null
                     type?: string
                     uri?: string | null
+                    reaction?: string | null
                 }
                 Relationships: [
                     {

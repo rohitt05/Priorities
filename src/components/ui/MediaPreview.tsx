@@ -27,7 +27,8 @@ interface MediaPreviewProps {
     isFrontCamera: boolean;
     onDiscard: () => void;
     onSave: () => void;
-    recipient?: string; // name string passed from FilmMyDay
+    recipient?: string; // name string passed from FilmMyDay for UI display
+    recipientId?: string; // unique UUID from profiles table
 }
 
 const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
@@ -36,6 +37,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     onDiscard,
     onSave,
     recipient,
+    recipientId,
 }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [isSending, setIsSending] = useState(false); // ✅ NEW: separate sending state
@@ -142,18 +144,25 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             }
 
             // 2. Resolve recipient name → UUID from profiles table
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('name', recipient)
-                .single();
+            let receiverId: string | null = null;
 
-            if (profileError || !profileData?.id) {
-                console.error('[MediaPreview] Could not find recipient profile:', profileError);
-                Alert.alert('Error', `Could not find user "${recipient}".`);
-                return;
+            if (recipientId) {
+                receiverId = recipientId;
+            } else {
+                // Fallback (backward compatibility / other screens)
+                const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('name', recipient)
+                    .single();
+
+                if (profileError || !profileData?.id) {
+                    console.error('[MediaPreview] Could not find recipient profile:', profileError);
+                    Alert.alert('Error', `Could not find user "${recipient}".`);
+                    return;
+                }
+                receiverId = profileData.id;
             }
-            const receiverId = profileData.id;
 
             // 3. Determine mime type and file extension
             const isVideoFile = capturedMedia.type === 'video';

@@ -116,6 +116,7 @@ function SettingsScreenContent() {
                     birthday: dbUser.birthday || undefined,
                     partnerId: dbUser.partner_id || undefined,
                     relationship: dbUser.relationship || undefined,
+                    phoneNumber: dbUser.phone_number || '',
                     priorities: [],
                 });
             }
@@ -261,6 +262,7 @@ function SettingsScreenContent() {
             <SecurityBottomSheet
                 isVisible={isSecurityOpen}
                 onClose={() => setIsSecurityOpen(false)}
+                user={currentUser}
             />
         </View>
     );
