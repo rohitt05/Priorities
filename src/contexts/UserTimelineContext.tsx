@@ -1,10 +1,13 @@
-import React, { createContext, useContext, useState, useRef, useCallback, useMemo, ReactNode } from 'react';
+// src/contexts/UserTimelineContext.tsx
+import React, { createContext, useContext, useState, useRef, useCallback, useMemo, ReactNode, useEffect } from 'react';
 import { LayoutRectangle, FlatList } from 'react-native';
 import Animated, { useSharedValue, withTiming, Easing, runOnJS } from 'react-native-reanimated';
 import { useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
 import { useBackground } from '@/contexts/BackgroundContext';
 import UserTimelineView from '@/features/timeline/components/UserTimelineView';
-import { User, PriorityUserWithPost } from '@/types/domain';
+import { User, PriorityUserWithPost, TimelineEvent } from '@/types/domain';
+import { timelineService } from '@/services/timelineService';
+import { supabase } from '@/lib/supabase';
 
 interface UserTimelineContextType {
     expandedUser: any | null;
@@ -15,6 +18,9 @@ interface UserTimelineContextType {
     setPriorities: (users: PriorityUserWithPost[]) => void;
     scrollToUserIndex: (index: number) => void;
     flatListRef: React.RefObject<FlatList | null>;
+    // ⭐ NEW: live timeline events keyed by their uniqueUserId
+    liveTimelineEvents: Record<string, TimelineEvent[]>;
+    timelineLoading: boolean;
 }
 
 const UserTimelineContext = createContext<UserTimelineContextType | undefined>(undefined);
@@ -25,11 +31,44 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const [isAnimating, setIsAnimating] = useState(false);
     const [priorities, setPriorities] = useState<PriorityUserWithPost[]>([]);
 
+    // ⭐ NEW — live data state
+    const [liveTimelineEvents, setLiveTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
+    const [timelineLoading, setTimelineLoading] = useState(false);
+    const loadedUsers = useRef<Set<string>>(new Set()); // avoid re-fetching same user
+
     const expandAnim = useSharedValue(0);
     const flatListRef = useRef<FlatList>(null);
 
     const { hideTabBar, showTabBar } = useTabBarVisibility();
     const { handleColorChange } = useBackground();
+
+    // ⭐ NEW — fetch live timeline when a user is opened
+    const fetchTimelineForUser = useCallback(async (user: any) => {
+        if (loadedUsers.current.has(user.id)) return; // already loaded
+
+        setTimelineLoading(true);
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const myId = sessionData?.session?.user?.id;
+            if (!myId) return;
+
+            const events = await timelineService.getTimelineForPair(
+                myId,
+                user.id,
+                user.uniqueUserId
+            );
+
+            setLiveTimelineEvents(prev => ({
+                ...prev,
+                [user.uniqueUserId]: events,
+            }));
+            loadedUsers.current.add(user.id);
+        } catch (err) {
+            console.error('[UserTimelineContext] Failed to fetch timeline:', err);
+        } finally {
+            setTimelineLoading(false);
+        }
+    }, []);
 
     const openTimeline = (user: any, layout: LayoutRectangle) => {
         if (isAnimating) return;
@@ -38,6 +77,10 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         setOriginLayout(layout);
         setExpandedUser(user);
         handleColorChange(user.dominantColor);
+
+        // ⭐ kick off the live fetch
+        fetchTimelineForUser(user);
+
         expandAnim.value = withTiming(1, {
             duration: 400,
             easing: Easing.bezier(0.25, 0.1, 0.25, 1)
@@ -68,14 +111,20 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
 
     const value = useMemo(() => ({
         expandedUser, expandAnim, openTimeline, closeTimeline,
-        priorities, setPriorities, scrollToUserIndex, flatListRef
-    }), [expandedUser, priorities, scrollToUserIndex]);
+        priorities, setPriorities, scrollToUserIndex, flatListRef,
+        liveTimelineEvents, timelineLoading,
+    }), [expandedUser, priorities, scrollToUserIndex, liveTimelineEvents, timelineLoading]);
 
     return (
         <UserTimelineContext.Provider value={value}>
             {children}
             {expandedUser && originLayout && (
-                <UserTimelineView user={expandedUser} originLayout={originLayout} expandAnim={expandAnim} onClose={closeTimeline} />
+                <UserTimelineView
+                    user={expandedUser}
+                    originLayout={originLayout}
+                    expandAnim={expandAnim}
+                    onClose={closeTimeline}
+                />
             )}
         </UserTimelineContext.Provider>
     );
