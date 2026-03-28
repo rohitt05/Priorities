@@ -36,16 +36,14 @@ export default function TimelineCalendar({
 }: TimelineCalendarProps) {
 
     // 1. Data Processing
-    let userEvents = filterEventsForUser(timelineEvents, userUniqueId);
-    if (userEvents.length === 0) {
-        userEvents = filterEventsForUser(timelineEvents, 'rohit123');
-    }
+    // We already pass pre-filtered events from UserTimelineView,
+    // but filterEventsForUser is kept as a safety net.
+    const userEvents = filterEventsForUser(timelineEvents, userUniqueId);
     const timelineRows = processTimelineData(userEvents);
 
     // 2. Visibility State for Autoplay
     const [visibleRowIds, setVisibleRowIds] = useState<Set<string>>(new Set());
 
-    // ✅ FIXED: viewabilityConfig must be stable (useRef)
     const viewabilityConfig = useRef({
         itemVisiblePercentThreshold: 10,
         minimumViewTime: 0
@@ -101,7 +99,7 @@ export default function TimelineCalendar({
                     <SmartVideoTile
                         uri={item.uri}
                         thumbUri={item.thumbUri}
-                        isVisible={isRowVisible} // Play only if row is visible
+                        isVisible={isRowVisible}
                         style={{ width: '100%', height: '100%' }}
                     />
                 ) : (
@@ -117,7 +115,6 @@ export default function TimelineCalendar({
                 )}
             </TouchableOpacity>
         );
-
     };
 
     // 4. Render Row
@@ -159,11 +156,8 @@ export default function TimelineCalendar({
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ paddingTop: contentPaddingTop, paddingBottom: 120 }}
             showsVerticalScrollIndicator={false}
-
-            // ✅ FIXED: Config is now stable (ref)
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
-
             initialNumToRender={5}
             maxToRenderPerBatch={5}
             windowSize={5}
