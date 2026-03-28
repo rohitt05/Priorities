@@ -9,11 +9,11 @@ import {
     Text,
     Pressable,
     ViewToken,
+    ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Entypo } from '@expo/vector-icons';
 import { useBackground } from '@/contexts/BackgroundContext';
-import { userService } from '@/services/userService';
 import TimelineBottomSheet from '@/features/timeline/components/TimelineBottomSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
@@ -26,18 +26,16 @@ import Animated, {
     withSpring,
     withTiming,
     interpolate,
-    interpolateColor,
     runOnJS,
     SharedValue
 } from 'react-native-reanimated';
+import { usePriorityUsers } from '@/hooks/usePriorityUsers';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SPACING = 16;
 const CONTAINER_PADDING = 15;
 const CONTENT_WIDTH = SCREEN_WIDTH - CONTAINER_PADDING * 2;
 const BG_OPACITY = 0.15;
-
-
 
 const hashString = (str: string) => {
     let h = 2166136261;
@@ -55,8 +53,7 @@ const hexToRgba = (hex: string, alpha: number) => {
         const r = parseInt(fullHex.slice(1, 3), 16);
         const g = parseInt(fullHex.slice(3, 5), 16);
         const b = parseInt(fullHex.slice(5, 7), 16);
-        const a = alpha;
-        return `rgba(${r}, ${g}, ${b}, ${a})`;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
     return `rgba(255, 255, 255, ${alpha})`;
 };
@@ -69,59 +66,39 @@ interface RowData {
 
 // --- SUB-COMPONENT FOR BUBBLE LOGIC ---
 const TimelineItem = React.memo(({
-    user,
-    w,
-    h,
-    seedKey,
-    onExpand,
-    onOpenSheet,
-    isSelected,
-    expandAnim
+    user, w, h, seedKey, onExpand, onOpenSheet, isSelected, expandAnim
 }: {
-    user: User,
-    w: number,
-    h: number,
-    seedKey: string,
-    onExpand: (user: User, layout: LayoutRectangle) => void,
-    onOpenSheet: (user: User) => void,
-    isSelected: boolean,
-    expandAnim: SharedValue<number>
+    user: User;
+    w: number;
+    h: number;
+    seedKey: string;
+    onExpand: (user: User, layout: LayoutRectangle) => void;
+    onOpenSheet: (user: User) => void;
+    isSelected: boolean;
+    expandAnim: SharedValue<number>;
 }) => {
-    // Animation Values
     const scale = useSharedValue(1);
     const bubbleOpacity = useSharedValue(0);
 
-    // --- GEOMETRY LOGIC ---
-    const rx = w / 2;
-    const ry = h / 2;
-    const cx = w / 2;
-    const cy = h / 2;
+    const rx = w / 2, ry = h / 2, cx = w / 2, cy = h / 2;
     const randomVal = hashToUnit(seedKey + ':angle');
     const angleDeg = -20 - (randomVal * 140);
     const theta = (angleDeg * Math.PI) / 180;
-    const dirX = Math.cos(theta);
-    const dirY = Math.sin(theta);
-    const termX = dirX / rx;
-    const termY = dirY / ry;
+    const dirX = Math.cos(theta), dirY = Math.sin(theta);
+    const termX = dirX / rx, termY = dirY / ry;
     const t = 1 / Math.sqrt((termX * termX) + (termY * termY));
-    const borderX = cx + (dirX * t);
-    const borderY = cy + (dirY * t);
+    const borderX = cx + (dirX * t), borderY = cy + (dirY * t);
     const minDim = Math.min(w, h);
     let btnSize = minDim * 0.15;
     if (btnSize < 22) btnSize = 22;
     if (btnSize > 32) btnSize = 32;
     const ICON_SIZE = btnSize * 0.5;
 
-    // --- ANIMATION HANDLERS ---
-    const handlePressIn = () => {
-        scale.value = withSpring(0.95);
-    };
-
+    const handlePressIn = () => { scale.value = withSpring(0.95); };
     const handlePressOut = () => {
         scale.value = withSpring(1);
         bubbleOpacity.value = withTiming(0, { duration: 150 });
     };
-
     const handleLongPress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         bubbleOpacity.value = withTiming(1, { duration: 200 });
@@ -134,22 +111,12 @@ const TimelineItem = React.memo(({
             { scale: interpolate(bubbleOpacity.value, [0, 1], [0.8, 1]) }
         ]
     }));
-
-    const scaleStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }]
-    }));
-
-    const itemVisibilityStyle = useAnimatedStyle(() => {
-        // If this item is currently expanded, hide it completely to avoid ghosting
-        return {
-            opacity: isSelected ? 0 : 1,
-        };
-    });
+    const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+    const itemVisibilityStyle = useAnimatedStyle(() => ({ opacity: isSelected ? 0 : 1 }));
 
     return (
         <View style={{ width: w, height: h, position: 'relative', zIndex: 1 }}>
             <Animated.View style={[{ width: '100%', height: '100%' }, itemVisibilityStyle]}>
-                {/* NAME BUBBLE */}
                 <Animated.View style={[styles.bubbleContainer, bubbleStyle]}>
                     <View style={styles.bubbleContent}>
                         <Text style={styles.bubbleText} numberOfLines={1}>{user.name}</Text>
@@ -157,7 +124,6 @@ const TimelineItem = React.memo(({
                     <View style={styles.bubbleArrow} />
                 </Animated.View>
 
-                {/* PROFILE IMAGE */}
                 <Pressable
                     onPressIn={handlePressIn}
                     onPressOut={handlePressOut}
@@ -170,18 +136,10 @@ const TimelineItem = React.memo(({
                     }}
                     style={{ width: '100%', height: '100%' }}
                 >
-                    <Animated.View
-                        style={[
-                            {
-                                width: '100%',
-                                height: '100%',
-                                borderRadius: 999,
-                                backgroundColor: user.dominantColor,
-                                overflow: 'hidden',
-                            },
-                            scaleStyle
-                        ]}
-                    >
+                    <Animated.View style={[{
+                        width: '100%', height: '100%', borderRadius: 999,
+                        backgroundColor: user.dominantColor, overflow: 'hidden',
+                    }, scaleStyle]}>
                         <Image
                             source={{ uri: user.profilePicture }}
                             style={{ width: '100%', height: '100%' }}
@@ -190,20 +148,13 @@ const TimelineItem = React.memo(({
                     </Animated.View>
                 </Pressable>
 
-                {/* FLOATING DOTS BUTTON */}
                 <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => onOpenSheet(user)}
-                    style={[
-                        styles.iconBtn,
-                        {
-                            width: btnSize,
-                            height: btnSize,
-                            borderRadius: btnSize / 2,
-                            left: borderX - (btnSize / 2),
-                            top: borderY - (btnSize / 2),
-                        },
-                    ]}
+                    style={[styles.iconBtn, {
+                        width: btnSize, height: btnSize, borderRadius: btnSize / 2,
+                        left: borderX - (btnSize / 2), top: borderY - (btnSize / 2),
+                    }]}
                 >
                     <Entypo name="dots-two-horizontal" size={ICON_SIZE} color="#000" />
                 </TouchableOpacity>
@@ -214,11 +165,7 @@ const TimelineItem = React.memo(({
 
 // --- MEMOIZED ROW COMPONENT ---
 const TimelineRow = React.memo(({
-    item,
-    onExpand,
-    onOpenSheet,
-    expandedUserId,
-    expandAnim
+    item, onExpand, onOpenSheet, expandedUserId, expandAnim
 }: {
     item: RowData;
     onExpand: (user: User, layout: LayoutRectangle) => void;
@@ -234,84 +181,65 @@ const TimelineRow = React.memo(({
                 <TimelineItem
                     user={user} w={size} h={size} seedKey={`${user.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === user.uniqueUserId}
-                    expandAnim={expandAnim}
+                    isSelected={expandedUserId === user.uniqueUserId} expandAnim={expandAnim}
                 />
             </View>
         );
     }
-
     if (item.type === 'double') {
         const [u1, u2] = item.users;
         const itemW = (CONTENT_WIDTH - SPACING) / 2;
         return (
             <View style={styles.row}>
-                <TimelineItem
-                    user={u1} w={itemW} h={itemW * 1.15} seedKey={`${u1.id}-${item.id}`}
+                <TimelineItem user={u1} w={itemW} h={itemW * 1.15} seedKey={`${u1.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u1.uniqueUserId}
-                    expandAnim={expandAnim}
-                />
-                <TimelineItem
-                    user={u2} w={itemW} h={itemW * 0.95} seedKey={`${u2.id}-${item.id + 1}`}
+                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim} />
+                <TimelineItem user={u2} w={itemW} h={itemW * 0.95} seedKey={`${u2.id}-${item.id + 1}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u2.uniqueUserId}
-                    expandAnim={expandAnim}
-                />
+                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim} />
             </View>
         );
     }
-
     if (item.type === 'triple') {
         const [u1, u2, u3] = item.users;
         const s = (CONTENT_WIDTH - (SPACING * 2)) / 3;
         return (
             <View style={styles.row}>
-                <TimelineItem
-                    user={u1} w={s} h={s} seedKey={`${u1.id}-${item.id}`}
+                <TimelineItem user={u1} w={s} h={s} seedKey={`${u1.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u1.uniqueUserId}
-                    expandAnim={expandAnim}
-                />
-                <TimelineItem
-                    user={u2} w={s} h={s * 1.2} seedKey={`${u2.id}-${item.id + 1}`}
+                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim} />
+                <TimelineItem user={u2} w={s} h={s * 1.2} seedKey={`${u2.id}-${item.id + 1}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u2.uniqueUserId}
-                    expandAnim={expandAnim}
-                />
-                <TimelineItem
-                    user={u3} w={s} h={s} seedKey={`${u3.id}-${item.id + 2}`}
+                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim} />
+                <TimelineItem user={u3} w={s} h={s} seedKey={`${u3.id}-${item.id + 2}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u3.uniqueUserId}
-                    expandAnim={expandAnim}
-                />
+                    isSelected={expandedUserId === u3.uniqueUserId} expandAnim={expandAnim} />
             </View>
         );
     }
-
     return null;
 });
 
 export default function TimelinesScreen() {
-    const insets = useSafeAreaInsets();
     const { handleColorChange } = useBackground();
     const { openTimeline, expandedUser, expandAnim } = useUserTimeline();
     const [selectedUserForSheet, setSelectedUserForSheet] = useState<User | null>(null);
 
-    // Local Reanimated Background State
+    // ✅ Real users from Supabase priorities table
+    const { users: priorityUsers, loading: usersLoading } = usePriorityUsers();
+
     const lastColorRef = React.useRef<string>('#FFFFFF');
     const currentColorRef = React.useRef<string>('#FFFFFF');
     const hasScrolledRef = React.useRef<boolean>(false);
 
-    // Process rows once
+    // Build display rows from real priority users
     const processedRows = React.useMemo(() => {
-        const list = userService.getAllUsers();
+        const list = priorityUsers;
         const rows: RowData[] = [];
         let i = 0;
         while (i < list.length) {
             const patternStep = i % 8;
             const uniqueId = `row-${i}`;
-
             if ((patternStep === 0 || patternStep === 5) && list[i]) {
                 rows.push({ id: uniqueId, type: 'single', users: [list[i]] });
                 i += 1;
@@ -327,31 +255,19 @@ export default function TimelinesScreen() {
             } else { break; }
         }
         return rows;
-    }, []);
+    }, [priorityUsers]);
 
     const handleExpand = React.useCallback((user: User, layout: LayoutRectangle) => {
-        // Ensure we have layout before opening
-        if (layout.width > 0 && layout.height > 0) {
-            openTimeline(user, layout);
-        }
+        if (layout.width > 0 && layout.height > 0) openTimeline(user, layout);
     }, [openTimeline]);
 
-
-
-    // Selection color handle
     const onViewableItemsChanged = React.useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-
         if (viewableItems.length > 0) {
             const middleIndex = Math.floor(viewableItems.length / 2);
             const targetItem = viewableItems[middleIndex]?.item as RowData;
-
             if (targetItem && targetItem.users.length > 0) {
-                const dominantColor = targetItem.users[0].dominantColor;
-                const targetColor = hexToRgba(dominantColor, BG_OPACITY);
-
-                currentColorRef.current = targetColor; // Keep track of what the color SHOULD be
-
-                // Only actually update the global background if they have interacted
+                const targetColor = hexToRgba(targetItem.users[0].dominantColor, BG_OPACITY);
+                currentColorRef.current = targetColor;
                 if (hasScrolledRef.current && targetColor !== lastColorRef.current) {
                     lastColorRef.current = targetColor;
                     handleColorChange(targetColor);
@@ -365,6 +281,24 @@ export default function TimelinesScreen() {
         minimumViewTime: 150
     }).current;
 
+    // Show spinner while loading real users
+    if (usersLoading) {
+        return (
+            <View style={[styles.container, styles.centered]}>
+                <ActivityIndicator size="large" color="#000" />
+            </View>
+        );
+    }
+
+    // Show empty state if no priorities yet
+    if (priorityUsers.length === 0) {
+        return (
+            <View style={[styles.container, styles.centered]}>
+                <Text style={styles.emptyText}>add people to see them here</Text>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
             <StatusBar style="dark" />
@@ -374,7 +308,6 @@ export default function TimelinesScreen() {
                 onScrollBeginDrag={() => {
                     if (!hasScrolledRef.current) {
                         hasScrolledRef.current = true;
-                        // First scroll! Immediately apply whatever is currently visible
                         if (currentColorRef.current !== lastColorRef.current) {
                             lastColorRef.current = currentColorRef.current;
                             handleColorChange(currentColorRef.current);
@@ -410,10 +343,8 @@ export default function TimelinesScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: 'transparent',
-    },
+    container: { flex: 1, backgroundColor: 'transparent' },
+    centered: { justifyContent: 'center', alignItems: 'center' },
     scrollContent: {
         paddingTop: 100,
         paddingBottom: 60,
@@ -425,6 +356,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
         width: '100%',
+    },
+    emptyText: {
+        fontSize: 18,
+        fontFamily: 'DancingScript-Regular',
+        color: 'rgba(0,0,0,0.4)',
     },
     iconBtn: {
         position: 'absolute',
@@ -438,7 +374,6 @@ const styles = StyleSheet.create({
         shadowRadius: 2,
         elevation: 2,
     },
-    // --- BUBBLE STYLES ---
     bubbleContainer: {
         position: 'absolute',
         top: -45,
