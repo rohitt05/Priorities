@@ -8,6 +8,7 @@ import {
     Pressable,
     LayoutRectangle,
     BackHandler,
+    ActivityIndicator,
 } from 'react-native';
 import Animated, {
     useAnimatedStyle,
@@ -16,7 +17,6 @@ import Animated, {
     Extrapolate
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -25,8 +25,8 @@ import TimelineCalendar from './TimelineCalendar';
 import MediaViewer from '@/components/ui/MediaViewer';
 import { MediaItem } from '@/types/mediaTypes';
 import { User, TimelineEvent } from '@/types/domain';
-import { filmService } from '@/services/filmService';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
+import { useUserTimeline } from '@/contexts/UserTimelineContext';
 
 // ==========================================
 // UTILS
@@ -77,10 +77,12 @@ export default function UserTimelineView({
     const [mediaViewerVisible, setMediaViewerVisible] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
 
-    // Hardware back button handler
+    // ⭐ Pull live events from context (replaces mock filmService calls)
+    const { liveTimelineEvents, timelineLoading } = useUserTimeline();
+    const { timelineEvents: inboxTimelineEvents } = useMediaInbox();
+
     useEffect(() => {
         if (!user) return;
-
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
             if (mediaViewerVisible) {
                 handleCloseMediaViewer();
@@ -89,24 +91,30 @@ export default function UserTimelineView({
             onClose();
             return true;
         });
-
         return () => backHandler.remove();
     }, [user, mediaViewerVisible, onClose]);
 
-    const { timelineEvents } = useMediaInbox();
-
+    // ⭐ Merge live Supabase events + inbox events (real-time new messages)
     const allUserMedia = useMemo(() => {
         if (!user) return [];
-        const staticEvents = filmService.getTimelineEventsByUserId(user.uniqueUserId);
-        const dynamicEvents = timelineEvents[user.uniqueUserId] || [];
-        
-        const combinedEventsList = [...dynamicEvents, ...staticEvents]
-            .filter((e: any) => e.type === 'video' || e.type === 'photo' || e.type === 'image')
-            .sort((a, b) => 
+
+        const liveEvents: TimelineEvent[] = liveTimelineEvents[user.uniqueUserId] ?? [];
+        const dynamicEvents: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
+
+        // Merge, deduplicate by id, filter to photo/video only, sort newest first
+        const seen = new Set<string>();
+        const combined = [...dynamicEvents, ...liveEvents]
+            .filter((e): e is TimelineEvent => {
+                const ev = e as any;
+                if (seen.has(ev.id)) return false;
+                seen.add(ev.id);
+                return ev.type === 'video' || ev.type === 'photo' || ev.type === 'image';
+            })
+            .sort((a, b) =>
                 new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
             );
 
-        return combinedEventsList.map((event) => {
+        return combined.map((event) => {
             const ev = event as any;
             return {
                 id: ev.id,
@@ -117,10 +125,10 @@ export default function UserTimelineView({
                 durationSec: ev.durationSec,
                 title: ev.title,
                 timestamp: formatTimestamp(ev.timestamp),
-                sender: ev.sender
+                sender: ev.sender,
             } as MediaItem;
         });
-    }, [user, timelineEvents]);
+    }, [user, liveTimelineEvents, inboxTimelineEvents]);
 
     const handleMediaPress = (event: TimelineEvent) => {
         const ev = event as any;
@@ -135,13 +143,12 @@ export default function UserTimelineView({
                 uri: ev.uri,
                 text: ev.textContent || ev.text,
                 sender: ev.sender,
-                timestamp: formatTimestamp(ev.timestamp)
+                timestamp: formatTimestamp(ev.timestamp),
             } as MediaItem;
             setSelectedMedia(temp);
             setMediaViewerVisible(true);
         }
     };
-
 
     const handleCloseMediaViewer = () => {
         setMediaViewerVisible(false);
@@ -159,10 +166,7 @@ export default function UserTimelineView({
     const contentAnimatedStyle = useAnimatedStyle(() => {
         const opacity = interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]);
         const translateY = interpolate(expandAnim.value, [0, 1], [50, 0]);
-        return {
-            opacity,
-            transform: [{ translateY }]
-        };
+        return { opacity, transform: [{ translateY }] };
     });
 
     const imageAnimatedStyle = useAnimatedStyle(() => {
@@ -171,31 +175,37 @@ export default function UserTimelineView({
         const width = interpolate(expandAnim.value, [0, 1], [originLayout.width, TARGET_SIZE]);
         const height = interpolate(expandAnim.value, [0, 1], [originLayout.height, TARGET_SIZE]);
         const borderRadius = interpolate(
-            expandAnim.value,
-            [0, 1],
+            expandAnim.value, [0, 1],
             [Math.min(originLayout.width, originLayout.height) / 2, TARGET_SIZE / 2]
         );
-
-        return {
-            top,
-            left,
-            width,
-            height,
-            borderRadius,
-        };
+        return { top, left, width, height, borderRadius };
     });
 
-    const headerTextAnimatedStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]);
-        return { opacity };
-    });
+    const headerTextAnimatedStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]),
+    }));
 
+    const closeBtnBgAnimatedStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(expandAnim.value, [0, 1], [0.25, 0]),
+    }));
 
-    const closeBtnBgAnimatedStyle = useAnimatedStyle(() => {
-        // Use expandAnim instead of colorAnim to avoid legacy Animated.Value crash
-        const opacity = interpolate(expandAnim.value, [0, 1], [0.25, 0]);
-        return { opacity };
-    });
+    // ⭐ Raw events (with original timestamps) for TimelineCalendar
+    const rawEventsForCalendar: TimelineEvent[] = useMemo(() => {
+        if (!user) return [];
+        const liveEvents = liveTimelineEvents[user.uniqueUserId] ?? [];
+        const dynamicEvents: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
+        const seen = new Set<string>();
+        return [...dynamicEvents, ...liveEvents]
+            .filter(e => {
+                const ev = e as any;
+                if (seen.has(ev.id)) return false;
+                seen.add(ev.id);
+                return ev.type === 'video' || ev.type === 'photo' || ev.type === 'image';
+            })
+            .sort((a, b) =>
+                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+    }, [user, liveTimelineEvents, inboxTimelineEvents]);
 
     return (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
@@ -203,26 +213,26 @@ export default function UserTimelineView({
                 <Animated.View style={[
                     styles.clippingContainer,
                     contentAnimatedStyle,
-                    {
-                        top: CLIPPING_START_Y,
-                        backgroundColor: COLORS.background,
-                    }
+                    { top: CLIPPING_START_Y, backgroundColor: COLORS.background }
                 ]}>
-                    {allUserMedia.length > 0 ? (
+                    {/* ⭐ Show spinner while fetching */}
+                    {timelineLoading ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="large" color="#000" />
+                        </View>
+                    ) : rawEventsForCalendar.length > 0 ? (
                         <TimelineCalendar
                             userUniqueId={user!.uniqueUserId}
-                            timelineEvents={(filmService.getAllTimelineEvents() as any[]).filter(e => 
-                                e.type === 'video' || e.type === 'photo' || e.type === 'image'
-                            )}
+                            timelineEvents={rawEventsForCalendar}
                             contentPaddingTop={(TARGET_TOP - CLIPPING_START_Y) + TARGET_SIZE + 20}
                             onMediaPress={handleMediaPress}
                         />
                     ) : (
-
                         <View style={styles.emptyContainer}>
                             <Text style={styles.emptyText}>no memories with them</Text>
                         </View>
                     )}
+
                     <View style={styles.floatingCloseContainer}>
                         <View style={styles.closeBtnShadowWrapper}>
                             <BlurView intensity={80} tint="light" style={styles.closeBtnBlur}>
@@ -242,20 +252,16 @@ export default function UserTimelineView({
                     </View>
                 </Animated.View>
 
-
-
-                <Animated.View
-                    style={[
-                        imageAnimatedStyle,
-                        {
-                            position: 'absolute',
-                            backgroundColor: user!.dominantColor,
-                            overflow: 'hidden',
-                            zIndex: 100,
-                            elevation: 10
-                        }
-                    ]}
-                >
+                <Animated.View style={[
+                    imageAnimatedStyle,
+                    {
+                        position: 'absolute',
+                        backgroundColor: user!.dominantColor,
+                        overflow: 'hidden',
+                        zIndex: 100,
+                        elevation: 10,
+                    }
+                ]}>
                     <Pressable onPress={onClose} style={{ flex: 1 }}>
                         <Image
                             source={{ uri: user!.profilePicture }}
@@ -265,25 +271,23 @@ export default function UserTimelineView({
                     </Pressable>
                 </Animated.View>
 
-                <Animated.View
-                    style={[
-                        headerTextAnimatedStyle,
-                        {
-                            position: 'absolute',
-                            top: TARGET_TOP,
-                            left: TARGET_LEFT + TARGET_SIZE + 15,
-                            right: 60,
-                            height: TARGET_SIZE,
-                            justifyContent: 'center',
-                            zIndex: 100
-                        }
-                    ]}
-                >
+                <Animated.View style={[
+                    headerTextAnimatedStyle,
+                    {
+                        position: 'absolute',
+                        top: TARGET_TOP,
+                        left: TARGET_LEFT + TARGET_SIZE + 15,
+                        right: 60,
+                        height: TARGET_SIZE,
+                        justifyContent: 'center',
+                        zIndex: 100,
+                    }
+                ]}>
                     <Text
                         style={{
                             fontSize: 28,
                             fontFamily: 'DancingScript-Bold',
-                            color: '#000'
+                            color: '#000',
                         }}
                         numberOfLines={1}
                     >
@@ -302,9 +306,7 @@ export default function UserTimelineView({
     );
 }
 
-
 const BUTTON_SIZE = 56;
-
 
 const styles = StyleSheet.create({
     clippingContainer: {
@@ -315,22 +317,27 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         backgroundColor: 'transparent',
     },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     floatingCloseContainer: {
         position: 'absolute',
         bottom: 40,
         left: 0,
         right: 0,
         alignItems: 'center',
-        zIndex: 200
+        zIndex: 200,
     },
     closeBtnShadowWrapper: {
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
-        shadowColor: "#000",
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 10,
-        elevation: 0, // Removed elevation to prevent Android ring artifact
+        elevation: 0,
         borderRadius: BUTTON_SIZE / 2,
         backgroundColor: 'transparent',
     },
@@ -339,7 +346,7 @@ const styles = StyleSheet.create({
         height: BUTTON_SIZE,
         borderRadius: BUTTON_SIZE / 2,
         overflow: 'hidden',
-        borderWidth: 0, // Explicitly no border
+        borderWidth: 0,
     },
     closeBtnContent: {
         flex: 1,
@@ -356,5 +363,5 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontFamily: 'DancingScript-Regular',
         color: 'rgba(0,0,0,0.4)',
-    }
+    },
 });
