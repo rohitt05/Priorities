@@ -8,6 +8,7 @@ import {
     Vibration,
     type ViewabilityConfig,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import Animated, {
     useAnimatedScrollHandler,
     SharedValue,
@@ -230,16 +231,18 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
 });
 UnreadIndicator.displayName = 'UnreadIndicator';
 
-const SeenIndicator = React.memo(({ status, size }: { status: string; size: number }) => {
-    const position = useMemo(() => calculateOptionsButtonPosition(size, -145, 20), [size]);
+const SeenIndicator = React.memo(({ status, size, userName }: { status: string; size: number; userName: string }) => {
+    // -30 deg is top-right; buttonRadius 20 makes it sit nicely on the inner edge
+    const position = useMemo(() => calculateOptionsButtonPosition(size, -30, 20), [size]);
     const isEmoji = status !== 'sent' && status !== 'seen';
 
     return (
-        <View style={[styles.seenLabelContainer, position, isEmoji && styles.emojiIndicator]}>
+        <Animated.View style={[position, isEmoji ? styles.emojiIndicator : styles.seenLabelContainer]}>
+            {!isEmoji && <BlurView intensity={45} tint="light" style={StyleSheet.absoluteFill} />}
             <Text style={[styles.seenText, isEmoji && styles.emojiIndicatorText]}>
                 {status === 'seen' ? 'Seen' : (status === 'sent' ? 'Sent' : status)}
             </Text>
-        </View>
+        </Animated.View>
     );
 });
 SeenIndicator.displayName = 'SeenIndicator';
@@ -383,8 +386,8 @@ const PriorityCard = React.memo(
                             }}
                         />
                     )}
-                    {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && (
-                        <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} />
+                    {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && isActive && (
+                        <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} userName={item.name} />
                     )}
                 </View>
 
@@ -670,8 +673,8 @@ const styles = StyleSheet.create({
     thoughtBubblesTrail: { alignItems: 'center', marginTop: 1, marginRight: -10 },
     thoughtBubbleSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFF', marginBottom: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 2 },
     thoughtBubbleTiny: { width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: '#FFF', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 },
-    seenLabelContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR, backgroundColor: 'rgba(255, 255, 255, 0.9)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
-    seenText: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+    seenLabelContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(255, 255, 255, 0.4)' },
+    seenText: { fontSize: 8, fontFamily: FONTS.bold, color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
     edgeIndicatorContainer: { position: 'absolute', zIndex: Z_INDEX.INDICATOR },
     indicatorLeft: { top: 80, left: 0 },
     indicatorRight: { bottom: 80, right: 0 },
@@ -692,19 +695,21 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.15)',
     },
     emojiIndicator: {
-        backgroundColor: 'rgba(255, 255, 255, 1)',
-        paddingHorizontal: 6,
-        paddingVertical: 6,
-        borderRadius: 20,
-        width: 38,
-        height: 38,
+        position: 'absolute',
+        zIndex: Z_INDEX.INDICATOR,
+        paddingHorizontal: 0,
+        paddingVertical: 0,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        flexDirection: 'row',
     },
     emojiIndicatorText: {
-        fontSize: 18,
+        fontSize: 20,
+        fontFamily: FONTS.bold,
+        color: COLORS.text,
+        textTransform: 'none',
+        letterSpacing: 0,
+        textShadowColor: 'transparent',
     },
 });
 

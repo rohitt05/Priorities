@@ -7,8 +7,8 @@ import { TimelineEvent, Message } from '@/types/domain';
 export type UnreadMedia = Message;
 
 interface MediaInboxContextType {
-    unreadMessages: Record<string, Message>; // sender_id -> freshest unread message (with fresh URI)
-    myLastSentStatus: Record<string, string>; // Status: 'none', 'sent', 'seen', or emoji
+    unreadMessages: Record<string, Message>;
+    myLastSentStatus: Record<string, string>; // 'none' | 'sent' | 'seen' | emoji
     markAsSeen: (userId: string) => Promise<void>;
     reactToMessage: (userId: string, emoji: string) => Promise<void>;
     addTimelineEvent: (event: TimelineEvent) => void;
@@ -19,9 +19,7 @@ interface MediaInboxContextType {
 
 const MediaInboxContext = createContext<MediaInboxContextType | undefined>(undefined);
 
-// ── Extracts the storage path from a signed URL ───────────────────────────
-// e.g. "https://xxx.supabase.co/storage/v1/object/sign/messages/abc/media/file.jpg?token=..."
-// → "messages/abc/media/file.jpg" (bucket = "messages", path = "abc/media/file.jpg")
+// ── Extracts bucket + path from a Supabase signed URL ────────────────────
 const extractStoragePath = (signedUrl: string): { bucket: string; path: string } | null => {
     try {
         const match = signedUrl.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
@@ -35,24 +33,23 @@ const extractStoragePath = (signedUrl: string): { bucket: string; path: string }
 // ── Re-signs a URL so it is always fresh (1 hour expiry) ─────────────────
 const refreshSignedUrl = async (uri: string | null | undefined): Promise<string | undefined> => {
     if (!uri) return undefined;
-    // If it's not a signed URL (e.g. already public), return as-is
     if (!uri.includes('/storage/v1/object/sign/')) return uri;
 
     const parsed = extractStoragePath(uri);
-    if (!parsed) return uri; // can't parse, use original
+    if (!parsed) return uri;
 
     const { data, error } = await supabase.storage
         .from(parsed.bucket)
-        .createSignedUrl(parsed.path, 60 * 60); // fresh 1-hour token
+        .createSignedUrl(parsed.path, 60 * 60);
 
     if (error || !data?.signedUrl) {
         console.warn('[MediaInbox] Failed to refresh signed URL, using original:', error?.message);
-        return uri; // fall back to original
+        return uri;
     }
     return data.signedUrl;
 };
 
-// ── Pre-fetches images into React Native's image cache ───────────────────
+// ── Pre-fetches images into RN image cache ────────────────────────────────
 const prefetchIfImage = (uri: string | undefined, type: string) => {
     if (!uri) return;
     if (type === 'photo' || type === 'image') {
@@ -66,12 +63,17 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     const [myLastSentStatus, setMyLastSentStatus] = useState<Record<string, string>>({});
     const [timelineEvents, setTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
 
-    // ── Fetch all unread messages + refresh their signed URLs ─
+    // ── Keep a ref of sent message IDs → receiver, so realtime can map back ─
+    // { message_id: receiver_id }
+    const sentMessageMapRef = useRef<Record<string, string>>({});
+
+    // ── Fetch all unread messages + refresh signed URLs ───────────────────
     const loadUnreadMessages = useCallback(async () => {
         const { data: sessionData } = await supabase.auth.getSession();
         const myId = sessionData?.session?.user?.id;
         if (!myId) return;
 
+        // ── Load received unread messages ─────────────────────────────────
         const { data, error } = await supabase
             .from('messages')
             .select('id, sender_id, receiver_id, type, uri, duration_sec, sent_at, seen_at, disappeared')
@@ -85,12 +87,10 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
             return;
         }
 
-        // Group by sender_id (all unread messages)
+        // Group into queues by sender
         const queuesBySender: Record<string, Message[]> = {};
         (data ?? []).forEach((row) => {
-            if (!queuesBySender[row.sender_id]) {
-                queuesBySender[row.sender_id] = [];
-            }
+            if (!queuesBySender[row.sender_id]) queuesBySender[row.sender_id] = [];
             queuesBySender[row.sender_id].push({
                 id: row.id,
                 senderId: row.sender_id,
@@ -104,11 +104,10 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
             });
         });
 
-        // Set the full queues
         setUnreadQueues(queuesBySender);
 
-        // For each sender, refresh the URL of the TOP message (latest)
-        const topMessagesEntries = await Promise.all(
+        // Refresh URL of top (latest) message per sender + prefetch images
+        const topEntries = await Promise.all(
             Object.entries(queuesBySender).map(async ([senderId, queue]) => {
                 const topMsg = queue[0];
                 const freshUri = await refreshSignedUrl(topMsg.uri);
@@ -116,28 +115,38 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                 return [senderId, { ...topMsg, uri: freshUri }] as const;
             })
         );
+        setUnreadMessages(Object.fromEntries(topEntries));
 
-        setUnreadMessages(Object.fromEntries(topMessagesEntries));
-
-        // ── Fetch statuses of last messages SENT by me ──
+        // ── Load status of MY last sent messages ──────────────────────────
+        // Join with message_reactions to get emoji if reacted
         const { data: sentData, error: sentError } = await supabase
             .from('messages')
-            .select('receiver_id, seen_at, reaction')
+            .select('id, receiver_id, seen_at, message_reactions(emoji)')
             .eq('sender_id', myId)
+            .eq('disappeared', false)
             .order('sent_at', { ascending: false });
 
         if (!sentError && sentData) {
             const statusMap: Record<string, string> = {};
+            const newSentMap: Record<string, string> = {};
+
             sentData.forEach((row: any) => {
+                // Track sent message ID → receiver for realtime reaction mapping
+                newSentMap[row.id] = row.receiver_id;
+
                 if (!statusMap[row.receiver_id]) {
-                    statusMap[row.receiver_id] = row.reaction || (row.seen_at ? 'seen' : 'sent');
+                    // Prefer emoji reaction over seen/sent
+                    const reaction = row.message_reactions?.[0]?.emoji;
+                    statusMap[row.receiver_id] = reaction || (row.seen_at ? 'seen' : 'sent');
                 }
             });
+
+            sentMessageMapRef.current = newSentMap;
             setMyLastSentStatus(prev => ({ ...prev, ...statusMap }));
         }
     }, []);
 
-    // ── Realtime subscription ─────────────────────────────────
+    // ── Realtime subscription ─────────────────────────────────────────────
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
     useEffect(() => {
@@ -150,6 +159,8 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
 
             channelRef.current = supabase
                 .channel('messages-inbox')
+
+                // ── New message received ──────────────────────────────────
                 .on(
                     'postgres_changes',
                     {
@@ -174,25 +185,24 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                             disappeared: row.disappeared,
                         };
 
-                        // Add to queue (at the beginning because list is descending)
-                        setUnreadQueues(prev => {
-                            const queue = prev[row.sender_id] || [];
-                            return {
-                                ...prev,
-                                [row.sender_id]: [newMessage, ...queue]
-                            };
-                        });
+                        // Add to front of queue (descending order)
+                        setUnreadQueues(prev => ({
+                            ...prev,
+                            [row.sender_id]: [newMessage, ...(prev[row.sender_id] || [])],
+                        }));
 
-                        // Re-sign the URL immediately for the latest message
+                        // Refresh URL + prefetch + set as current top message
                         const freshUri = await refreshSignedUrl(row.uri);
                         prefetchIfImage(freshUri, row.type);
-                        
+
                         setUnreadMessages(prev => ({
                             ...prev,
                             [row.sender_id]: { ...newMessage, uri: freshUri },
                         }));
                     }
                 )
+
+                // ── My sent message was seen ──────────────────────────────
                 .on(
                     'postgres_changes',
                     {
@@ -203,19 +213,62 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     },
                     (payload) => {
                         const row = payload.new as any;
-                        if (row.reaction) {
-                            setMyLastSentStatus(prev => ({
-                                ...prev,
-                                [row.receiver_id]: row.reaction
-                            }));
-                        } else if (row.seen_at) {
-                            setMyLastSentStatus(prev => ({
-                                ...prev,
-                                [row.receiver_id]: 'seen'
-                            }));
+                        // Only update to 'seen' if no emoji reaction already showing
+                        if (row.seen_at) {
+                            setMyLastSentStatus(prev => {
+                                const current = prev[row.receiver_id];
+                                // Don't overwrite an emoji reaction with 'seen'
+                                const isEmoji = current && current !== 'sent' && current !== 'seen' && current !== 'none';
+                                if (isEmoji) return prev;
+                                return { ...prev, [row.receiver_id]: 'seen' };
+                            });
                         }
                     }
                 )
+
+                // ── Someone reacted to my message ─────────────────────────
+                // Listens to INSERT on message_reactions (no user filter needed —
+                // Supabase RLS ensures we only get rows where the message belongs to us)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'message_reactions',
+                    },
+                    (payload) => {
+                        const row = payload.new as any;
+                        // Look up which receiver this message_id belongs to
+                        const receiverId = sentMessageMapRef.current[row.message_id];
+                        if (!receiverId) return; // not one of my sent messages
+
+                        setMyLastSentStatus(prev => ({
+                            ...prev,
+                            [receiverId]: row.emoji,
+                        }));
+                    }
+                )
+
+                // ── Someone changed their reaction (upsert triggers UPDATE) ─
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'message_reactions',
+                    },
+                    (payload) => {
+                        const row = payload.new as any;
+                        const receiverId = sentMessageMapRef.current[row.message_id];
+                        if (!receiverId) return;
+
+                        setMyLastSentStatus(prev => ({
+                            ...prev,
+                            [receiverId]: row.emoji,
+                        }));
+                    }
+                )
+
                 .subscribe();
         };
 
@@ -229,21 +282,22 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [loadUnreadMessages]);
 
+    // ── Add timeline event ────────────────────────────────────────────────
     const addTimelineEvent = useCallback((event: TimelineEvent) => {
         setTimelineEvents(prev => ({
             ...prev,
-            [event.userUniqueId]: [event, ...(prev[event.userUniqueId] || [])]
+            [event.userUniqueId]: [event, ...(prev[event.userUniqueId] || [])],
         }));
     }, []);
 
-    // ── Mark as seen ──────────────────────────────────────────
+    // ── Mark as seen ──────────────────────────────────────────────────────
     const markAsSeen = useCallback(async (userId: string) => {
         const message = unreadMessages[userId];
         if (!message) return;
 
         const seenAt = new Date().toISOString();
 
-        // Update database (async)
+        // Fire-and-forget DB update
         supabase
             .from('messages')
             .update({ seen_at: seenAt })
@@ -262,59 +316,65 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         } as TimelineEvent;
         addTimelineEvent(event);
 
-        // Update queues and current message
+        // Pop from queue, load next message if any
         setUnreadQueues(prev => {
             const queue = prev[userId] || [];
             const remaining = queue.filter(m => m.id !== message.id);
-            
-            // If there's a next message, prepare it
+
             if (remaining.length > 0) {
                 const nextMsg = remaining[0];
-                // We refresh its URL and update unreadMessages
                 refreshSignedUrl(nextMsg.uri).then(freshUri => {
                     prefetchIfImage(freshUri, nextMsg.type);
                     setUnreadMessages(prevMsgs => ({
                         ...prevMsgs,
-                        [userId]: { ...nextMsg, uri: freshUri }
+                        [userId]: { ...nextMsg, uri: freshUri },
                     }));
                 });
             } else {
-                // No more messages for this user
                 setUnreadMessages(prevMsgs => {
-                    const nextMsgs = { ...prevMsgs };
-                    delete nextMsgs[userId];
-                    return nextMsgs;
+                    const next = { ...prevMsgs };
+                    delete next[userId];
+                    return next;
                 });
             }
 
-            return {
-                ...prev,
-                [userId]: remaining
-            };
+            if (remaining.length === 0) {
+                const next = { ...prev };
+                delete next[userId];
+                return next;
+            }
+            return { ...prev, [userId]: remaining };
         });
     }, [unreadMessages, addTimelineEvent]);
 
-    // ── React to message ──────────────────────────────────────
+    // ── React to message ──────────────────────────────────────────────────
     const reactToMessage = useCallback(async (userId: string, emoji: string) => {
         const message = unreadMessages[userId];
         if (!message) return;
 
-        // Update database
+        const { data: sessionData } = await supabase.auth.getSession();
+        const myId = sessionData?.session?.user?.id;
+        if (!myId) return;
+
+        // ✅ Correct: INSERT/UPSERT into message_reactions table
+        // upsert handles the case where they change their emoji (UNIQUE message_id + user_id)
         const { error } = await supabase
-            .from('messages')
-            .update({ reaction: emoji })
-            .eq('id', message.id);
+            .from('message_reactions')
+            .upsert(
+                { message_id: message.id, user_id: myId, emoji },
+                { onConflict: 'message_id,user_id' }
+            );
 
         if (error) {
             console.error('[MediaInbox] Failed to react to message:', error);
             return;
         }
 
-        // Add to timeline or local state if needed (currently we just want user A to see it)
-        // User A will see it via Realtime subscription in their own app.
+        // Sender sees emoji immediately via realtime INSERT on message_reactions
+        // (no local state update needed here — the sender's realtime listener handles it)
     }, [unreadMessages]);
 
-
+    // ── Sent status helpers ───────────────────────────────────────────────
     const recordMessageSent = useCallback((userId: string) => {
         setMyLastSentStatus(prev => ({ ...prev, [userId]: 'sent' }));
     }, []);
@@ -326,6 +386,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         });
     }, []);
 
+    // Clear sent status when we receive a new unread from that user
     useEffect(() => {
         const unreadUserIds = Object.keys(unreadMessages);
         setMyLastSentStatus(prev => {
@@ -350,7 +411,16 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         timelineEvents,
         recordMessageSent,
         simulateCounterpartSeen,
-    }), [unreadMessages, myLastSentStatus, markAsSeen, reactToMessage, addTimelineEvent, timelineEvents, recordMessageSent, simulateCounterpartSeen]);
+    }), [
+        unreadMessages,
+        myLastSentStatus,
+        markAsSeen,
+        reactToMessage,
+        addTimelineEvent,
+        timelineEvents,
+        recordMessageSent,
+        simulateCounterpartSeen,
+    ]);
 
     return (
         <MediaInboxContext.Provider value={value}>
