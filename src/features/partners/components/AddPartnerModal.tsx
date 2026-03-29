@@ -1,3 +1,5 @@
+// src/features/partners/components/AddPartnerModal.tsx
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
@@ -11,6 +13,7 @@ import {
     Easing,
     TextInput,
     Image,
+    ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -25,19 +28,17 @@ import { FontAwesome5 } from '@expo/vector-icons';
 
 import { COLORS, FONTS, FONT_SIZES } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
-import usersData from '@/data/users.json';
+import { searchUsers, updateProfile } from '@/services/profileService';
+import { getMyPriorities } from '@/services/priorityService';
+import { Profile } from '@/types/domain';
+import { supabase } from '@/lib/supabase';
 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.7;
 const SWIPE_CLOSE_THRESHOLD = 80;
-
-// Top section approximate height: handle + title + searchbar + padding
 const TOP_SECTION_HEIGHT = 180;
 const LIST_HEIGHT = SHEET_HEIGHT - TOP_SECTION_HEIGHT;
-
-
-import { User } from '@/types/userTypes';
 
 
 interface AddPartnerModalProps {
@@ -63,17 +64,12 @@ export default function AddPartnerModal({
 
     const [searchText, setSearchText] = useState('');
     const [addedId, setAddedId] = useState<string | null>(null);
-
-    const allUsers = (usersData as User[]).filter((u) => u.uniqueUserId !== currentUserUniqueUserId);
-
-    const filteredUsers = allUsers.filter((u) => {
-        const q = searchText.trim().toLowerCase();
-        if (!q) return true;
-        return (
-            u.name.toLowerCase().includes(q) ||
-            u.uniqueUserId.toLowerCase().includes(q)
-        );
-    });
+    const [results, setResults] = useState<any[]>([]);
+    const [priorities, setPriorities] = useState<Profile[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [isPrioritiesLoading, setIsPrioritiesLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
     const toOpaque = (color: string) => color.replace(/[\d.]+\)$/, '0.4)');
 
@@ -82,11 +78,62 @@ export default function AddPartnerModal({
         outputRange: [toOpaque(prevBgColor), toOpaque(bgColor)],
     });
 
+    // Fetch existing priorities on open
+    useEffect(() => {
+        if (!visible) return;
+        
+        setIsPrioritiesLoading(true);
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            const authUUID = session?.user?.id;
+            if (authUUID) {
+                getMyPriorities(authUUID)
+                    .then(list => setPriorities(list))
+                    .catch(() => setPriorities([]))
+                    .finally(() => setIsPrioritiesLoading(false));
+            } else {
+                setIsPrioritiesLoading(false);
+            }
+        });
+    }, [visible]);
+
+    // Debounced real Supabase search
+    useEffect(() => {
+        if (!visible) return;
+        if (searchTimeout.current) clearTimeout(searchTimeout.current);
+
+        if (!searchText.trim()) {
+            setResults([]);
+            setIsSearching(false);
+            return;
+        }
+
+        setIsSearching(true);
+        searchTimeout.current = setTimeout(async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                const authUUID = session?.user?.id ?? '';
+                const data = await searchUsers(searchText.trim(), [authUUID]);
+                // Exclude yourself from results
+                setResults(data.filter(u => u.unique_user_id !== currentUserUniqueUserId));
+            } catch {
+                setResults([]);
+            } finally {
+                setIsSearching(false);
+            }
+        }, 350);
+
+        return () => {
+            if (searchTimeout.current) clearTimeout(searchTimeout.current);
+        };
+    }, [searchText, visible]);
+
     useEffect(() => {
         if (visible) {
             swipeY.value = 0;
             setSearchText('');
             setAddedId(null);
+            setResults([]);
+            setIsSearching(false);
             Animated.parallel([
                 Animated.spring(slideAnim, {
                     toValue: 0,
@@ -107,7 +154,6 @@ export default function AddPartnerModal({
         }
     }, [visible]);
 
-
     const handleClose = () => {
         Animated.parallel([
             Animated.timing(slideAnim, {
@@ -126,8 +172,6 @@ export default function AddPartnerModal({
         });
     };
 
-
-    // Swipe only triggers when list is at top (not scrolled)
     const swipeGesture = Gesture.Pan()
         .activeOffsetY([10, 10])
         .onUpdate((event) => {
@@ -143,40 +187,63 @@ export default function AddPartnerModal({
             }
         });
 
+    const handleAdd = async (item: any) => {
+        if (isSaving) return;
+        try {
+            setIsSaving(true);
+            const { data: { session } } = await supabase.auth.getSession();
+            const authUUID = session?.user?.id;
+            if (!authUUID) return;
 
-    const renderUser = ({ item }: { item: User }) => {
-        const isAdded = addedId === item.uniqueUserId;
+            // item.id = real UUID, item.unique_user_id = @handle text
+            await updateProfile(authUUID, { partner_id: item.id });
+
+            setAddedId(item.unique_user_id);
+            onSelectPartner(item.unique_user_id);
+            handleClose();
+        } catch (e) {
+            console.error('Failed to set partner:', e);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const renderUser = (item: any) => {
+        const isAdded = addedId === item.unique_user_id;
         return (
-            <View key={item.uniqueUserId} style={styles.userRow}>
-                <Image source={{ uri: item.profilePicture }} style={styles.avatar} />
+            <View key={item.unique_user_id} style={styles.userRow}>
+                {item.profile_picture ? (
+                    <Image source={{ uri: item.profile_picture }} style={styles.avatar} />
+                ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                        <Text style={styles.avatarInitial}>
+                            {item.name?.[0]?.toUpperCase() || '?'}
+                        </Text>
+                    </View>
+                )}
                 <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.name}</Text>
-                    <Text style={styles.userHandle}>@{item.uniqueUserId}</Text>
+                    <Text style={styles.userHandle}>@{item.unique_user_id}</Text>
                 </View>
                 <TouchableOpacity
                     style={[styles.addButton, isAdded && styles.addButtonAdded]}
                     activeOpacity={0.75}
-                    onPress={() => {
-                        const next = isAdded ? null : item.uniqueUserId;
-                        setAddedId(next);
-                        if (next) {
-                            onSelectPartner(next);
-                            handleClose();
-                        }
-                    }}
+                    disabled={isSaving}
+                    onPress={() => handleAdd(item)}
                 >
-                    <Text style={[styles.addButtonText, isAdded && styles.addButtonTextAdded]}>
-                        {isAdded ? 'added' : 'add'}
-                    </Text>
+                    {isSaving && addedId === item.unique_user_id ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                        <Text style={[styles.addButtonText, isAdded && styles.addButtonTextAdded]}>
+                            {isAdded ? 'added' : 'add'}
+                        </Text>
+                    )}
                 </TouchableOpacity>
             </View>
         );
     };
 
-
-
     if (!visible) return null;
-
 
     return (
         <Modal
@@ -194,7 +261,7 @@ export default function AddPartnerModal({
                         <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} />
                     </TouchableWithoutFeedback>
 
-                    {/* Sheet entry animation */}
+                    {/* Sheet */}
                     <Animated.View style={[
                         styles.sheetContainer,
                         { transform: [{ translateY: slideAnim }] }
@@ -235,11 +302,10 @@ export default function AddPartnerModal({
                                             onChangeText={setSearchText}
                                         />
                                         <View style={styles.searchIconWrapper}>
-                                            <FontAwesome5
-                                                name="search"
-                                                size={14}
-                                                color={COLORS.textSecondary}
-                                            />
+                                            {isSearching
+                                                ? <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                                                : <FontAwesome5 name="search" size={14} color={COLORS.textSecondary} />
+                                            }
                                         </View>
                                     </View>
                                 </View>
@@ -257,10 +323,32 @@ export default function AddPartnerModal({
                                 bounces={true}
                                 scrollEventThrottle={16}
                             >
-                                {filteredUsers.length === 0 ? (
+                                {!searchText.trim() ? (
+                                    <View>
+                                        <Text style={styles.sectionTitle}>Your Priorities</Text>
+                                        {isPrioritiesLoading ? (
+                                            <ActivityIndicator size="small" color={COLORS.textSecondary} style={{ marginTop: 20 }} />
+                                        ) : priorities.length === 0 ? (
+                                            <Text style={styles.emptyText}>no priorities yet</Text>
+                                        ) : (
+                                            priorities.map((item) => renderUser({
+                                                ...item,
+                                                profile_picture: item.profilePicture, // Map domain to internal search result shape
+                                                unique_user_id: item.uniqueUserId
+                                            }))
+                                        )}
+                                        <Text style={[styles.emptyText, { marginTop: priorities.length > 0 ? 40 : 10 }]}>
+                                            or search by name or @handle
+                                        </Text>
+                                    </View>
+                                ) : isSearching ? (
+                                    <View style={styles.loadingContainer}>
+                                        <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                                    </View>
+                                ) : results.length === 0 ? (
                                     <Text style={styles.emptyText}>no one found</Text>
                                 ) : (
-                                    filteredUsers.map((item) => renderUser({ item }))
+                                    results.map((item) => renderUser(item))
                                 )}
                             </ScrollView>
 
@@ -328,6 +416,15 @@ const styles = StyleSheet.create({
         marginTop: 6,
         marginBottom: 20,
     },
+    sectionTitle: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginTop: 10,
+        marginBottom: 8,
+    },
     searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -349,12 +446,17 @@ const styles = StyleSheet.create({
         marginLeft: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        width: 20,
     },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
         paddingHorizontal: 20,
+    },
+    loadingContainer: {
+        marginTop: 40,
+        alignItems: 'center',
     },
     userRow: {
         flexDirection: 'row',
@@ -368,6 +470,16 @@ const styles = StyleSheet.create({
         height: 42,
         borderRadius: 21,
         backgroundColor: COLORS.surfaceLight,
+    },
+    avatarPlaceholder: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: COLORS.secondary,
+    },
+    avatarInitial: {
+        fontFamily: FONTS.bold,
+        fontSize: FONT_SIZES.sm,
+        color: '#FFFFFF',
     },
     userInfo: {
         flex: 1,
@@ -392,6 +504,9 @@ const styles = StyleSheet.create({
         borderWidth: 1.5,
         borderColor: COLORS.primary,
         backgroundColor: 'transparent',
+        minWidth: 56,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     addButtonAdded: {
         backgroundColor: COLORS.primary,

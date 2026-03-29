@@ -10,6 +10,7 @@ import { User } from '@/types/domain';
 import { COLORS, SPACING, FONTS, FONT_SIZES } from '@/theme/theme';
 import { getMyPriorities } from '@/services/priorityService';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
+import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 type YourPrioritiesProps = {
     user: User;
@@ -19,6 +20,7 @@ type YourPrioritiesProps = {
 export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthorizedAccess }) => {
     const router = useRouter();
     const authId = useAuthUser(); // null while loading, UUID once resolved
+    const { refreshKey } = usePrioritiesRefresh();
     const [activeLongPressId, setActiveLongPressId] = useState<string | null>(null);
 
     // Priorities of the profile being viewed (shown as the avatar list)
@@ -39,7 +41,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
         getMyPriorities(user.id)
             .then((list) => setPrioritiesList(list))
             .catch(() => setPrioritiesList([]));
-    }, [user.id]);
+    }, [user.id, refreshKey]);
 
     // ── Fetch logged-in user's own priority UUIDs for access gate ──────────
     useEffect(() => {
@@ -65,7 +67,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                 setMyPriorityIds([]);
                 setAccessLoaded(true);
             });
-    }, [authId, isOwner]);
+    }, [authId, isOwner, refreshKey]);
 
     const title = isOwner
         ? 'My Priorities'
@@ -100,7 +102,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                             style={styles.labelBubble}
                                         >
                                             <Text style={styles.labelText} numberOfLines={1}>
-                                                {u.relationship || 'Friend'}
+                                                {u.relationship || u.name?.split(' ')[0] || 'Priority'}
                                             </Text>
                                             <View style={styles.bubbleTail} />
                                         </Reanimated.View>

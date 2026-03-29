@@ -38,7 +38,6 @@ import { TapHoldProvider, TapHoldContext, TapHoldImage } from '@/contexts/TapHol
 import { useVoiceNoteRecording } from '@/contexts/VoiceNoteRecordingContext';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
-import usersData from '@/data/users.json';
 
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 

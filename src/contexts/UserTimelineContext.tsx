@@ -8,6 +8,7 @@ import UserTimelineView from '@/features/timeline/components/UserTimelineView';
 import { User, PriorityUserWithPost, TimelineEvent } from '@/types/domain';
 import { timelineService } from '@/services/timelineService';
 import { supabase } from '@/lib/supabase';
+import { useMediaInbox } from '@/contexts/MediaInboxContext';
 
 interface UserTimelineContextType {
     expandedUser: any | null;
@@ -32,6 +33,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const [priorities, setPriorities] = useState<PriorityUserWithPost[]>([]);
 
     // ⭐ NEW — live data state
+    const { timelineEvents: inboxEvents } = useMediaInbox();
     const [liveTimelineEvents, setLiveTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
     const [timelineLoading, setTimelineLoading] = useState(false);
     const loadedUsers = useRef<Set<string>>(new Set()); // avoid re-fetching same user
@@ -43,8 +45,8 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const { handleColorChange } = useBackground();
 
     // ⭐ NEW — fetch live timeline when a user is opened
-    const fetchTimelineForUser = useCallback(async (user: any) => {
-        if (loadedUsers.current.has(user.id)) return; // already loaded
+    const fetchTimelineForUser = useCallback(async (user: any, force = false) => {
+        if (!force && loadedUsers.current.has(user.id)) return; // already loaded
 
         setTimelineLoading(true);
         try {
@@ -60,7 +62,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
 
             setLiveTimelineEvents(prev => ({
                 ...prev,
-                [user.uniqueUserId]: events,
+                [user.uniqueUserId || user.id]: events,
             }));
             loadedUsers.current.add(user.id);
         } catch (err) {
@@ -69,6 +71,26 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
             setTimelineLoading(false);
         }
     }, []);
+    
+    const fetchedInboxMessageIds = useRef<Set<string>>(new Set());
+
+    // ⭐ Sync newly-seen messages from MediaInbox into the live timeline state
+    useEffect(() => {
+        Object.entries(inboxEvents).forEach(([userId, events]) => {
+            if (events.length === 0) return;
+            const topMsgId = events[0].id;
+
+            if (!fetchedInboxMessageIds.current.has(topMsgId)) {
+                // New seen message detected! 
+                // Mark as pending-fetch immediately to avoid duplicates
+                fetchedInboxMessageIds.current.add(topMsgId);
+
+                // Background fetch to sync the full timeline from DB
+                // We use the sender_id (them) and the uniqueUserId (which is userId here)
+                fetchTimelineForUser({ id: events[0].senderId, uniqueUserId: userId }, true);
+            }
+        });
+    }, [inboxEvents, fetchTimelineForUser]);
 
     const openTimeline = (user: any, layout: LayoutRectangle) => {
         if (isAnimating) return;

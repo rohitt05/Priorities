@@ -66,9 +66,9 @@ interface RowData {
 
 // --- SUB-COMPONENT FOR BUBBLE LOGIC ---
 const TimelineItem = React.memo(({
-    user, w, h, seedKey, onExpand, onOpenSheet, isSelected, expandAnim
+    user, w, h, seedKey, onExpand, onOpenSheet, isSelected, expandAnim, isPriority = true
 }: {
-    user: User;
+    user: User & { isPriority?: boolean };
     w: number;
     h: number;
     seedKey: string;
@@ -76,6 +76,7 @@ const TimelineItem = React.memo(({
     onOpenSheet: (user: User) => void;
     isSelected: boolean;
     expandAnim: SharedValue<number>;
+    isPriority?: boolean;
 }) => {
     const scale = useSharedValue(1);
     const bubbleOpacity = useSharedValue(0);
@@ -139,10 +140,15 @@ const TimelineItem = React.memo(({
                     <Animated.View style={[{
                         width: '100%', height: '100%', borderRadius: 999,
                         backgroundColor: user.dominantColor, overflow: 'hidden',
+                        opacity: isPriority ? 1 : 0.6,
                     }, scaleStyle]}>
                         <Image
                             source={{ uri: user.profilePicture }}
-                            style={{ width: '100%', height: '100%' }}
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                opacity: isPriority ? 1 : 0.7,
+                            }}
                             resizeMode="cover"
                         />
                     </Animated.View>
@@ -182,6 +188,7 @@ const TimelineRow = React.memo(({
                     user={user} w={size} h={size} seedKey={`${user.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
                     isSelected={expandedUserId === user.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(user as any).isPriority}
                 />
             </View>
         );
@@ -193,10 +200,12 @@ const TimelineRow = React.memo(({
             <View style={styles.row}>
                 <TimelineItem user={u1} w={itemW} h={itemW * 1.15} seedKey={`${u1.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim} />
+                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(u1 as any).isPriority} />
                 <TimelineItem user={u2} w={itemW} h={itemW * 0.95} seedKey={`${u2.id}-${item.id + 1}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim} />
+                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(u2 as any).isPriority} />
             </View>
         );
     }
@@ -207,13 +216,16 @@ const TimelineRow = React.memo(({
             <View style={styles.row}>
                 <TimelineItem user={u1} w={s} h={s} seedKey={`${u1.id}-${item.id}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim} />
+                    isSelected={expandedUserId === u1.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(u1 as any).isPriority} />
                 <TimelineItem user={u2} w={s} h={s * 1.2} seedKey={`${u2.id}-${item.id + 1}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim} />
+                    isSelected={expandedUserId === u2.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(u2 as any).isPriority} />
                 <TimelineItem user={u3} w={s} h={s} seedKey={`${u3.id}-${item.id + 2}`}
                     onExpand={onExpand} onOpenSheet={onOpenSheet}
-                    isSelected={expandedUserId === u3.uniqueUserId} expandAnim={expandAnim} />
+                    isSelected={expandedUserId === u3.uniqueUserId} expandAnim={expandAnim}
+                    isPriority={(u3 as any).isPriority} />
             </View>
         );
     }

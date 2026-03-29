@@ -79,9 +79,13 @@ export const timelineService = {
         }
 
         // ── 2. Messages (photo / video / voice) ───────────────────────────────
+        // Only show messages if:
+        // a) I sent it (sender_id = myId)
+        // b) I received it AND I've seen it (receiver_id = myId AND seen_at is not null)
         const { data: messages, error: messagesError } = await supabase
             .from('messages')
             .select('id, sender_id, receiver_id, type, uri, duration_sec, sent_at, seen_at, disappeared')
+            .or(`sender_id.eq.${myId},and(receiver_id.eq.${myId},seen_at.not.is.null)`)
             .or(
                 `and(sender_id.eq.${myId},receiver_id.eq.${theirId}),` +
                 `and(sender_id.eq.${theirId},receiver_id.eq.${myId})`

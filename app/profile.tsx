@@ -10,7 +10,6 @@ import {
     BackHandler,
     Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
     useSharedValue,
@@ -30,7 +29,7 @@ import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import AddPartnerModal from '@/features/partners/components/AddPartnerModal';
 import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
-import { PARTNER_KEY, BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
+import { BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
 import { useProfilePull } from '@/features/profile/hooks/useProfilePull';
@@ -41,6 +40,7 @@ import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
 import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
 import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
+import { updateProfile } from '@/services/profileService';
 
 
 function ProfileScreenContent() {
@@ -58,7 +58,6 @@ function ProfileScreenContent() {
     const [isEditing, setIsEditing] = useState(false);
     const [isAddPartnerVisible, setIsAddPartnerVisible] = useState(false);
     const [isActionModalVisible, setIsActionModalVisible] = useState(false);
-    const [savedPartnerUniqueUserId, setSavedPartnerUniqueUserId] = useState<string | null>(null);
     const [showFlashBanner, setShowFlashBanner] = useState(false);
     const bannerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -121,13 +120,11 @@ function ProfileScreenContent() {
     // so profile picture updates from settings screen reflect immediately
     useFocusEffect(
         React.useCallback(() => {
-            if (!authId) return; // wait for session to resolve
+            if (!authId) return;
 
             let isMounted = true;
             const fetchProfiles = async () => {
                 try {
-                    // Owner: fetch by real UUID
-                    // Viewer: fetch by @handle from route params
                     const { data: dbUser } = await supabase
                         .from('profiles')
                         .select('*')
@@ -149,12 +146,13 @@ function ProfileScreenContent() {
                         };
                         setCurrentUser(userObj);
 
-                        const partnerId = isOwner ? savedPartnerUniqueUserId : dbUser.partner_id;
+                        // Always read partner from DB — works for both owner and viewer
+                        const partnerId = dbUser.partner_id;
                         if (partnerId) {
                             const { data: pDbUser } = await supabase
                                 .from('profiles')
                                 .select('*')
-                                .eq('unique_user_id', partnerId)
+                                .eq('id', partnerId)
                                 .single();
                             if (pDbUser && isMounted) {
                                 setPartnerUser({
@@ -170,6 +168,9 @@ function ProfileScreenContent() {
                                     priorities: [],
                                 });
                             }
+                        } else {
+                            // Clear partner if DB has none
+                            if (isMounted) setPartnerUser(null);
                         }
                     }
                 } catch (error) {
@@ -180,28 +181,21 @@ function ProfileScreenContent() {
             };
             fetchProfiles();
             return () => { isMounted = false; };
-        }, [authId, effectiveUserId, isOwner, savedPartnerUniqueUserId])
+        }, [authId, effectiveUserId, isOwner])
     );
 
+    // Clears partner_id in Supabase AND local state
     const handleRemovePartner = async () => {
         try {
-            await AsyncStorage.removeItem(PARTNER_KEY);
-            setSavedPartnerUniqueUserId(null);
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) {
+                await updateProfile(session.user.id, { partner_id: null });
+            }
             setPartnerUser(null);
         } catch (e) {
             console.error('Failed to remove partner:', e);
         }
     };
-
-    useEffect(() => {
-        const loadPartner = async () => {
-            try {
-                const stored = await AsyncStorage.getItem(PARTNER_KEY);
-                if (stored) setSavedPartnerUniqueUserId(stored);
-            } catch { }
-        };
-        loadPartner();
-    }, []);
 
     const lightDominantColor = useMemo(
         () => (currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)'),
@@ -235,14 +229,12 @@ function ProfileScreenContent() {
         if (isOwner) return 'Mine';
         const ownerGender = currentUser.gender || 'male';
         const possessive = ownerGender === 'male' ? 'his' : (ownerGender === 'female' ? 'hers' : 'theirs');
-        // Check if logged-in user is the partner using real authId
         if (authId === currentUser.partnerId) {
             return `you're ${possessive}`;
         }
         return possessive.charAt(0).toUpperCase() + possessive.slice(1);
     }, [currentUser, isOwner, authId]);
 
-    // Wait for auth session to resolve before rendering
     if (!authId || isLoading) return null;
     if (!currentUser) return null;
 
@@ -350,9 +342,27 @@ function ProfileScreenContent() {
                 visible={isAddPartnerVisible}
                 onClose={() => setIsAddPartnerVisible(false)}
                 currentUserUniqueUserId={currentUser?.uniqueUserId || ''}
-                onSelectPartner={(selectedUserId) => {
-                    setSavedPartnerUniqueUserId(selectedUserId);
-                    AsyncStorage.setItem(PARTNER_KEY, selectedUserId).catch(() => { });
+                onSelectPartner={async (selectedUserId) => {
+                    // Instantly update UI without waiting for next focus
+                    const { data } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('unique_user_id', selectedUserId)
+                        .single();
+                    if (data) {
+                        setPartnerUser({
+                            id: data.id,
+                            name: data.name,
+                            uniqueUserId: data.unique_user_id,
+                            profilePicture: data.profile_picture || '',
+                            dominantColor: data.dominant_color || '#44562F',
+                            gender: data.gender || 'female',
+                            birthday: data.birthday || undefined,
+                            partnerId: data.partner_id || undefined,
+                            relationship: data.relationship || undefined,
+                            priorities: [],
+                        });
+                    }
                 }}
             />
 
