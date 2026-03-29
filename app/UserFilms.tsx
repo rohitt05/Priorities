@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     StyleSheet, View, Text, TouchableOpacity,
-    StatusBar, Dimensions
+    StatusBar, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,17 +13,12 @@ import Animated, {
     withTiming,
     interpolateColor,
     useAnimatedScrollHandler,
-    interpolate,
-    Extrapolation
 } from 'react-native-reanimated';
-import { filmService } from '@/services/filmService';
-import { Film as UserFilm } from '@/types/domain';
+import { supabase } from '@/lib/supabase';
+import { Film } from '@/types/domain';
 
-// New Imports
 import FilmCard from '../src/features/film-my-day/components/FilmCard';
-import FilmMedia from '../src/features/film-my-day/components/FilmMedia';
 import FilmStoryModal from '../src/features/film-my-day/components/FilmStoryModal';
-import { formatDate, formatTime } from '../src/features/film-my-day/utils/dateUtils';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_HEIGHT = 160;
@@ -38,13 +33,68 @@ const UserFilms = () => {
         dominantColor?: string;
     }>();
 
+    const [films, setFilms] = useState<Film[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0);
+    const [viewedIds, setViewedIds] = useState<Set<string>>(new Set());
 
     const bgColorProgress = useSharedValue(0);
     const scrollY = useSharedValue(0);
 
-    React.useEffect(() => {
+    // ── Fetch films for this user ─────────────────────────────
+    useEffect(() => {
+        if (!userId) return;
+        (async () => {
+            setIsLoading(true);
+            const { data, error } = await supabase
+                .from('films')
+                .select('id, type, uri, thumbnail, location, created_at')
+                .eq('creator_id', userId)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error('[UserFilms] fetch error:', error.message);
+                setIsLoading(false);
+                return;
+            }
+
+            setFilms(
+                (data || []).map(f => ({
+                    id: f.id,
+                    creatorId: userId,
+                    type: f.type as 'image' | 'video',
+                    uri: f.uri,
+                    thumbnail: f.thumbnail ?? undefined,
+                    location: f.location ?? undefined,
+                    isPublic: true,
+                    targetUserId: null,
+                    createdAt: f.created_at,
+                }))
+            );
+            setIsLoading(false);
+        })();
+    }, [userId]);
+
+    // ── Record view (once per film per session, never self) ───
+    const recordView = useCallback(async (filmId: string) => {
+        if (viewedIds.has(filmId)) return;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const viewerId = sessionData?.session?.user?.id;
+        if (!viewerId || viewerId === userId) return;
+
+        const { error } = await supabase
+            .from('film_views')
+            .upsert(
+                { film_id: filmId, viewer_id: viewerId },
+                { onConflict: 'film_id,viewer_id', ignoreDuplicates: true }
+            );
+
+        if (!error) setViewedIds(prev => new Set(prev).add(filmId));
+    }, [userId, viewedIds]);
+
+    // ── Background color fade-in ──────────────────────────────
+    useEffect(() => {
         bgColorProgress.value = withTiming(1, { duration: 800 });
     }, []);
 
@@ -53,34 +103,40 @@ const UserFilms = () => {
             bgColorProgress.value,
             [0, 1],
             ['#000000', dominantColor || '#000000']
-        )
+        ),
     }));
 
     const scrollHandler = useAnimatedScrollHandler({
-        onScroll: (event) => {
-            scrollY.value = event.contentOffset.y;
-        }
+        onScroll: e => { scrollY.value = e.contentOffset.y; },
     });
 
-    const userFilms = React.useMemo(() => {
-        const films = filmService.getFilmsByUserId(userId);
-        return films.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    }, [userId]);
-
     const themeColors = Object.values(COLORS.PALETTE);
-    const userColorOffset = React.useMemo(() =>
-        userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0),
+    const userColorOffset = useMemo(() =>
+        (userId || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0),
         [userId]);
 
-    const topDay = React.useMemo(() => {
-        if (userFilms.length === 0) return 'Today';
-        return new Date(userFilms[userFilms.length - 1].createdAt).toLocaleDateString(undefined, { weekday: 'long' });
-    }, [userFilms]);
+    const topDay = useMemo(() => {
+        if (films.length === 0) return 'Today';
+        return new Date(films[films.length - 1].createdAt)
+            .toLocaleDateString(undefined, { weekday: 'long' });
+    }, [films]);
 
-    const handleCardPress = React.useCallback((index: number) => {
+    const handleCardPress = useCallback((index: number) => {
         setActiveIndex(index);
         setModalVisible(true);
-    }, []);
+        if (films[index]) recordView(films[index].id);
+    }, [films, recordView]);
+
+    // ── Loading state ─────────────────────────────────────────
+    if (isLoading) {
+        return (
+            <Animated.View style={[styles.container, animatedBgStyle]}>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#fff" />
+                </View>
+            </Animated.View>
+        );
+    }
 
     return (
         <Animated.View style={[styles.container, animatedBgStyle]}>
@@ -105,7 +161,8 @@ const UserFilms = () => {
                     <View style={{ width: 44 }} />
                 </View>
 
-                {userFilms.length === 0 ? (
+                {/* Empty state */}
+                {films.length === 0 ? (
                     <View style={styles.content}>
                         <View style={styles.placeholderCard}>
                             <Ionicons name="film-outline" size={64} color="rgba(255,255,255,0.2)" />
@@ -125,22 +182,22 @@ const UserFilms = () => {
                             style={styles.scrollView}
                             contentContainerStyle={[
                                 styles.scrollContent,
-                                { paddingTop: 100, paddingBottom: 250 }
+                                { paddingTop: 100, paddingBottom: 250 },
                             ]}
                             showsVerticalScrollIndicator={false}
                             onScroll={scrollHandler}
                             scrollEventThrottle={16}
                             decelerationRate={0.991}
                         >
-                            {userFilms.map((film, index) => {
+                            {films.map((film, index) => {
                                 const assignedColor = themeColors[(index + userColorOffset) % themeColors.length];
-                                const isLast = index === userFilms.length - 1;
+                                const isLast = index === films.length - 1;
 
                                 const maxAllowedStickyTop = SCREEN_HEIGHT - (CARD_HEIGHT * 0.4) - (insets.top + 5) - 60;
                                 const totalAvailableSpace = maxAllowedStickyTop - STICKY_OFFSET;
                                 const idealGap = 18;
-                                const dynamicGap = userFilms.length > 1
-                                    ? Math.min(idealGap, totalAvailableSpace / (userFilms.length - 1))
+                                const dynamicGap = films.length > 1
+                                    ? Math.min(idealGap, totalAvailableSpace / (films.length - 1))
                                     : idealGap;
 
                                 return (
@@ -151,7 +208,7 @@ const UserFilms = () => {
                                         scrollY={scrollY}
                                         assignedColor={assignedColor as string}
                                         isLast={isLast}
-                                        totalCards={userFilms.length}
+                                        totalCards={films.length}
                                         onPress={() => handleCardPress(index)}
                                         dynamicGap={dynamicGap}
                                     />
@@ -162,13 +219,8 @@ const UserFilms = () => {
                 )}
             </View>
 
-            {/* 
-              Persistent Stories Modal 
-              Always mounted to enable continuous pre-loading of video players.
-              Visibility and interaction are controlled by the visible prop.
-            */}
             <FilmStoryModal
-                films={userFilms}
+                films={films}
                 initialIndex={activeIndex}
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
@@ -199,16 +251,11 @@ const styles = StyleSheet.create({
     },
     listContainer: { flex: 1, paddingTop: 0 },
     dayTitleContainer: {
-        position: 'absolute',
-        top: -15, left: 0, right: 0,
-        zIndex: 10,
-        paddingTop: 0,
-        height: 100,
-        justifyContent: 'center',
+        position: 'absolute', top: -15, left: 0, right: 0,
+        zIndex: 10, height: 100, justifyContent: 'center',
     },
     hugeDayTitleShadow: {
-        position: 'absolute',
-        top: 5, left: 25,
+        position: 'absolute', top: 5, left: 25,
         fontSize: 72, fontFamily: 'DancingScript-Bold', color: '#7C7267',
         opacity: 0.15, letterSpacing: -1,
     },

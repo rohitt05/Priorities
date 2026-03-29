@@ -81,9 +81,9 @@ export default function HomeScreen() {
                             router.push({
                                 pathname: '/UserFilms',
                                 params: {
-                                    userId: (activeUser as any).uniqueUserId || activeUser.id,
+                                    userId: activeUser.id,           // ← UUID, not uniqueUserId
                                     userName: activeUser.name,
-                                    dominantColor: activeUser.dominantColor
+                                    dominantColor: activeUser.dominantColor,
                                 }
                             });
                         }
