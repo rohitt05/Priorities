@@ -4,12 +4,15 @@ import { Tables } from '@/types/database.types';
 import { Profile } from '@/types/domain';
 
 
+
 export type PriorityRow = Tables<'priorities'>;
 export type PriorityRequestRow = Tables<'priority_requests'>;
 
 
+
 // 24hr window in milliseconds
 const TEMP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 
 
 // ─── GET MY PRIORITY LIST ──────────────────────────────────
@@ -22,13 +25,13 @@ export async function getMyPriorities(userId: string) {
             is_pinned,
             created_at,
             priority_user_id,
+            relationship,
             profiles!priorities_priority_user_id_fkey (
                 id,
                 unique_user_id,
                 name,
                 profile_picture,
                 dominant_color,
-                relationship,
                 partner_id
             )
         `)
@@ -38,7 +41,7 @@ export async function getMyPriorities(userId: string) {
     if (error) throw error;
 
     return (data ?? [])
-        .filter((row) => row.profiles != null)          // ← guard: skip orphaned rows
+        .filter((row) => row.profiles != null)
         .map((row) => {
             const p = row.profiles as any;
             return {
@@ -47,7 +50,7 @@ export async function getMyPriorities(userId: string) {
                 name: p.name,
                 profilePicture: p.profile_picture,
                 dominantColor: p.dominant_color,
-                relationship: p.relationship ?? null,
+                relationship: (row as any).relationship ?? null,
                 partnerId: p.partner_id ?? null,
                 rank: row.rank,
                 pinned: row.is_pinned,
@@ -57,19 +60,26 @@ export async function getMyPriorities(userId: string) {
 }
 
 
+
 // ─── SEND PRIORITY REQUEST ─────────────────────────────────
 export async function sendPriorityRequest(
     senderId: string,
-    receiverId: string
+    receiverId: string,
+    relationship?: string
 ): Promise<PriorityRequestRow> {
     const { data, error } = await supabase
         .from('priority_requests')
-        .insert({ sender_id: senderId, receiver_id: receiverId })
+        .insert({
+            sender_id: senderId,
+            receiver_id: receiverId,
+            sender_relationship: relationship ?? null,
+        })
         .select()
         .single();
     if (error) throw error;
     return data;
 }
+
 
 
 // ─── GET PENDING REQUESTS (for B's notification screen) ───
@@ -95,9 +105,9 @@ export async function getIncomingRequests(userId: string) {
 
     if (error) throw error;
 
-    // guard: skip any request whose sender profile was deleted
     return (data ?? []).filter((req) => req.profiles != null);
 }
+
 
 
 // ─── GET OUTGOING PENDING REQUESTS (for A's temp carousel) ─
@@ -125,7 +135,7 @@ export async function getOutgoingPendingRequests(userId: string) {
     const all = data ?? [];
     return all
         .filter((req) => {
-            if (req.profiles == null) return false;     // ← guard: skip null profiles
+            if (req.profiles == null) return false;
             const sentAt = new Date(req.created_at).getTime();
             return Date.now() - sentAt < TEMP_WINDOW_MS;
         })
@@ -143,20 +153,24 @@ export async function getOutgoingPendingRequests(userId: string) {
 }
 
 
+
 // ─── ACCEPT REQUEST ────────────────────────────────────────
 // Uses SECURITY DEFINER RPC to insert both priority rows
 export async function acceptPriorityRequest(
     requestId: string,
     senderId: string,
-    receiverId: string
+    receiverId: string,
+    receiverRelationship?: string
 ) {
     const { error } = await (supabase.rpc as any)('accept_priority_request', {
         p_request_id: requestId,
         p_sender_id: senderId,
         p_receiver_id: receiverId,
+        p_receiver_relationship: receiverRelationship ?? null,
     });
     if (error) throw error;
 }
+
 
 
 // ─── DECLINE REQUEST ───────────────────────────────────────
@@ -167,6 +181,7 @@ export async function declinePriorityRequest(requestId: string) {
         .eq('id', requestId);
     if (error) throw error;
 }
+
 
 
 // ─── UPDATE RANK ───────────────────────────────────────────
@@ -189,6 +204,7 @@ export async function bumpRank(userId: string, priorityUserId: string) {
 }
 
 
+
 // ─── PIN / UNPIN ────────────────────────────────────────────
 export async function setPinned(userId: string, priorityUserId: string | null) {
     const { error: clearError } = await supabase
@@ -208,6 +224,7 @@ export async function setPinned(userId: string, priorityUserId: string | null) {
 }
 
 
+
 // ─── REMOVE PRIORITY (UNFRIEND) ────────────────────────────
 // Uses SECURITY DEFINER RPC to delete both directions
 export async function removePriority(userId: string, priorityUserId: string) {
@@ -219,6 +236,7 @@ export async function removePriority(userId: string, priorityUserId: string) {
 }
 
 
+
 // ─── BLOCK USER ────────────────────────────────────────────
 // Uses SECURITY DEFINER RPC to block, remove priorities, cancel requests
 export async function blockUser(blockerId: string, blockedId: string) {
@@ -228,6 +246,7 @@ export async function blockUser(blockerId: string, blockedId: string) {
     });
     if (error) throw error;
 }
+
 
 
 // ─── CHECK MUTUAL PRIORITY ─────────────────────────────────

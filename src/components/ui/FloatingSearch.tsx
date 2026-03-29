@@ -38,7 +38,9 @@ import ReceivedPriorityRequests from './ReceivedPriorityRequests';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 
 
 interface User {
@@ -48,6 +50,7 @@ interface User {
     profile_picture: string;
     dominant_color: string;
 }
+
 
 
 interface SearchResultCardProps {
@@ -60,6 +63,7 @@ interface SearchResultCardProps {
     onAcceptPress: (user: User) => void;
     isAlreadyPriority: boolean;
 }
+
 
 
 const SearchResultCard = ({
@@ -149,6 +153,7 @@ const SearchResultCard = ({
 };
 
 
+
 const FloatingSearch = () => {
     const router = useRouter();
     const isFocused = useIsFocused();
@@ -166,6 +171,7 @@ const FloatingSearch = () => {
     const [isAcceptFlow, setIsAcceptFlow] = useState(false);
     const [pendingAcceptRequest, setPendingAcceptRequest] = useState<any | null>(null);
     const [existingPriorityIds, setExistingPriorityIds] = useState<Set<string>>(new Set());
+    const [searchBarHidden, setSearchBarHidden] = useState(false);
 
     const requestListOpacity = useSharedValue(0);
     const expandAnim = useRef(new RNAnimated.Value(0)).current;
@@ -176,12 +182,14 @@ const FloatingSearch = () => {
     const relInputRef = useRef<TextInput>(null);
 
 
+
     // ─── Load current user ID on mount ───────────────────────
     useEffect(() => {
         getCurrentUserId()
             .then(setCurrentUserId)
             .catch(console.error);
     }, []);
+
 
 
     // ─── Load incoming requests + existing priorities ─────────
@@ -205,9 +213,11 @@ const FloatingSearch = () => {
     }, [currentUserId]);
 
 
+
     useEffect(() => {
         if (!isFocused && isExpanded) setIsExpanded(false);
     }, [isFocused]);
+
 
 
     useEffect(() => {
@@ -228,6 +238,7 @@ const FloatingSearch = () => {
 
         return () => { showSub.remove(); hideSub.remove(); };
     }, []);
+
 
 
     useEffect(() => {
@@ -252,6 +263,7 @@ const FloatingSearch = () => {
     }, [isExpanded]);
 
 
+
     const resetSearch = () => {
         setSearchQuery('');
         setFilteredUsers([]);
@@ -259,7 +271,9 @@ const FloatingSearch = () => {
         setRelationship('');
         setIsAcceptFlow(false);
         setPendingAcceptRequest(null);
+        setSearchBarHidden(false);
     };
+
 
 
     useEffect(() => {
@@ -270,6 +284,7 @@ const FloatingSearch = () => {
     }, [filteredUsers, selectedUser]);
 
 
+
     useEffect(() => {
         RNAnimated.spring(relationshipAnim, {
             toValue: selectedUser ? 1 : 0,
@@ -278,6 +293,7 @@ const FloatingSearch = () => {
 
         if (selectedUser) setTimeout(() => relInputRef.current?.focus(), 100);
     }, [selectedUser]);
+
 
 
     // ─── Search real Supabase profiles ────────────────────────
@@ -298,10 +314,12 @@ const FloatingSearch = () => {
     };
 
 
+
     const handleAddPress = (user: User) => {
         setIsAcceptFlow(false);
         setSelectedUser(user);
     };
+
 
 
     const handleAcceptFromSearch = async (user: User) => {
@@ -316,6 +334,7 @@ const FloatingSearch = () => {
     };
 
 
+
     useEffect(() => {
         if (!isExpanded) return;
         const onBackPress = () => { setIsExpanded(false); return true; };
@@ -324,26 +343,33 @@ const FloatingSearch = () => {
     }, [isExpanded]);
 
 
+
     const resultScrollY = useSharedValue(0);
     const resultScrollHandler = useAnimatedScrollHandler({
         onScroll: (event: any) => { resultScrollY.value = event.contentOffset.y; },
     });
 
 
+
     // ─── Send / Accept priority ───────────────────────────────
     const handleSavePriority = async () => {
-        if (!selectedUser || !relationship || !currentUserId) return;
+        if (!selectedUser || !currentUserId) return;
         setIsSending(true);
         try {
             if (isAcceptFlow && pendingAcceptRequest) {
                 await acceptPriorityRequest(
                     pendingAcceptRequest.id,
                     pendingAcceptRequest.sender_id,
-                    currentUserId
+                    currentUserId,
+                    relationship || undefined
                 );
                 setIncomingRequests(prev => prev.filter(r => r.id !== pendingAcceptRequest.id));
             } else {
-                await sendPriorityRequest(currentUserId, selectedUser.id);
+                await sendPriorityRequest(
+                    currentUserId,
+                    selectedUser.id,
+                    relationship || undefined
+                );
             }
             triggerRefresh();
             setIsExpanded(false);
@@ -356,10 +382,12 @@ const FloatingSearch = () => {
     };
 
 
+
     // O(1) lookup sets
     const incomingRequestSenderIds = new Set(
         incomingRequests.map(req => req.sender_id ?? req.profiles?.id)
     );
+
 
 
     const searchBarWidth = expandAnim.interpolate({
@@ -376,6 +404,7 @@ const FloatingSearch = () => {
         outputRange: [0, 1],
     });
     const hitSlop = { top: 20, bottom: 20, left: 20, right: 20 };
+
 
 
     return (
@@ -409,6 +438,8 @@ const FloatingSearch = () => {
                         requests={incomingRequests}
                         opacity={requestListOpacity}
                         onRequestsChange={setIncomingRequests}
+                        onRelationshipOpen={() => setSearchBarHidden(true)}
+                        onRelationshipClose={() => setSearchBarHidden(false)}
                     />
                 </RNAnimated.View>
             )}
@@ -416,7 +447,13 @@ const FloatingSearch = () => {
             <RNAnimated.View
                 style={[
                     styles.container,
-                    { width: searchBarWidth, borderRadius: borderRadius, bottom: bottomPosition }
+                    {
+                        width: searchBarWidth,
+                        borderRadius: borderRadius,
+                        bottom: bottomPosition,
+                        opacity: searchBarHidden ? 0 : 1,
+                        pointerEvents: searchBarHidden ? 'none' : 'auto',
+                    }
                 ]}
             >
                 {/* Relationship Input Overlay */}
@@ -535,6 +572,7 @@ const FloatingSearch = () => {
         </>
     );
 };
+
 
 
 const styles = StyleSheet.create({
@@ -740,6 +778,7 @@ const styles = StyleSheet.create({
         zIndex: 100,
     },
 });
+
 
 
 export default FloatingSearch;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions, Pressable, TextInput } from 'react-native';
 import Animated, {
     useAnimatedScrollHandler,
     useSharedValue,
@@ -16,8 +16,10 @@ import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
 
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const ITEM_HEIGHT = 86;
+
 
 
 interface RequestItem {
@@ -35,6 +37,7 @@ interface RequestItem {
 }
 
 
+
 interface ItemProps {
     item: RequestItem;
     index: number;
@@ -42,6 +45,7 @@ interface ItemProps {
     onAccept: (item: RequestItem) => void;
     onDecline: (id: string) => void;
 }
+
 
 
 const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProps) => {
@@ -98,16 +102,24 @@ const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProp
 };
 
 
+
 const ReceivedPriorityRequests = ({
     requests,
     opacity,
-    onRequestsChange
+    onRequestsChange,
+    onRelationshipOpen,
+    onRelationshipClose,
 }: {
     requests: RequestItem[];
     opacity: SharedValue<number>;
     onRequestsChange: (updated: RequestItem[]) => void;
+    onRelationshipOpen?: () => void;
+    onRelationshipClose?: () => void;
 }) => {
     const [currentRequests, setCurrentRequests] = React.useState(requests);
+    const [pendingItem, setPendingItem] = React.useState<RequestItem | null>(null);
+    const [relationshipLabel, setRelationshipLabel] = React.useState('');
+    const [isAccepting, setIsAccepting] = React.useState(false);
     const { triggerRefresh } = usePrioritiesRefresh();
 
     React.useEffect(() => {
@@ -125,14 +137,32 @@ const ReceivedPriorityRequests = ({
         onRequestsChange(updated);
     };
 
-    const handleAccept = async (item: RequestItem) => {
+    const handleAcceptTap = (item: RequestItem) => {
+        setPendingItem(item);
+        setRelationshipLabel('');
+        onRelationshipOpen?.();
+    };
+
+    const handleConfirmAccept = async () => {
+        if (!pendingItem) return;
+        setIsAccepting(true);
         try {
             const currentUserId = await getCurrentUserId();
-            await acceptPriorityRequest(item.id, item.sender_id, currentUserId);
-            removeRequest(item.id);
-            triggerRefresh(); // FIX: refresh home screen so new priority appears immediately
+            await acceptPriorityRequest(
+                pendingItem.id,
+                pendingItem.sender_id,
+                currentUserId,
+                relationshipLabel || undefined
+            );
+            removeRequest(pendingItem.id);
+            triggerRefresh();
+            setPendingItem(null);
+            setRelationshipLabel('');
+            onRelationshipClose?.();
         } catch (err) {
             console.error('Accept error:', err);
+        } finally {
+            setIsAccepting(false);
         }
     };
 
@@ -170,7 +200,7 @@ const ReceivedPriorityRequests = ({
                         item={item}
                         index={index}
                         scrollY={scrollY}
-                        onAccept={handleAccept}
+                        onAccept={handleAcceptTap}
                         onDecline={handleDecline}
                     />
                 )}
@@ -179,6 +209,44 @@ const ReceivedPriorityRequests = ({
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.listContent}
             />
+
+            {pendingItem && (
+                <View style={styles.relationshipOverlay}>
+                    <Text style={styles.relTitle}>
+                        Who is {pendingItem.profiles?.name} to you?
+                    </Text>
+                    <TextInput
+                        style={styles.relInput}
+                        placeholder="e.g. Best Friend, Sister, Mentor..."
+                        placeholderTextColor="rgba(61, 42, 71, 0.4)"
+                        value={relationshipLabel}
+                        onChangeText={setRelationshipLabel}
+                        autoFocus
+                    />
+                    <View style={styles.relButtons}>
+                        <Pressable
+                            style={styles.cancelButton}
+                            onPress={() => {
+                                setPendingItem(null);
+                                setRelationshipLabel('');
+                                onRelationshipClose?.();
+                            }}
+                        >
+                            <Text style={styles.cancelText}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                            style={({ pressed }) => [styles.confirmButton, { opacity: pressed || isAccepting ? 0.7 : 1 }]}
+                            onPress={handleConfirmAccept}
+                            disabled={isAccepting}
+                        >
+                            <Text style={styles.confirmText}>
+                                {isAccepting ? 'Accepting...' : 'Accept & Save'}
+                            </Text>
+                        </Pressable>
+                    </View>
+                </View>
+            )}
+
             <LinearGradient
                 colors={['#FDFCF0', 'rgba(253, 252, 240, 0)']}
                 style={styles.topGradient}
@@ -192,6 +260,7 @@ const ReceivedPriorityRequests = ({
         </Animated.View>
     );
 };
+
 
 
 const styles = StyleSheet.create({
@@ -290,6 +359,79 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.bold,
         fontSize: 13,
     },
+    relationshipOverlay: {
+        position: 'absolute',
+        bottom: 30,
+        left: 0,
+        right: 0,
+        backgroundColor: COLORS.secondary,
+        borderRadius: 20,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.05)',
+        shadowColor: '#433D35',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 10,
+        zIndex: 3000,
+    },
+    relTitle: {
+        fontFamily: FONTS.bold,
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.primary,
+        marginBottom: 16,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    relInput: {
+        height: 50,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        fontSize: 15,
+        fontFamily: FONTS.regular,
+        color: COLORS.primary,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.1)',
+    },
+    relButtons: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    cancelButton: {
+        flex: 1,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1.5,
+        borderColor: COLORS.primary,
+    },
+    cancelText: {
+        color: COLORS.primary,
+        fontFamily: FONTS.bold,
+        fontSize: 14,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    confirmButton: {
+        flex: 2,
+        backgroundColor: COLORS.primary,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    confirmText: {
+        color: COLORS.background,
+        fontFamily: FONTS.bold,
+        fontSize: 14,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
     topGradient: {
         position: 'absolute',
         top: -1, left: -10, right: -10,
@@ -303,6 +445,7 @@ const styles = StyleSheet.create({
         zIndex: 2600,
     },
 });
+
 
 
 export default ReceivedPriorityRequests;

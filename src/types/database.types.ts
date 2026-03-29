@@ -273,6 +273,7 @@ export type Database = {
                     is_pinned: boolean
                     priority_user_id: string
                     rank: number
+                    relationship: string | null
                     user_id: string
                 }
                 Insert: {
@@ -281,6 +282,7 @@ export type Database = {
                     is_pinned?: boolean
                     priority_user_id: string
                     rank?: number
+                    relationship?: string | null
                     user_id: string
                 }
                 Update: {
@@ -289,6 +291,7 @@ export type Database = {
                     is_pinned?: boolean
                     priority_user_id?: string
                     rank?: number
+                    relationship?: string | null
                     user_id?: string
                 }
                 Relationships: [
@@ -314,6 +317,7 @@ export type Database = {
                     id: string
                     receiver_id: string
                     sender_id: string
+                    sender_relationship: string | null
                     status: string
                 }
                 Insert: {
@@ -321,6 +325,7 @@ export type Database = {
                     id?: string
                     receiver_id: string
                     sender_id: string
+                    sender_relationship?: string | null
                     status?: string
                 }
                 Update: {
@@ -328,6 +333,7 @@ export type Database = {
                     id?: string
                     receiver_id?: string
                     sender_id?: string
+                    sender_relationship?: string | null
                     status?: string
                 }
                 Relationships: [
@@ -405,7 +411,36 @@ export type Database = {
             [_ in never]: never
         }
         Functions: {
-            [_ in never]: never
+            accept_priority_request:
+            | {
+                Args: {
+                    p_receiver_id: string
+                    p_request_id: string
+                    p_sender_id: string
+                }
+                Returns: undefined
+            }
+            | {
+                Args: {
+                    p_receiver_id: string
+                    p_receiver_relationship?: string
+                    p_request_id: string
+                    p_sender_id: string
+                }
+                Returns: undefined
+            }
+            block_user: {
+                Args: { p_blocked_id: string; p_blocker_id: string }
+                Returns: undefined
+            }
+            get_my_priority_user_ids: {
+                Args: { viewer_id: string }
+                Returns: string[]
+            }
+            remove_priority: {
+                Args: { p_priority_user_id: string; p_user_id: string }
+                Returns: undefined
+            }
         }
         Enums: {
             [_ in never]: never
