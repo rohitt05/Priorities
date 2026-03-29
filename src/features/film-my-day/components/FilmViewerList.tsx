@@ -3,16 +3,14 @@ import { StyleSheet, View, Text, Image, Dimensions } from 'react-native';
 import { FONTS } from '@/theme/theme';
 import { User } from '@/types/domain';
 import usersData from '@/data/users.json';
-import Animated, { 
-    useAnimatedStyle, 
-    withSpring, 
+import Animated, {
+    useAnimatedStyle,
+    withSpring,
     useSharedValue,
     interpolate,
-    Extrapolate
 } from 'react-native-reanimated';
 import { ScrollView } from 'react-native-gesture-handler';
-
-
+import { Ionicons } from '@expo/vector-icons';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -39,23 +37,30 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewerIds, accent, visi
             .filter((u): u is User => !!u);
     }, [viewerIds]);
 
-    const animatedStyle = useAnimatedStyle(() => {
-        return {
-            transform: [
-                { translateX: interpolate(anim.value, [0, 1], [40, 0]) }
-            ],
-            opacity: anim.value,
-            width: interpolate(anim.value, [0, 1], [0, SW - 85]),
-        };
-    });
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ translateX: interpolate(anim.value, [0, 1], [40, 0]) }],
+        opacity: anim.value,
+        width: interpolate(anim.value, [0, 1], [0, SW - 85]),
+    }));
 
-    if (viewers.length === 0) return null;
+    // ── Empty state: flash banner ─────────────────────────────
+    if (viewers.length === 0) {
+        return (
+            <Animated.View style={[styles.container, animatedStyle]}>
+                <View style={styles.emptyBanner}>
+                    <Ionicons name="eye-off-outline" size={16} color="#433D35" style={{ marginRight: 7, opacity: 0.6 }} />
+                    <Text style={styles.emptyText}>No one saw this film yet</Text>
+                </View>
+            </Animated.View>
+        );
+    }
 
+    // ── Viewers list ──────────────────────────────────────────
     return (
         <Animated.View style={[styles.container, animatedStyle]}>
             <View style={styles.listWrapper}>
-                <ScrollView 
-                    horizontal 
+                <ScrollView
+                    horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.scrollContent}
                 >
@@ -63,9 +68,9 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewerIds, accent, visi
                         {viewers.map((user, idx) => (
                             <View key={user.uniqueUserId} style={[styles.viewerItem, { zIndex: viewers.length - idx }]}>
                                 <View style={styles.avatarContainer}>
-                                    <Image 
-                                        source={{ uri: user.profilePicture }} 
-                                        style={styles.avatar} 
+                                    <Image
+                                        source={{ uri: user.profilePicture }}
+                                        style={styles.avatar}
                                     />
                                 </View>
                                 <Text style={styles.viewerName} numberOfLines={1}>
@@ -84,8 +89,7 @@ const styles = StyleSheet.create({
     container: {
         height: 85,
         justifyContent: 'center',
-        // Removed negative margin to avoid clipping issues
-        marginRight: 0, 
+        marginRight: 0,
     },
     listWrapper: {
         flex: 1,
@@ -93,14 +97,12 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         alignItems: 'center',
-        paddingLeft: 0, // Removed left margin properly
-        paddingRight: 15, 
+        paddingRight: 15,
     },
     viewerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        // Pull it down slightly to line up with the icon's visual center
-        marginTop: 10, 
+        marginTop: 10,
     },
     viewerItem: {
         alignItems: 'center',
@@ -129,6 +131,29 @@ const styles = StyleSheet.create({
         color: '#111',
         textAlign: 'center',
         marginTop: 6,
+        letterSpacing: 0.3,
+    },
+    // ── Empty banner ──────────────────────────────────────────
+    emptyBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.55)',
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(67,61,53,0.12)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+
+    },
+    emptyText: {
+        fontFamily: FONTS.bold,
+        fontSize: 12.5,
+        color: '#433D35',
+        opacity: 0.75,
         letterSpacing: 0.3,
     },
 });

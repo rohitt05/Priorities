@@ -1,12 +1,11 @@
 // src/features/profile/components/ProfileHeader.tsx
 
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Link, useRouter } from 'expo-router';
+
+import { useRouter } from 'expo-router';
 import { COLORS } from '@/theme/theme';
 import { User } from '@/types/domain';
 
