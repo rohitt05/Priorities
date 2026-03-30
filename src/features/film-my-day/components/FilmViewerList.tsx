@@ -1,8 +1,7 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View, Text, Image, Dimensions } from 'react-native';
 import { FONTS } from '@/theme/theme';
-import { User } from '@/types/domain';
-import usersData from '@/data/users.json';
+import { Profile } from '@/types/domain';
 import Animated, {
     useAnimatedStyle,
     withSpring,
@@ -15,12 +14,13 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SW } = Dimensions.get('window');
 
 interface FilmViewerListProps {
-    viewerIds: string[];
+    viewers: Profile[];
+    likedByIds: Set<string>; // ✅ set of user IDs who liked this film
     accent: string;
     visible: boolean;
 }
 
-const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewerIds, accent, visible }) => {
+const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewers, likedByIds, accent, visible }) => {
     const anim = useSharedValue(0);
 
     useEffect(() => {
@@ -31,19 +31,13 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewerIds, accent, visi
         });
     }, [visible]);
 
-    const viewers = useMemo(() => {
-        return viewerIds
-            .map(id => (usersData as User[]).find(u => u.uniqueUserId === id))
-            .filter((u): u is User => !!u);
-    }, [viewerIds]);
-
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ translateX: interpolate(anim.value, [0, 1], [40, 0]) }],
         opacity: anim.value,
         width: interpolate(anim.value, [0, 1], [0, SW - 85]),
     }));
 
-    // ── Empty state: flash banner ─────────────────────────────
+    // ── Empty state ───────────────────────────────────────────
     if (viewers.length === 0) {
         return (
             <Animated.View style={[styles.container, animatedStyle]}>
@@ -65,19 +59,34 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewerIds, accent, visi
                     contentContainerStyle={styles.scrollContent}
                 >
                     <View style={styles.viewerRow}>
-                        {viewers.map((user, idx) => (
-                            <View key={user.uniqueUserId} style={[styles.viewerItem, { zIndex: viewers.length - idx }]}>
-                                <View style={styles.avatarContainer}>
-                                    <Image
-                                        source={{ uri: user.profilePicture }}
-                                        style={styles.avatar}
-                                    />
+                        {viewers.map((user, idx) => {
+                            const hasLiked = likedByIds.has(user.id);
+                            return (
+                                <View key={user.id} style={[styles.viewerItem, { zIndex: viewers.length - idx }]}>
+                                    <View style={styles.avatarWrapper}>
+                                        <View style={styles.avatarContainer}>
+                                            <Image
+                                                source={{ uri: user.profilePicture }}
+                                                style={styles.avatar}
+                                            />
+                                        </View>
+                                        {/* ✅ tilted heart badge if they liked */}
+                                        {hasLiked && (
+                                            <View style={styles.heartBadge}>
+                                                <Ionicons
+                                                    name="heart"
+                                                    size={13}
+                                                    color="#FF3B30"
+                                                />
+                                            </View>
+                                        )}
+                                    </View>
+                                    <Text style={styles.viewerName} numberOfLines={1}>
+                                        {user.name.split(' ')[0]}
+                                    </Text>
                                 </View>
-                                <Text style={styles.viewerName} numberOfLines={1}>
-                                    {user.name.split(' ')[0]}
-                                </Text>
-                            </View>
-                        ))}
+                            );
+                        })}
                     </View>
                 </ScrollView>
             </View>
@@ -109,6 +118,11 @@ const styles = StyleSheet.create({
         marginHorizontal: 8,
         width: 60,
     },
+    // ✅ wrapper so heart badge can be absolutely positioned over avatar
+    avatarWrapper: {
+        width: 52,
+        height: 52,
+    },
     avatarContainer: {
         width: 52,
         height: 52,
@@ -125,6 +139,24 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: 26,
     },
+    // ✅ bottom-right corner, tilted 15deg
+    heartBadge: {
+        position: 'absolute',
+        bottom: -2,
+        right: -4,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        transform: [{ rotate: '15deg' }],
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.12,
+        shadowRadius: 3,
+        elevation: 3,
+    },
     viewerName: {
         fontFamily: FONTS.bold,
         fontSize: 11,
@@ -133,7 +165,6 @@ const styles = StyleSheet.create({
         marginTop: 6,
         letterSpacing: 0.3,
     },
-    // ── Empty banner ──────────────────────────────────────────
     emptyBanner: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -147,7 +178,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.08,
         shadowRadius: 8,
-
     },
     emptyText: {
         fontFamily: FONTS.bold,

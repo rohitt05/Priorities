@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-    StyleSheet, View, Text, TouchableOpacity,
+    StyleSheet, View, TouchableOpacity,
     Dimensions, Pressable, Platform, FlatList,
     ViewToken, BackHandler,
 } from 'react-native';
@@ -15,7 +15,6 @@ import Animated, {
     cancelAnimation,
     runOnJS,
     interpolate,
-    useDerivedValue,
     withSpring,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -24,10 +23,13 @@ import { FONTS, COLORS } from '@/theme/theme';
 import FilmMedia from './FilmMedia';
 import { formatRelativeTime } from '../utils/dateUtils';
 import * as Haptics from 'expo-haptics';
+import { useFilmLike } from '@/hooks/useFilmLike';
+import { supabase } from '@/lib/supabase';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DEFAULT_STORY_DURATION = 15000;
 const SNAP_INTERVAL = SCREEN_WIDTH;
+const VIEW_RECORD_THRESHOLD_MS = 3000; // record a view after 3 seconds of watching
 
 interface FilmStoryModalProps {
     films: UserFilm[];
@@ -53,10 +55,12 @@ const StoryItem = ({
     nextStory,
 }: any) => {
     const isActive = index === currentIndex;
-    const [isLocalLiked, setIsLocalLiked] = useState(false);
 
-    const handleLocalLike = () => {
-        setIsLocalLiked(!isLocalLiked);
+    // ✅ Real Supabase-backed like state
+    const { isLiked, toggleLike } = useFilmLike(item.id, item.creatorId);
+
+    const handleLikePress = () => {
+        toggleLike();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
@@ -92,14 +96,15 @@ const StoryItem = ({
                             style={[styles.overlayBottom, { paddingBottom: Math.max(insets.bottom, 20) }]}
                         >
                             <TouchableOpacity
-                                onPress={handleLocalLike}
+                                onPress={handleLikePress}
                                 style={styles.heartButton}
                                 activeOpacity={0.7}
+                                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                             >
                                 <Ionicons
-                                    name={isLocalLiked ? "heart" : "heart-outline"}
-                                    size={22}
-                                    color={isLocalLiked ? "#FF3B30" : "#FFF"}
+                                    name={isLiked ? "heart" : "heart-outline"}
+                                    size={26}
+                                    color={isLiked ? "#FF3B30" : "#FFF"}
                                 />
                             </TouchableOpacity>
                         </LinearGradient>
@@ -124,6 +129,37 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     const [isMediaReady, setIsMediaReady] = useState(false);
     const flatListRef = useRef<FlatList>(null);
     const translateY = useSharedValue(0);
+    const modalOpacity = useSharedValue(0); // ✅ moved above useEffect that uses it
+    const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const recordedFilmIds = useRef<Set<string>>(new Set());
+
+    // ── Record a view after threshold ────────────────────────
+    const recordView = async (filmId: string, creatorId: string) => {
+        if (recordedFilmIds.current.has(filmId)) return;
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const viewerId = sessionData?.session?.user?.id;
+            if (!viewerId || viewerId === creatorId) return; // don't record own views
+            await supabase.from('film_views').insert({ film_id: filmId, viewer_id: viewerId });
+            recordedFilmIds.current.add(filmId);
+        } catch (e) {
+            // silent — view recording is non-critical
+        }
+    };
+
+    const startViewTimer = (film: UserFilm) => {
+        if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+        viewTimerRef.current = setTimeout(() => {
+            recordView(film.id, film.creatorId);
+        }, VIEW_RECORD_THRESHOLD_MS);
+    };
+
+    const clearViewTimer = () => {
+        if (viewTimerRef.current) {
+            clearTimeout(viewTimerRef.current);
+            viewTimerRef.current = null;
+        }
+    };
 
     useEffect(() => {
         if (visible) {
@@ -148,14 +184,23 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             setIsMediaReady(false);
             translateY.value = 0;
             progress.value = 0;
+            clearViewTimer();
         }
     }, [visible, initialIndex, onClose]);
 
     useEffect(() => {
+        modalOpacity.value = withTiming(visible ? 1 : 0, { duration: 300 });
+    }, [visible]);
+
+    useEffect(() => {
         if (visible && isMediaReady && !isPaused) {
             startStory(duration * (1 - progress.value) || DEFAULT_STORY_DURATION);
+            // ✅ Start view recording timer when film becomes active and playing
+            const film = films[currentIndex];
+            if (film) startViewTimer(film);
         } else {
             cancelAnimation(progress);
+            if (isPaused) clearViewTimer(); // pause = stop the timer
         }
     }, [isMediaReady, currentIndex, visible, isPaused]);
 
@@ -176,6 +221,7 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             const nextIdx = currentIndex + 1;
             setIsMediaReady(false);
             setDuration(DEFAULT_STORY_DURATION);
+            progress.value = 0;
             setCurrentIndex(nextIdx);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             flatListRef.current?.scrollToIndex({
@@ -193,6 +239,7 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             const prevIdx = currentIndex - 1;
             setIsMediaReady(false);
             setDuration(DEFAULT_STORY_DURATION);
+            progress.value = 0;
             setCurrentIndex(prevIdx);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             flatListRef.current?.scrollToIndex({
@@ -285,6 +332,14 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         width: `${progress.value * 100}%`
     }));
 
+    const animatedModalStyle = useAnimatedStyle(() => ({
+        opacity: modalOpacity.value,
+        transform: [
+            { scale: interpolate(modalOpacity.value, [0, 1], [0.95, 1]) },
+            { translateY: translateY.value }
+        ]
+    }));
+
     const renderItem = ({ item, index }: { item: UserFilm, index: number }) => (
         <StoryItem
             item={item}
@@ -306,19 +361,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
 
     const currentFilm = films[currentIndex];
     if (!currentFilm) return null;
-
-    const modalOpacity = useSharedValue(0);
-    useEffect(() => {
-        modalOpacity.value = withTiming(visible ? 1 : 0, { duration: 300 });
-    }, [visible]);
-
-    const animatedModalStyle = useAnimatedStyle(() => ({
-        opacity: modalOpacity.value,
-        transform: [
-            { scale: interpolate(modalOpacity.value, [0, 1], [0.95, 1]) },
-            { translateY: translateY.value }
-        ]
-    }));
 
     return (
         <GestureDetector gesture={panGesture}>
@@ -399,6 +441,7 @@ const styles = StyleSheet.create({
         marginBottom: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        padding: 10,
     },
     flatListContent: {
         paddingHorizontal: 0,

@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase';
 import FilmMedia from '../src/features/film-my-day/components/FilmMedia';
 import ZoomableMediaCard from '../src/features/film-my-day/components/ZoomableMediaCard';
 import FilmViewerList from '../src/features/film-my-day/components/FilmViewerList';
+import { Profile } from '@/types/domain';
 import { getColors } from 'react-native-image-colors';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { BlurView } from 'expo-blur';
@@ -91,7 +92,7 @@ function buildPath(pts: { x: number; y: number }[]) {
 
 function makeCentre(idx: number, positions: { x: number; y: number }[], sc: number) {
     const p = positions[idx];
-    if (!p) return { tx: 0, ty: 0 }; // ✅ safe guard
+    if (!p) return { tx: 0, ty: 0 };
     return { tx: -(p.x - CARD_W / 2) * sc, ty: -(p.y + CARD_H / 2) * sc };
 }
 
@@ -184,6 +185,16 @@ const SafeBlur = ({ intensity, tint, style, children }: any) => {
     return <BlurView intensity={intensity} tint={tint} style={style}>{children}</BlurView>;
 };
 
+// ── FilmItem type ─────────────────────────────────────────────
+interface FilmItem {
+    id: string;
+    mediaUrl: string;
+    mediaType: string;
+    timestamp: string;
+    viewers: Profile[];
+    likedByIds: Set<string>; // ✅ who liked this film
+}
+
 export default function MyFilmOfTheDay() {
     const router = useRouter();
     const { color: colorParam } = useLocalSearchParams<{ color?: string }>();
@@ -191,7 +202,7 @@ export default function MyFilmOfTheDay() {
     const accent = (colorParam as string) || COLORS.primary;
 
     // ── Supabase data ──────────────────────────────────────────
-    const [films, setFilms] = useState<any[]>([]);
+    const [films, setFilms] = useState<FilmItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -200,20 +211,60 @@ export default function MyFilmOfTheDay() {
             const userId = sessionData?.session?.user?.id;
             if (!userId) { setIsLoading(false); return; }
 
-            const { data, error } = await supabase
+            // ── 1. Fetch films ────────────────────────────────
+            const { data: filmsData, error: filmsError } = await supabase
                 .from('films')
                 .select('*')
                 .eq('creator_id', userId)
                 .order('created_at', { ascending: true });
 
-            if (error) { console.error('[MyFilms]', error); setIsLoading(false); return; }
+            if (filmsError) { console.error('[MyFilms]', filmsError); setIsLoading(false); return; }
+            if (!filmsData || filmsData.length === 0) { setIsLoading(false); return; }
 
-            setFilms((data || []).map(f => ({
+            const filmIds = filmsData.map(f => f.id);
+
+            // ── 2. Fetch viewers (with profiles) ──────────────
+            const { data: viewsData } = await supabase
+                .from('film_views')
+                .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color)')
+                .in('film_id', filmIds);
+
+            const viewersByFilm: Record<string, Profile[]> = {};
+            (viewsData || []).forEach((v: any) => {
+                if (!v.profiles) return;
+                if (!viewersByFilm[v.film_id]) viewersByFilm[v.film_id] = [];
+                const already = viewersByFilm[v.film_id].some(p => p.id === v.profiles.id);
+                if (!already) {
+                    viewersByFilm[v.film_id].push({
+                        id: v.profiles.id,
+                        uniqueUserId: v.profiles.unique_user_id,
+                        name: v.profiles.name,
+                        profilePicture: v.profiles.profile_picture,
+                        dominantColor: v.profiles.dominant_color || '#D4A373',
+                    });
+                }
+            });
+
+            // ── 3. Fetch likes ────────────────────────────────
+            const { data: likesData } = await supabase
+                .from('film_likes')
+                .select('film_id, user_id')
+                .in('film_id', filmIds);
+
+            const likedByFilm: Record<string, Set<string>> = {};
+            (likesData || []).forEach((l: any) => {
+                if (!likedByFilm[l.film_id]) likedByFilm[l.film_id] = new Set();
+                likedByFilm[l.film_id].add(l.user_id);
+            });
+
+            // ── 4. Build final film items ─────────────────────
+            setFilms(filmsData.map(f => ({
                 id: f.id,
                 mediaUrl: f.uri,
                 mediaType: f.type,
                 timestamp: f.created_at,
-                viewers: [],
+                viewers: viewersByFilm[f.id] || [],
+                likedByIds: likedByFilm[f.id] || new Set(),
             })));
             setIsLoading(false);
         })();
@@ -283,13 +334,11 @@ export default function MyFilmOfTheDay() {
         if (idx - 1 >= 0) extractColor(idx - 1);
     }, [bgColors, bgAnim, films, extractColor]);
 
-    // ✅ Only runs after films are loaded
     useEffect(() => {
         if (films.length === 0) return;
         Promise.all([extractColor(0), extractColor(1), extractColor(2)]).then(() => updateBg(0));
     }, [films]);
 
-    // ✅ Safe shared value init — no positions yet, defaults to 0
     const tx = useSharedValue(0);
     const ty = useSharedValue(0);
     const sc = useSharedValue(DEF_SC);
@@ -302,7 +351,6 @@ export default function MyFilmOfTheDay() {
 
     const SPRING = { damping: 30, stiffness: 180, mass: 1 };
 
-    // ✅ Snap to first card once films/positions are ready
     useEffect(() => {
         if (films.length === 0 || positions.length === 0) return;
         const c = makeCentre(0, positions, DEF_SC);
@@ -474,7 +522,13 @@ export default function MyFilmOfTheDay() {
             </GestureDetector>
 
             <View style={[styles.bottomActions, { bottom: insets.bottom + 20 }]} pointerEvents="box-none">
-                <FilmViewerList viewerIds={activeFilm?.viewers || []} accent={accent} visible={showViewers} />
+                {/* ✅ passes both viewers and likedByIds */}
+                <FilmViewerList
+                    viewers={activeFilm?.viewers || []}
+                    likedByIds={activeFilm?.likedByIds || new Set()}
+                    accent={accent}
+                    visible={showViewers}
+                />
                 <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowViewers(!showViewers); }} style={styles.eyesBtn}>
                     <SafeBlur intensity={30} style={styles.blurCover}>
                         <Fontisto name="heart-eyes" size={30} color="#000" />
