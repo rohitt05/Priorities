@@ -9,6 +9,7 @@ import { Session } from '@supabase/supabase-js';
 
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
+import { BackgroundProvider } from '@/contexts/BackgroundContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -65,11 +66,13 @@ export default function Layout() {
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <PrioritiesRefreshProvider>
-                <VoiceNoteRecordingProvider>
-                    <Stack screenOptions={{ headerShown: false }} />
-                </VoiceNoteRecordingProvider>
-            </PrioritiesRefreshProvider>
+            <BackgroundProvider>
+                <PrioritiesRefreshProvider>
+                    <VoiceNoteRecordingProvider>
+                        <Stack screenOptions={{ headerShown: false }} />
+                    </VoiceNoteRecordingProvider>
+                </PrioritiesRefreshProvider>
+            </BackgroundProvider>
         </GestureHandlerRootView>
     );
 }
