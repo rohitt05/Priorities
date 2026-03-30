@@ -53,21 +53,7 @@ const StoryItem = ({
     nextStory,
 }: any) => {
     const isActive = index === currentIndex;
-    const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
-    const [shouldShowMore, setShouldShowMore] = useState(false);
     const [isLocalLiked, setIsLocalLiked] = useState(false);
-
-    // Reset local state when item becomes inactive or modal closes
-    useEffect(() => {
-        if (!isActive || !visible) {
-            setIsCaptionExpanded(false);
-        }
-    }, [isActive, visible]);
-
-    // Reset detection when item changes
-    useEffect(() => {
-        setShouldShowMore(false);
-    }, [item.id]);
 
     const handleLocalLike = () => {
         setIsLocalLiked(!isLocalLiked);
@@ -105,46 +91,6 @@ const StoryItem = ({
                             colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.5)']}
                             style={[styles.overlayBottom, { paddingBottom: Math.max(insets.bottom, 20) }]}
                         >
-                            <View style={styles.captionContainer}>
-                                {item.caption && (
-                                    <>
-                                        {!isCaptionExpanded && (
-                                            <View style={{ position: 'absolute', opacity: 0, left: 0, right: 0 }}>
-                                                <Text
-                                                    style={styles.overlayCaption}
-                                                    onTextLayout={(e) => {
-                                                        if (e.nativeEvent.lines.length > 1) {
-                                                            setShouldShowMore(true);
-                                                        }
-                                                    }}
-                                                >
-                                                    {item.caption}
-                                                </Text>
-                                            </View>
-                                        )}
-
-                                        <View style={styles.textRow}>
-                                            <Text
-                                                style={styles.overlayCaption}
-                                                numberOfLines={isCaptionExpanded ? undefined : 1}
-                                                ellipsizeMode="tail"
-                                            >
-                                                {item.caption}
-                                            </Text>
-
-                                            {shouldShowMore && !isCaptionExpanded && (
-                                                <TouchableOpacity
-                                                    onPress={() => setIsCaptionExpanded(true)}
-                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                >
-                                                    <Text style={styles.moreText}>...more</Text>
-                                                </TouchableOpacity>
-                                            )}
-                                        </View>
-                                    </>
-                                )}
-                            </View>
-
                             <TouchableOpacity
                                 onPress={handleLocalLike}
                                 style={styles.heartButton}
@@ -157,22 +103,6 @@ const StoryItem = ({
                                 />
                             </TouchableOpacity>
                         </LinearGradient>
-
-                        {isCaptionExpanded && (
-                            <Pressable
-                                style={styles.expandedPressable}
-                                onPress={() => setIsCaptionExpanded(false)}
-                            >
-                                <View style={[styles.expandedCaptionOverlay, { paddingBottom: Math.max(insets.bottom, 40) }]}>
-                                    <View style={styles.expandedHeader}>
-                                        <Text style={styles.expandedCaptionText}>{item.caption}</Text>
-                                        <TouchableOpacity onPress={() => setIsCaptionExpanded(false)}>
-                                            <Text style={styles.closeExpandedText}>Show less</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </Pressable>
-                        )}
                     </>
                 )}
             </Pressable>
@@ -461,71 +391,14 @@ const styles = StyleSheet.create({
         right: 0,
         flexDirection: 'row',
         alignItems: 'flex-end',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         paddingHorizontal: 20,
         paddingTop: 80,
-    },
-    captionContainer: {
-        flex: 1,
-        marginRight: 10,
-        marginBottom: 10,
-    },
-    textRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    overlayCaption: {
-        color: '#FFF',
-        fontSize: 14,
-        fontFamily: FONTS.medium,
-        textShadowColor: 'rgba(0, 0, 0, 0.4)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
-        flexShrink: 1,
-    },
-    moreText: {
-        color: 'rgba(255,255,255,0.95)',
-        fontSize: 13,
-        fontFamily: FONTS.bold,
-        textShadowColor: 'rgba(0, 0, 0, 0.4)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
-        marginLeft: 4,
     },
     heartButton: {
         marginBottom: 10,
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    expandedPressable: {
-        ...StyleSheet.absoluteFillObject,
-        zIndex: 1100,
-    },
-    expandedCaptionOverlay: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: 'rgba(0,0,0,0.92)',
-        padding: 24,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        minHeight: 150,
-    },
-    expandedHeader: {
-        flex: 1,
-    },
-    expandedCaptionText: {
-        color: '#FFF',
-        fontSize: 16,
-        fontFamily: FONTS.medium,
-        lineHeight: 24,
-        marginBottom: 16,
-    },
-    closeExpandedText: {
-        color: 'rgba(255,255,255,0.5)',
-        fontSize: 13,
-        fontFamily: FONTS.bold,
     },
     flatListContent: {
         paddingHorizontal: 0,

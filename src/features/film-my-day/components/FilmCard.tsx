@@ -1,144 +1,117 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, View, Text, Pressable, Dimensions } from 'react-native';
+import React from 'react';
+import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import Animated, {
-    useAnimatedStyle,
-    interpolate,
-    Extrapolation,
-    SharedValue,
     useSharedValue,
-    withSpring
+    useAnimatedStyle,
+    withSpring,
+    runOnJS,
+    SharedValue,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Film as UserFilm } from '@/types/domain';
 import { FONTS } from '@/theme/theme';
 import { formatRelativeTime } from '../utils/dateUtils';
 import FilmMedia from './FilmMedia';
 import * as Haptics from 'expo-haptics';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_HEIGHT = 160;
-const STICKY_OFFSET = 100;
+const { width: SW } = Dimensions.get('window');
+
+export const CARD_CONFIGS = [
+    { width: SW * 0.42, height: SW * 0.42 },
+    { width: SW * 0.56, height: SW * 0.38 },
+    { width: SW * 0.38, height: SW * 0.52 },
+    { width: SW * 0.48, height: SW * 0.44 },
+    { width: SW * 0.44, height: SW * 0.44 },
+    { width: SW * 0.52, height: SW * 0.36 },
+];
 
 interface FilmCardProps {
     film: UserFilm;
     index: number;
-    scrollY: SharedValue<number>;
+    x: number;
+    y: number;
+    cardWidth: number;
+    cardHeight: number;
     assignedColor: string;
-    isLast: boolean;
-    totalCards: number;
+    isNewest: boolean;
     onPress: () => void;
-    dynamicGap: number;
 }
 
 const FilmCardBase: React.FC<FilmCardProps> = ({
     film,
-    index,
-    scrollY,
+    x,
+    y,
+    cardWidth,
+    cardHeight,
     assignedColor,
-    isLast,
-    totalCards,
+    isNewest,
     onPress,
-    dynamicGap,
 }) => {
-    const PADDING_TOP = 100;
     const pressScale = useSharedValue(1);
 
-    // Memoize layout constants to avoid re-calculation on every re-render
-    const layout = useMemo(() => {
-        const naturalPosition = PADDING_TOP + index * (CARD_HEIGHT - 80);
-        const stickyTop = STICKY_OFFSET + index * dynamicGap;
-        const stickStart = Math.max(0, naturalPosition - stickyTop);
-        return { stickStart };
-    }, [index, dynamicGap]);
-
-    const animatedStyle = useAnimatedStyle(() => {
-        const translation = Math.max(0, scrollY.value - layout.stickStart);
-        const finalTranslateY = translation;
-
-        const scale = interpolate(
-            translation,
-            [0, CARD_HEIGHT * 3],
-            [1, 0.94],
-            Extrapolation.CLAMP
-        );
-
-        return {
-            transform: [
-                { translateY: finalTranslateY },
-                { scale: scale * pressScale.value }
-            ],
-        };
-    });
-
-    const handlePressIn = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        pressScale.value = withSpring(0.98, {
-            damping: 20,
-            stiffness: 250
+    const tapGesture = Gesture.Tap()
+        .maxDistance(8)
+        .onBegin(() => {
+            pressScale.value = withSpring(0.93, { damping: 15, stiffness: 400 });
+            runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+        })
+        .onFinalize((_, success) => {
+            pressScale.value = withSpring(1, { damping: 12, stiffness: 300 });
+            if (success) runOnJS(onPress)();
         });
-    };
 
-    const handlePressOut = () => {
-        pressScale.value = withSpring(1, {
-            damping: 20,
-            stiffness: 250
-        });
-    };
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: pressScale.value }],
+    }));
 
     return (
-        <Animated.View
-            shouldRasterizeIOS={true}
-            renderToHardwareTextureAndroid={true}
-            style={[
-                styles.card,
-                {
-                    backgroundColor: assignedColor,
-                    zIndex: index + 1,
-                    height: isLast ? undefined : CARD_HEIGHT,
-                    flex: isLast ? 1 : undefined,
-                    minHeight: isLast ? 400 : undefined,
-                    marginTop: index === 0 ? 0 : -80,
-                    marginBottom: isLast ? 100 : 0,
-                },
-                animatedStyle,
-            ]}
-        >
-            <View style={[StyleSheet.absoluteFill, styles.mediaWrapper]}>
-                <FilmMedia
-                    uri={film.uri}
-                    type={film.type as 'image' | 'video'}
-                />
-                <View style={[StyleSheet.absoluteFillObject, styles.overlay]} />
-            </View>
-
-            {isLast && (
-                <View
-                    style={[
-                        styles.magicTail,
-                        { backgroundColor: assignedColor }
-                    ]}
-                >
+        <GestureDetector gesture={tapGesture}>
+            <Animated.View
+                shouldRasterizeIOS
+                renderToHardwareTextureAndroid
+                style={[
+                    styles.card,
+                    {
+                        width: cardWidth,
+                        height: cardHeight,
+                        backgroundColor: assignedColor,
+                        position: 'absolute',
+                        left: x,
+                        top: y,
+                    },
+                    isNewest && styles.cardNewest,
+                    animatedStyle,
+                ]}
+            >
+                {/* Media */}
+                <View style={StyleSheet.absoluteFill}>
                     <FilmMedia
                         uri={film.uri}
                         type={film.type as 'image' | 'video'}
-                        style={styles.tailMedia}
                     />
-                    <View style={[StyleSheet.absoluteFillObject, styles.overlay]} />
                 </View>
-            )}
 
-            <Pressable
-                onPress={onPress}
-                onPressIn={handlePressIn}
-                onPressOut={handlePressOut}
-                style={{ flex: 1 }}
-            >
-                <View style={styles.cardTopRow}>
-                    <View style={styles.cardRight}>
-                        <Text style={styles.dateText}>{formatRelativeTime(film.createdAt)}</Text>
+                {/* Scrim */}
+                <View style={styles.scrim} />
+
+                {/* Newest pill */}
+                {isNewest && (
+                    <View style={styles.newestPill}>
+                        <Text style={styles.newestText}>● LATEST</Text>
                     </View>
+                )}
+
+                {/* Bottom meta */}
+                <View style={styles.bottomMeta}>
+                    <Text style={styles.timeText} numberOfLines={1}>
+                        {formatRelativeTime(film.createdAt)}
+                    </Text>
+                    <Text style={styles.typeText}>
+                        {film.type === 'video' ? '🎬' : '📷'}
+                    </Text>
                 </View>
-            </Pressable>
-        </Animated.View>
+            </Animated.View>
+        </GestureDetector>
     );
 };
 
@@ -147,54 +120,57 @@ FilmCard.displayName = 'FilmCard';
 
 const styles = StyleSheet.create({
     card: {
-        borderTopLeftRadius: 40,
-        borderTopRightRadius: 40,
-        padding: 24,
-        width: '100%',
-        overflow: 'visible',
-    },
-    mediaWrapper: {
+        borderRadius: 18,
         overflow: 'hidden',
-        borderTopLeftRadius: 40,
-        borderTopRightRadius: 40,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+        elevation: 10,
     },
-    overlay: {
-        backgroundColor: 'rgba(0,0,0,0.15)',
+    cardNewest: {
+        borderWidth: 2.5,
+        borderColor: 'rgba(255,255,255,0.7)',
     },
-    magicTail: {
+    scrim: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.18)',
+    },
+    newestPill: {
         position: 'absolute',
-        top: 100,
-        bottom: -2000,
-        left: 0,
-        right: 0,
-        overflow: 'hidden',
+        top: 10,
+        left: 10,
+        backgroundColor: 'rgba(255,59,48,0.85)',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 20,
     },
-    tailMedia: {
+    newestText: {
+        color: '#fff',
+        fontSize: 8,
+        fontFamily: FONTS.bold,
+        letterSpacing: 1,
+    },
+    bottomMeta: {
         position: 'absolute',
-        top: -100,
-        left: 0,
-        width: '100%',
-        height: SCREEN_HEIGHT,
-    },
-    cardTopRow: {
+        bottom: 12,
+        left: 12,
+        right: 12,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    cardRight: {
-        alignItems: 'flex-end',
+    timeText: {
+        color: '#fff',
+        fontSize: 11,
+        fontFamily: FONTS.bold,
+        textShadowColor: 'rgba(0,0,0,0.7)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 4,
         flex: 1,
     },
-    dateText: {
+    typeText: {
         fontSize: 14,
-        fontFamily: FONTS.bold,
-        color: '#FFF',
-    },
-    timeText: {
-        fontSize: 12,
-        fontFamily: FONTS.medium,
-        color: 'rgba(255,255,255,0.8)',
-        marginTop: 2,
     },
 });
 
