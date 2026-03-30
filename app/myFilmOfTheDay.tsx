@@ -1,58 +1,60 @@
 /**
- * myFilmOfTheDay.tsx — Film Map
+ * myFilmOfTheDay.tsx — Free Canvas Film Map (circle bubbles, same as UserFilms)
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     StyleSheet, View, Text, Pressable,
     Dimensions, Animated as RNAnimated, Platform,
-    ActivityIndicator,
+    ActivityIndicator, Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons, Fontisto } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS } from '@/theme/theme';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
-import Animated, {
-    useAnimatedStyle, useSharedValue, withSpring, runOnJS, clamp,
-} from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import FilmMedia from '../src/features/film-my-day/components/FilmMedia';
-import ZoomableMediaCard from '../src/features/film-my-day/components/ZoomableMediaCard';
-import FilmViewerList from '../src/features/film-my-day/components/FilmViewerList';
-import { Profile } from '@/types/domain';
+import FilmStoryModal from '../src/features/film-my-day/components/FilmStoryModal';
+import { Profile, Film } from '@/types/domain';
 import { getColors } from 'react-native-image-colors';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { BlurView } from 'expo-blur';
+import Animated, {
+    useSharedValue, useAnimatedStyle, withSpring, withTiming,
+    interpolate, runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import {
+    FilmCanvas,
+    buildCardLayout,
+    buildDecoCircleLayout,
+    rgba,
+} from '@/features/film-my-day/components/canvas';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const CARD_W = 200;
-const CARD_H = 270;
-const CELL = 22;
-const MIN_SC = 0.12;
-const MAX_SC = 3.5;
-const DEF_SC = (SW * 0.8) / CARD_W;
-const COLS = 3;
-const ROW_H = 420;
-const CANVAS_W = 1400;
-const WINDOW = 3;
 
-function hexRgb(hex: string) {
-    const h = hex.replace('#', '');
-    const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-    const n = parseInt(full, 16);
-    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+const BUBBLE_R_MIN = 35;
+const BUBBLE_R_MAX = 100;
+// Slightly zoomed out — latest film visible but neighbouring bubbles also in frame
+const DEF_SC = (SW * 0.48) / (BUBBLE_R_MAX * 2);
+const VIEW_THRESHOLD_MS = 2000;
+
+// ── Seeded radii (must match buildCardLayout seed 77) ─────────
+function buildBubbleRadii(count: number): number[] {
+    let s = 77;
+    const rand = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+    // skip the positions consumed inside buildCardLayout
+    // radii are derived independently from count
+    let rs = 42; // separate seed for radii
+    const randR = () => { rs = (rs * 16807) % 2147483647; return (rs - 1) / 2147483646; };
+    return Array.from({ length: count }, () =>
+        BUBBLE_R_MIN + randR() * (BUBBLE_R_MAX - BUBBLE_R_MIN)
+    );
 }
-function rgba(hex: string, a: number) {
-    const { r, g, b } = hexRgb(hex);
-    return `rgba(${r},${g},${b},${a})`;
-}
-function fmtTime(iso: string) {
-    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-}
+
 function fmtDate(iso: string) {
     const d = new Date(iso);
     return {
@@ -61,208 +63,311 @@ function fmtDate(iso: string) {
     };
 }
 
-function buildLayout(count: number) {
-    const margin = 160;
-    const step = (CANVAS_W - margin * 2 - CARD_W) / (COLS - 1);
-    const xs = [margin, margin + step, margin + step * 2];
-    const startY = -60;
-    return Array.from({ length: count }, (_, i) => {
-        const row = Math.floor(i / COLS);
-        const col = i % COLS;
-        const colIdx = row % 2 === 1 ? COLS - 1 - col : col;
-        const dx = Math.sin(i * 1.5) * 80;
-        const dy = Math.cos(i * 0.8) * 40;
-        return { x: xs[colIdx] - CANVAS_W / 2 + dx, y: startY + i * ROW_H + dy };
-    });
+// Relative time label rendered below each bubble
+function relativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const days = Math.floor(hr / 24);
+    return days === 1 ? 'yesterday' : `${days}d ago`;
 }
 
-function buildPath(pts: { x: number; y: number }[]) {
-    if (pts.length < 2) return '';
-    const cx = (p: { x: number }) => p.x + 12;
-    const cy = (p: { y: number }) => p.y;
-    let d = `M ${cx(pts[0])} ${cy(pts[0])}`;
-    for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1], b = pts[i];
-        const distY = cy(b) - cy(a);
-        const distX = cx(b) - cx(a);
-        d += ` C ${cx(a) + distX * 0.15} ${cy(a) + distY * 0.75}, ${cx(b) - distX * 0.15} ${cy(b) - distY * 0.75}, ${cx(b)} ${cy(b)}`;
-    }
-    return d;
-}
-
-function makeCentre(idx: number, positions: { x: number; y: number }[], sc: number) {
-    const p = positions[idx];
-    if (!p) return { tx: 0, ty: 0 };
-    return { tx: -(p.x - CARD_W / 2) * sc, ty: -(p.y + CARD_H / 2) * sc };
-}
-
-const ScreenGrid = React.memo(({ accent }: { accent: string }) => {
-    const lc = rgba('#433D35', 0.15);
-    const cols = Math.ceil(SW / CELL) + 1;
-    const rows = Math.ceil(SH / CELL) + 1;
-    const lines: React.ReactNode[] = [];
-    for (let r = 0; r <= rows; r++)
-        lines.push(<Line key={`h${r}`} x1={0} y1={r * CELL} x2={SW} y2={r * CELL} stroke={lc} strokeWidth={1.2} />);
-    for (let c = 0; c <= cols; c++)
-        lines.push(<Line key={`v${c}`} x1={c * CELL} y1={0} x2={c * CELL} y2={SH} stroke={lc} strokeWidth={1.2} />);
-    return <Svg width={SW} height={SH} style={StyleSheet.absoluteFill} pointerEvents="none">{lines}</Svg>;
-});
-ScreenGrid.displayName = 'ScreenGrid';
-
-const RouteLayer = React.memo(({ path, positions, accent, cw, ch, originX, originY }: {
-    path: string; positions: { x: number; y: number }[];
-    accent: string; cw: number; ch: number; originX: number; originY: number;
-}) => (
-    <Svg width={cw} height={ch} style={{ position: 'absolute', left: originX, top: originY }} pointerEvents="none">
-        <Path d={path} stroke={rgba('#433D35', 0.12)} strokeWidth={12} fill="none" strokeLinecap="round" />
-        <Path d={path} stroke={rgba('#433D35', 0.45)} strokeWidth={3} fill="none" strokeDasharray="0.1, 12" strokeLinecap="round" />
-        {positions.slice(0, -1).map((p, i) => {
-            const next = positions[i + 1];
-            const cxA = (p.x + 12) - originX, cyA = p.y - originY;
-            const cxB = (next.x + 12) - originX, cyB = next.y - originY;
-            return [0.25, 0.5, 0.75].map(t => (
-                <Circle key={`deco-ring-${i}-${t}`}
-                    cx={cxA + (cxB - cxA) * t} cy={cyA + (cyB - cyA) * t}
-                    r={6 + t * 2} stroke={'#433D35'} strokeWidth={0.6} fill="none" opacity={0.15 - t * 0.05} />
-            ));
-        })}
-        <Path d={path} stroke={rgba('#433D35', 0.3)} strokeWidth={0.6} fill="none" />
-        {positions.map((p, i) => {
-            const cx = (p.x + 12) - originX, cy = p.y - originY;
-            return (
-                <React.Fragment key={i}>
-                    <Circle cx={cx} cy={cy} r={24} stroke={'#433D35'} strokeWidth={0.35} fill="none" opacity={0.06} />
-                    <Circle cx={cx} cy={cy} r={12} stroke={rgba('#433D35', 0.15)} strokeWidth={0.8} fill="none" />
-                    <Circle cx={cx} cy={cy} r={4.5} fill="white" stroke={'#433D35'} strokeWidth={2} />
-                </React.Fragment>
-            );
-        })}
-    </Svg>
-));
-RouteLayer.displayName = 'RouteLayer';
-
-const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; width?: number }) => (
-    <Svg width={width} height={14} viewBox={`0 0 ${width} 14`} style={{ marginTop: -5, opacity: 0.85 }}>
-        <Path d={`M${width * 0.03} 7C${width * 0.2} 5 ${width * 0.4} 6 ${width * 0.6} 7C${width * 0.8} 8 ${width * 0.95} 5 ${width * 0.98} 6`} stroke={color} strokeWidth={2.8} strokeLinecap="round" fill="none" />
-        <Path d={`M${width * 0.08} 10C${width * 0.3} 9 ${width * 0.5} 10 ${width * 0.7} 11C${width * 0.9} 12 ${width * 0.95} 9 ${width * 0.92} 8`} stroke={color} strokeWidth={2.2} strokeLinecap="round" fill="none" opacity={0.65} />
-        <Path d={`M${width * 0.2} 12C${width * 0.4} 11 ${width * 0.6} 12 ${width * 0.8} 13`} stroke={color} strokeWidth={1.5} strokeLinecap="round" fill="none" opacity={0.4} />
-    </Svg>
-));
-DoodleUnderline.displayName = 'DoodleUnderline';
-
-const MediaNode = React.memo(({ item, pos, active, accent, inView, isPaused, tx, ty, sc, onPress }: {
-    item: any; pos: { x: number; y: number }; active: boolean;
-    accent: string; inView: boolean; isPaused: boolean;
-    tx: any; ty: any; sc: any; onPress: () => void;
-}) => {
-    const finalX = pos.x - CARD_W;
-    const finalY = pos.y;
-    return (
-        <View style={{ position: 'absolute', left: finalX, top: finalY }}>
-            <ZoomableMediaCard width={CARD_W} height={CARD_H} pos={{ x: finalX, y: finalY }}
-                isActive={active} accent={accent} tx={tx} ty={ty} sc={sc}>
-                {inView ? (
-                    <FilmMedia uri={item.mediaUrl} type={item.mediaType === 'video' ? 'video' : 'image'}
-                        isPlaying={active && item.mediaType === 'video' && !isPaused} accent={accent} resizeMode="cover" />
-                ) : (
-                    <View style={[styles.placeholder, { backgroundColor: rgba('#433D35', 0.1) }]} />
-                )}
-                {active && <View style={[styles.activeDot, { backgroundColor: accent }]} />}
-            </ZoomableMediaCard>
-            <View style={styles.timeLabelContainer}>
-                <Text style={styles.timeText}>{fmtTime(item.timestamp)}</Text>
-            </View>
-        </View>
-    );
-});
-MediaNode.displayName = 'MediaNode';
-
-const SafeBlur = ({ intensity, tint, style, children }: any) => {
-    const [isReady, setIsReady] = useState(false);
-    useEffect(() => { const t = setTimeout(() => setIsReady(true), 150); return () => clearTimeout(t); }, []);
-    if (!isReady || Platform.OS === 'android')
-        return <View style={[style, { backgroundColor: 'rgba(255,255,255,0.32)' }]}>{children}</View>;
-    return <BlurView intensity={intensity} tint={tint} style={style}>{children}</BlurView>;
-};
-
-// ── FilmItem type ─────────────────────────────────────────────
 interface FilmItem {
     id: string;
     mediaUrl: string;
     mediaType: string;
     timestamp: string;
     viewers: Profile[];
-    likedByIds: Set<string>; // ✅ who liked this film
+    likedByIds: Set<string>;
+    creatorId: string;
 }
 
+// ── DoodleUnderline ────────────────────────────────────────────
+const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; width?: number }) => (
+    <Svg width={width} height={14} viewBox={`0 0 ${width} 14`} style={{ marginTop: -5, opacity: 0.85 }}>
+        <Path
+            d={`M${width * 0.03} 7C${width * 0.2} 5 ${width * 0.4} 6 ${width * 0.6} 7C${width * 0.8} 8 ${width * 0.95} 5 ${width * 0.98} 6`}
+            stroke={color} strokeWidth={2.8} strokeLinecap="round" fill="none"
+        />
+        <Path
+            d={`M${width * 0.08} 10C${width * 0.3} 9 ${width * 0.5} 10 ${width * 0.7} 11C${width * 0.9} 12 ${width * 0.95} 9 ${width * 0.92} 8`}
+            stroke={color} strokeWidth={2.2} strokeLinecap="round" fill="none" opacity={0.65}
+        />
+    </Svg>
+));
+DoodleUnderline.displayName = 'DoodleUnderline';
+
+// ── Viewer overlay — scattered avatars on visible screen ───────
+interface ViewerOverlayProps {
+    viewers: Profile[];
+    likedByIds: Set<string>;
+    visible: boolean;
+    onDismiss: () => void;
+}
+
+// Ring layout around screen center — avatars are AROUND the film, never on it.
+// Min radius (130px) > largest possible bubble screen radius at DEF_SC (~93px).
+function buildAvatarRingPositions(count: number): { x: number; y: number }[] {
+    if (count === 0) return [];
+    const cx = SW / 2;
+    const cy = SH / 2;
+    const INNER_R = 140; // clear of the film bubble
+    const OUTER_R = 210; // max spread
+    return Array.from({ length: count }, (_, i) => {
+        // Evenly spaced angle, start from top (−π/2)
+        const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+        // Alternate inner/outer radii for a natural scattered-ring feel
+        const radius = i % 2 === 0 ? INNER_R : OUTER_R;
+        return {
+            x: cx + Math.cos(angle) * radius,
+            y: cy + Math.sin(angle) * radius,
+        };
+    });
+}
+
+const AVATAR_SIZE = 52;
+
+const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
+    viewer: Profile; hasLiked: boolean; x: number; y: number; delay: number;
+}) => {
+    const scale = useSharedValue(0);
+    const opacity = useSharedValue(0);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // No spring — clean, instant iOS-style pop-in
+            scale.value = withTiming(1, { duration: 160 });
+            opacity.value = withTiming(1, { duration: 160 });
+        }, delay);
+        return () => clearTimeout(timer);
+    }, []);
+
+    const style = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+        opacity: opacity.value,
+    }));
+
+    // Show relationship label if set, else "Friend"
+    const label = viewer.relationship || 'Friend';
+
+    return (
+        <Animated.View style={[styles.avatarItem, { left: x - AVATAR_SIZE / 2, top: y - AVATAR_SIZE / 2 }, style]}>
+            {/* iOS-style: no border, real shadow */}
+            <View style={styles.avatarRing}>
+                <Image
+                    source={{ uri: viewer.profilePicture }}
+                    style={styles.avatarImg}
+                />
+            </View>
+            {hasLiked && (
+                <View style={styles.heartBadge}>
+                    <Text style={{ fontSize: 10 }}>❤️</Text>
+                </View>
+            )}
+            <Text style={styles.avatarName} numberOfLines={1}>{label}</Text>
+        </Animated.View>
+    );
+});
+ViewerAvatar.displayName = 'ViewerAvatar';
+
+const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: ViewerOverlayProps) => {
+    const bgOpacity = useSharedValue(0);
+    // Ring positions: avatars orbit around screen center (where the long-pressed bubble is)
+    const positions = useMemo(() => buildAvatarRingPositions(viewers.length), [viewers.length]);
+
+    useEffect(() => {
+        // Fade in on hold, snap out on release
+        bgOpacity.value = withTiming(visible ? 1 : 0, { duration: visible ? 260 : 100 });
+    }, [visible]);
+
+    const bgStyle = useAnimatedStyle(() => ({
+        opacity: bgOpacity.value,
+        pointerEvents: visible ? 'auto' : 'none',
+    }));
+
+    if (!visible && bgOpacity.value === 0) return null;
+
+    return (
+        <Animated.View style={[StyleSheet.absoluteFill, styles.viewerOverlay, bgStyle]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
+
+            {viewers.length === 0 ? (
+                // Centered pill — clearly on the dark overlay, never on the film circle
+                <View style={styles.noViewersCenter} pointerEvents="none">
+                    <View style={styles.noViewersPill}>
+                        <Ionicons name="eye-off-outline" size={18} color="rgba(255,255,255,0.7)" />
+                        <Text style={styles.noViewersText}>No viewers yet</Text>
+                    </View>
+                </View>
+            ) : (
+                viewers.map((v, i) => (
+                    <ViewerAvatar
+                        key={v.id}
+                        viewer={v}
+                        hasLiked={likedByIds.has(v.id)}
+                        x={positions[i]?.x ?? SW / 2}
+                        y={positions[i]?.y ?? SH / 2}
+                        delay={i * 35}
+                    />
+                ))
+            )}
+        </Animated.View>
+    );
+});
+ViewerOverlay.displayName = 'ViewerOverlay';
+
+// ── FilmBubble ─────────────────────────────────────
+const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress, onLongPress, onLongPressEnd }: {
+    film: FilmItem; x: number; y: number; r: number;
+    isActive: boolean; isVisible: boolean;
+    onPress: () => void; onLongPress: () => void; onLongPressEnd: () => void;
+}) => {
+    const size = r * 2;
+    const isVideo = film.mediaType === 'video';
+    const timeLabel = relativeTime(film.timestamp);
+
+    const longPress = Gesture.LongPress()
+        .minDuration(400)
+        // Allow 50px of finger wiggle — prevents canvas pan from killing the hold
+        .maxDistance(50)
+        .onStart(() => {
+            runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Heavy);
+            runOnJS(onLongPress)();
+        })
+        // onFinalize fires in ALL terminal states (lift, cancel, system interrupt)
+        .onFinalize(() => { runOnJS(onLongPressEnd)(); });
+
+    const tap = Gesture.Tap()
+        .maxDuration(250)
+        .onEnd(() => { runOnJS(onPress)(); });
+
+    const gesture = Gesture.Exclusive(longPress, tap);
+
+    return (
+        <>
+            <GestureDetector gesture={gesture}>
+                <Animated.View style={[
+                    styles.bubble,
+                    {
+                        left: x - r, top: y - r,
+                        width: size, height: size, borderRadius: r,
+                        borderWidth: isActive ? 2.5 : 1,
+                        borderColor: isActive ? COLORS.primary : 'rgba(67,61,53,0.18)',
+                        shadowOpacity: isActive ? 0.25 : 0.1,
+                        shadowRadius: isActive ? 16 : 8,
+                    },
+                ]}>
+                    <FilmMedia
+                        uri={film.mediaUrl}
+                        type={isVideo ? 'video' : 'image'}
+                        isPlaying={isActive && isVideo}
+                        accent={COLORS.primary}
+                        resizeMode="cover"
+                    />
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.22)']}
+                        style={[StyleSheet.absoluteFill, { borderRadius: r }]}
+                        pointerEvents="none"
+                    />
+                    {isActive && (
+                        <View style={[styles.activeDot, { backgroundColor: COLORS.primary }]} />
+                    )}
+                </Animated.View>
+            </GestureDetector>
+            {/* Timestamp label in canvas space, below the bubble */}
+            <View
+                style={[styles.timestampHolder, { left: x - 40, top: y + r + 7 }]}
+                pointerEvents="none"
+            >
+                <Text style={styles.timestampText}>{timeLabel}</Text>
+            </View>
+        </>
+    );
+});
+FilmBubble.displayName = 'FilmBubble';
+
+// ── Main ───────────────────────────────────────────────────────
 export default function MyFilmOfTheDay() {
     const router = useRouter();
     const { color: colorParam } = useLocalSearchParams<{ color?: string }>();
     const insets = useSafeAreaInsets();
     const accent = (colorParam as string) || COLORS.primary;
 
-    // ── Supabase data ──────────────────────────────────────────
     const [films, setFilms] = useState<FilmItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [activeIdx, setIdx] = useState(0);
+    const [showViewers, setShowViewers] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [modalIndex, setModalIndex] = useState(0);
+
+    const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const recordedIds = useRef<Set<string>>(new Set());
+    const currentUserId = useRef<string | null>(null);
+
+    const clearViewTimer = () => {
+        if (viewTimerRef.current) { clearTimeout(viewTimerRef.current); viewTimerRef.current = null; }
+    };
+    const recordView = async (filmId: string, creatorId: string) => {
+        if (recordedIds.current.has(filmId)) return;
+        const uid = currentUserId.current;
+        if (!uid || uid === creatorId) return;
+        try {
+            await supabase.from('film_views').insert({ film_id: filmId, viewer_id: uid });
+            recordedIds.current.add(filmId);
+        } catch { }
+    };
+    const startViewTimer = useCallback((film: FilmItem) => {
+        clearViewTimer();
+        viewTimerRef.current = setTimeout(() => recordView(film.id, film.creatorId), VIEW_THRESHOLD_MS);
+    }, []);
 
     useEffect(() => {
         (async () => {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const userId = sessionData?.session?.user?.id;
-            if (!userId) { setIsLoading(false); return; }
+            const { data: sd } = await supabase.auth.getSession();
+            const uid = sd?.session?.user?.id;
+            if (!uid) { setIsLoading(false); return; }
+            currentUserId.current = uid;
 
-            // ── 1. Fetch films ────────────────────────────────
-            const { data: filmsData, error: filmsError } = await supabase
-                .from('films')
-                .select('*')
-                .eq('creator_id', userId)
-                .order('created_at', { ascending: true });
+            const { data: fd, error } = await supabase
+                .from('films').select('*')
+                .eq('creator_id', uid).order('created_at', { ascending: true });
+            if (error || !fd?.length) { setIsLoading(false); return; }
 
-            if (filmsError) { console.error('[MyFilms]', filmsError); setIsLoading(false); return; }
-            if (!filmsData || filmsData.length === 0) { setIsLoading(false); return; }
+            const ids = fd.map(f => f.id);
 
-            const filmIds = filmsData.map(f => f.id);
-
-            // ── 2. Fetch viewers (with profiles) ──────────────
-            const { data: viewsData } = await supabase
+            const { data: vd } = await supabase
                 .from('film_views')
-                .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color)')
-                .in('film_id', filmIds);
+                // Also fetch relationship so we can show e.g. "GF", "Bro", fallback "Friend"
+                .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color, relationship)')
+                .in('film_id', ids);
 
             const viewersByFilm: Record<string, Profile[]> = {};
-            (viewsData || []).forEach((v: any) => {
+            (vd || []).forEach((v: any) => {
                 if (!v.profiles) return;
                 if (!viewersByFilm[v.film_id]) viewersByFilm[v.film_id] = [];
-                const already = viewersByFilm[v.film_id].some(p => p.id === v.profiles.id);
-                if (!already) {
+                if (!viewersByFilm[v.film_id].some(p => p.id === v.profiles.id))
                     viewersByFilm[v.film_id].push({
-                        id: v.profiles.id,
-                        uniqueUserId: v.profiles.unique_user_id,
-                        name: v.profiles.name,
-                        profilePicture: v.profiles.profile_picture,
+                        id: v.profiles.id, uniqueUserId: v.profiles.unique_user_id,
+                        name: v.profiles.name, profilePicture: v.profiles.profile_picture,
                         dominantColor: v.profiles.dominant_color || '#D4A373',
+                        relationship: v.profiles.relationship ?? undefined,
                     });
-                }
             });
 
-            // ── 3. Fetch likes ────────────────────────────────
-            const { data: likesData } = await supabase
-                .from('film_likes')
-                .select('film_id, user_id')
-                .in('film_id', filmIds);
-
+            const { data: ld } = await supabase
+                .from('film_likes').select('film_id, user_id').in('film_id', ids);
             const likedByFilm: Record<string, Set<string>> = {};
-            (likesData || []).forEach((l: any) => {
+            (ld || []).forEach((l: any) => {
                 if (!likedByFilm[l.film_id]) likedByFilm[l.film_id] = new Set();
                 likedByFilm[l.film_id].add(l.user_id);
             });
 
-            // ── 4. Build final film items ─────────────────────
-            setFilms(filmsData.map(f => ({
-                id: f.id,
-                mediaUrl: f.uri,
-                mediaType: f.type,
-                timestamp: f.created_at,
+            setFilms(fd.map(f => ({
+                id: f.id, mediaUrl: f.uri, mediaType: f.type,
+                timestamp: f.created_at, creatorId: f.creator_id,
                 viewers: viewersByFilm[f.id] || [],
                 likedByIds: likedByFilm[f.id] || new Set(),
             })));
@@ -270,61 +375,55 @@ export default function MyFilmOfTheDay() {
         })();
     }, []);
 
-    const positions = useMemo(() => buildLayout(films.length), [films.length]);
-    const routePath = useMemo(() => buildPath(positions), [positions]);
+    useEffect(() => { return () => clearViewTimer(); }, []);
+    useEffect(() => {
+        if (films.length === 0) return;
+        Promise.all([0, 1, 2].map(i => extractColor(i))).then(() => updateBg(0));
+        if (films[0]) startViewTimer(films[0]);
+    }, [films]);
 
-    const { minX, minY, svgW, svgH } = useMemo(() => {
-        if (positions.length === 0) return { minX: 0, minY: 0, svgW: 1, svgH: 1 };
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        positions.forEach(p => {
-            minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-            maxX = Math.max(maxX, p.x + CARD_W); maxY = Math.max(maxY, p.y + CARD_H);
-        });
-        const pad = 120;
-        return { minX: minX - pad, minY: minY - pad, svgW: maxX - minX + pad * 2, svgH: maxY - minY + pad * 2 };
-    }, [positions]);
-
-    const offsetPath = useMemo(() =>
-        routePath.replace(/(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g,
-            (_, x, y) => `${(parseFloat(x) - minX).toFixed(2)} ${(parseFloat(y) - minY).toFixed(2)}`),
-        [routePath, minX, minY]);
-
-    const [activeIdx, setIdx] = useState(0);
-    const [isPaused, setIsPaused] = useState(false);
-    const [showViewers, setShowViewers] = useState(false);
-
+    // ── Dynamic background ─────────────────────────────────────
     const bgAnim = useRef(new RNAnimated.Value(0)).current;
     const colorCache = useRef<Record<string, string[]>>({});
-    const [bgColors, setBgColors] = useState([rgba(accent, 0.92), rgba(accent, 0.78), rgba(accent, 0.55)]);
-    const [prevBgColors, setPrevBgColors] = useState([rgba(accent, 0.92), rgba(accent, 0.78), rgba(accent, 0.55)]);
+    const [bgColors, setBgColors] = useState<[string, string, string]>([
+        rgba(accent, 0.92), rgba(accent, 0.78), rgba(accent, 0.55),
+    ]);
+    const [prevBgColors, setPrevBgColors] = useState<[string, string, string]>([
+        rgba(accent, 0.92), rgba(accent, 0.78), rgba(accent, 0.55),
+    ]);
 
     const extractColor = useCallback(async (idx: number) => {
         const film = films[idx];
         if (!film) return null;
         if (colorCache.current[film.id]) return colorCache.current[film.id];
         try {
-            let mediaUri = film.mediaUrl;
+            let uri = film.mediaUrl;
             if (film.mediaType === 'video') {
-                const thumb = await VideoThumbnails.getThumbnailAsync(film.mediaUrl, { time: 500 });
-                mediaUri = thumb.uri;
+                const t = await VideoThumbnails.getThumbnailAsync(film.mediaUrl, { time: 500 });
+                uri = t.uri;
             }
-            const small = await ImageManipulator.manipulateAsync(mediaUri,
-                [{ resize: { width: 100 } }], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.6 });
+            const small = await ImageManipulator.manipulateAsync(uri,
+                [{ resize: { width: 100 } }],
+                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.6 });
             const res = await getColors(small.uri, { fallback: accent, cache: true, quality: 'low' });
             let dominant = accent;
             if (res.platform === 'android') dominant = res.vibrant || res.dominant || res.average || accent;
             else if (res.platform === 'ios') dominant = res.primary || res.detail || res.background || accent;
-            const result = [rgba(dominant, 0.95), rgba(dominant, 0.75), rgba(dominant, 0.45)];
+            const result: [string, string, string] = [
+                rgba(dominant, 0.95), rgba(dominant, 0.75), rgba(dominant, 0.45),
+            ];
             colorCache.current[film.id] = result;
             return result;
-        } catch { return [rgba(accent, 0.8), rgba(accent, 0.6), rgba(accent, 0.4)]; }
+        } catch {
+            return [rgba(accent, 0.8), rgba(accent, 0.6), rgba(accent, 0.4)] as [string, string, string];
+        }
     }, [accent, films]);
 
     const updateBg = useCallback(async (idx: number) => {
         const film = films[idx];
         if (!film) return;
         const cached = colorCache.current[film.id];
-        const colors = cached || await extractColor(idx);
+        const colors = (cached || await extractColor(idx)) as [string, string, string] | null;
         if (!colors) return;
         setPrevBgColors(bgColors);
         setBgColors(colors);
@@ -334,237 +433,343 @@ export default function MyFilmOfTheDay() {
         if (idx - 1 >= 0) extractColor(idx - 1);
     }, [bgColors, bgAnim, films, extractColor]);
 
-    useEffect(() => {
-        if (films.length === 0) return;
-        Promise.all([extractColor(0), extractColor(1), extractColor(2)]).then(() => updateBg(0));
-    }, [films]);
+    // ── Stable layouts ─────────────────────────────────────────
+    const decoItems = useMemo(() => buildDecoCircleLayout(40, 15, 40, 99), []);
+    const cardPositions = useMemo(() =>
+        buildCardLayout(films.length, BUBBLE_R_MAX * 2, BUBBLE_R_MAX * 2, 42),
+        [films.length]
+    );
+    const bubbleRadii = useMemo(() => buildBubbleRadii(films.length), [films.length]);
 
-    const tx = useSharedValue(0);
-    const ty = useSharedValue(0);
-    const sc = useSharedValue(DEF_SC);
-    const sTx = useSharedValue(0);
-    const sTy = useSharedValue(0);
-    const sSc = useSharedValue(DEF_SC);
-    const pivotX = useSharedValue(0);
-    const pivotY = useSharedValue(0);
-    const activeIdxSV = useSharedValue(0);
-
-    const SPRING = { damping: 30, stiffness: 180, mass: 1 };
-
-    useEffect(() => {
-        if (films.length === 0 || positions.length === 0) return;
-        const c = makeCentre(0, positions, DEF_SC);
-        tx.value = withSpring(c.tx, SPRING);
-        ty.value = withSpring(c.ty, SPRING);
-        sTx.value = c.tx;
-        sTy.value = c.ty;
-    }, [films.length]);
-
-    const closeViewers = () => { if (showViewers) setShowViewers(false); };
-
-    const snapTo = useCallback((idx: number) => {
-        if (films.length === 0) return;
-        const i = Math.max(0, Math.min(films.length - 1, idx));
-        const currentSc = sc.value;
-        const snapSc = currentSc < 0.4 ? DEF_SC : currentSc;
-        const c = makeCentre(i, positions, snapSc);
-        tx.value = withSpring(c.tx, SPRING);
-        ty.value = withSpring(c.ty, SPRING);
-        if (Math.abs(snapSc - currentSc) > 0.01) sc.value = withSpring(snapSc, SPRING);
-        activeIdxSV.value = i;
-        runOnJS(setIdx)(i);
-        runOnJS(updateBg)(i);
-        runOnJS(setIsPaused)(false);
-        runOnJS(closeViewers)();
-        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
-        sTx.value = c.tx;
-        sTy.value = c.ty;
-        sSc.value = snapSc;
-    }, [films.length, positions, updateBg, showViewers]);
-
-    const pan = Gesture.Pan()
-        .minDistance(2)
-        .onStart(() => { sTx.value = tx.value; sTy.value = ty.value; runOnJS(closeViewers)(); })
-        .onUpdate(e => { tx.value = sTx.value + e.translationX; ty.value = sTy.value + e.translationY; })
-        .onEnd(e => {
-            sTx.value = tx.value; sTy.value = ty.value;
-            const speed = Math.sqrt(e.velocityX ** 2 + e.velocityY ** 2);
-            let targetIdx = activeIdx;
-            if (speed > 350) {
-                const vert = Math.abs(e.velocityY) > Math.abs(e.velocityX);
-                targetIdx = vert
-                    ? (e.velocityY < 0 ? activeIdx + 1 : activeIdx - 1)
-                    : (e.velocityX < 0 ? activeIdx + 1 : activeIdx - 1);
-            } else {
-                const ccx = -tx.value / sc.value, ccy = -ty.value / sc.value;
-                let minDist = Infinity;
-                positions.forEach((p, idx) => {
-                    const dx = (p.x + CARD_W / 2) - ccx, dy = (p.y + CARD_H / 2) - ccy;
-                    const dist = dx * dx + dy * dy;
-                    if (dist < minDist) { minDist = dist; targetIdx = idx; }
-                });
-            }
-            runOnJS(snapTo)(targetIdx);
-        });
-
-    const pinch = Gesture.Pinch()
-        .onStart(e => {
-            sSc.value = sc.value; sTx.value = tx.value; sTy.value = ty.value;
-            pivotX.value = e.focalX - SW / 2; pivotY.value = e.focalY - SH / 2;
-            runOnJS(closeViewers)();
-        })
-        .onUpdate(e => {
-            const next = clamp(sSc.value * e.scale, MIN_SC, MAX_SC);
-            const ratio = next / sSc.value;
-            sc.value = next;
-            tx.value = pivotX.value * (1 - ratio) + sTx.value * ratio;
-            ty.value = pivotY.value * (1 - ratio) + sTy.value * ratio;
-        })
-        .onEnd(() => {
-            const finalSc = clamp(sc.value, MIN_SC, MAX_SC);
-            sc.value = withSpring(finalSc, SPRING);
-            sSc.value = finalSc; sTx.value = tx.value; sTy.value = ty.value;
-        });
-
-    const tap = Gesture.Tap().maxDuration(250).maxDistance(25).onEnd(e => {
-        let tappedIdx = -1;
-        for (let i = 0; i < positions.length; i++) {
-            const p = positions[i];
-            const csx = SW / 2 + tx.value + p.x * sc.value;
-            const csy = SH / 2 + ty.value + p.y * sc.value;
-            if (e.x >= csx && e.x <= csx + CARD_W * sc.value && e.y >= csy && e.y <= csy + CARD_H * sc.value) {
-                tappedIdx = i; break;
-            }
-        }
-        if (tappedIdx !== -1) {
-            if (tappedIdx === activeIdxSV.value) {
-                runOnJS(setIsPaused)((prev: boolean) => !prev);
-                runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-            } else runOnJS(snapTo)(tappedIdx);
-        } else runOnJS(closeViewers)();
-    });
-
-    const gesture = Gesture.Simultaneous(tap, pan, pinch);
-    const pivotStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
-    }));
+    // Latest film (last in ascending order) — center canvas on open
+    const latestFilmPos = cardPositions.length > 0
+        ? cardPositions[cardPositions.length - 1]
+        : undefined;
 
     const activeFilm = films[activeIdx];
     const { weekday, date } = useMemo(() =>
-        fmtDate(activeFilm?.timestamp || new Date().toISOString()), [activeFilm]);
+        fmtDate(activeFilm?.timestamp || new Date().toISOString()),
+        [activeFilm]
+    );
+
+    // ── Header ─────────────────────────────────────────────────
+    const Header = useMemo(() => (
+        <View style={[styles.header, { paddingTop: insets.top + 32 }]} pointerEvents="box-none">
+            <Pressable
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+                style={[styles.backBtn, { top: insets.top + 14 }]}
+            >
+                <Ionicons name="chevron-back" size={24} color="#433D35" />
+            </Pressable>
+            <View style={styles.headerCenter} pointerEvents="none">
+                <Text style={styles.hSub}>Films of my day</Text>
+                <Text style={styles.hWeekday} numberOfLines={1}>{weekday}</Text>
+                <DoodleUnderline color="#433D35" width={180} />
+                <Text style={styles.hDate} numberOfLines={1}>{date}</Text>
+            </View>
+        </View>
+    ), [insets.top, weekday, date]);
 
     if (isLoading) {
         return (
-            <View style={{ flex: 1, backgroundColor: '#FBFAF6', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={accent} />
             </View>
         );
     }
 
+    // ── Empty state ────────────────────────────────────────────
     if (films.length === 0) {
         return (
-            <View style={{ flex: 1, backgroundColor: '#FBFAF6', justifyContent: 'center', alignItems: 'center' }}>
-                <Pressable onPress={() => router.back()}
-                    style={{ position: 'absolute', top: insets.top + 14, left: 16 }}>
-                    <Ionicons name="chevron-back" size={24} color="#433D35" />
-                </Pressable>
-                <Text style={{ fontFamily: FONTS.bold, fontSize: 16, color: '#433D35', opacity: 0.6 }}>No films yet</Text>
-                <Text style={{ fontFamily: FONTS.regular, fontSize: 13, color: '#433D35', opacity: 0.4, marginTop: 8 }}>
-                    Film your day and it'll appear here
-                </Text>
-            </View>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <FilmCanvas
+                    bgColors={[rgba(accent, 0.92), rgba(accent, 0.72), rgba(accent, 0.45)]}
+                    decoItems={decoItems}
+                    cardPositions={[]}
+                    defaultScale={DEF_SC}
+                    overlay={
+                        <>
+                            <View style={styles.emptyOverlay} pointerEvents="none">
+                                <Ionicons name="film-outline" size={44} color="rgba(67,61,53,0.25)" />
+                                <Text style={styles.emptyTitle}>No Films Yet</Text>
+                                <Text style={styles.emptyText}>Film your day and it'll appear here</Text>
+                            </View>
+                            {Header}
+                        </>
+                    }
+                >
+                    {() => null}
+                </FilmCanvas>
+            </GestureHandlerRootView>
         );
     }
 
     return (
-        <GestureHandlerRootView style={styles.root}>
-            <View style={StyleSheet.absoluteFill}>
-                <RNAnimated.View style={[StyleSheet.absoluteFill, { opacity: bgAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
-                    <LinearGradient colors={prevBgColors as [string, string, string]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+
+            {/* Animated bg crossfade */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <RNAnimated.View style={[StyleSheet.absoluteFill, {
+                    opacity: bgAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                }]}>
+                    <LinearGradient colors={prevBgColors} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
                 </RNAnimated.View>
                 <RNAnimated.View style={[StyleSheet.absoluteFill, { opacity: bgAnim }]}>
-                    <LinearGradient colors={bgColors as [string, string, string]} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+                    <LinearGradient colors={bgColors} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
                 </RNAnimated.View>
-                <LinearGradient colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.15)', 'transparent']} locations={[0, 0.4, 0.9]} style={StyleSheet.absoluteFill} />
-                <LinearGradient colors={['transparent', 'rgba(0,0,0,0.12)']} locations={[0.6, 1]} style={StyleSheet.absoluteFill} />
             </View>
 
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <ScreenGrid accent={accent} />
-            </View>
+            {/* Canvas — transparent bg so crossfade shows through */}
+            <FilmCanvas
+                bgColors={['transparent', 'transparent', 'transparent']}
+                decoItems={decoItems}
+                cardPositions={cardPositions}
+                defaultScale={DEF_SC}
+                initialFocusPosition={latestFilmPos}
+                overlay={Header}
+            >
+                {({ visibleIndices }) =>
+                    films.map((film, i) => {
+                        if (!visibleIndices.includes(i)) return null;
+                        const p = cardPositions[i];
+                        const r = bubbleRadii[i] ?? BUBBLE_R_MIN;
+                        return (
+                            <FilmBubble
+                                key={film.id}
+                                film={film}
+                                x={p.x} y={p.y} r={r}
+                                isActive={i === activeIdx}
+                                isVisible={visibleIndices.includes(i)}
+                                onPress={() => {
+                                    setIdx(i);
+                                    updateBg(i);
+                                    startViewTimer(film);
+                                    setShowViewers(false);
+                                    // Open full-screen story view on tap
+                                    setModalIndex(i);
+                                    setModalVisible(true);
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                }}
+                                onLongPress={() => {
+                                    setIdx(i);
+                                    setShowViewers(true);
+                                }}
+                                onLongPressEnd={() => setShowViewers(false)}
+                            />
+                        );
+                    })
+                }
+            </FilmCanvas>
 
-            <View style={[styles.header, { paddingTop: insets.top + 32 }]} pointerEvents="box-none">
-                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
-                    style={[styles.backBtn, { top: insets.top + 14 }]}>
-                    <Ionicons name="chevron-back" size={24} color={'#433D35'} />
-                </Pressable>
-                <View style={styles.headerCenter} pointerEvents="none">
-                    <Text style={[styles.hSub, { color: rgba('#433D35', 0.8), ...styles.textShadowHighlight }]}>Films of my day</Text>
-                    <Text style={[styles.hWeekday, { color: '#433D35', ...styles.textShadowSoft }]} numberOfLines={1}>{weekday}</Text>
-                    <DoodleUnderline color={'#433D35'} width={180} />
-                    <Text style={[styles.hDate, { color: rgba('#433D35', 0.9), ...styles.textShadowHighlight }]} numberOfLines={1}>{date}</Text>
-                </View>
-            </View>
+            {/* Viewer overlay — rendered outside canvas, covers full screen */}
+            <ViewerOverlay
+                viewers={activeFilm?.viewers ?? []}
+                likedByIds={activeFilm?.likedByIds ?? new Set()}
+                visible={showViewers}
+                onDismiss={() => setShowViewers(false)}
+            />
 
-            <GestureDetector gesture={gesture}>
-                <Animated.View style={styles.viewport} collapsable={false}>
-                    <Animated.View style={[styles.pivot, pivotStyle]} collapsable={false}>
-                        <RouteLayer path={offsetPath} positions={positions} accent={accent}
-                            cw={svgW} ch={svgH} originX={minX} originY={minY} />
-                        {films.map((f, i) => (
-                            <MediaNode key={f.id} item={{ ...f, index: i }} pos={positions[i]}
-                                active={i === activeIdx} isPaused={isPaused} accent={accent}
-                                tx={tx} ty={ty} sc={sc} inView={Math.abs(i - activeIdx) <= WINDOW}
-                                onPress={() => { if (i !== activeIdx) snapTo(i); }} />
-                        ))}
-                    </Animated.View>
-                </Animated.View>
-            </GestureDetector>
+            {/* Full-screen story modal — tap on any bubble to open */}
+            <FilmStoryModal
+                films={films.map(f => ({
+                    id: f.id,
+                    creatorId: f.creatorId,
+                    type: f.mediaType as 'image' | 'video',
+                    uri: f.mediaUrl,
+                    isPublic: true,
+                    targetUserId: null,
+                    createdAt: f.timestamp,
+                }))}
+                initialIndex={modalIndex}
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+            />
 
-            <View style={[styles.bottomActions, { bottom: insets.bottom + 20 }]} pointerEvents="box-none">
-                {/* ✅ passes both viewers and likedByIds */}
-                <FilmViewerList
-                    viewers={activeFilm?.viewers || []}
-                    likedByIds={activeFilm?.likedByIds || new Set()}
-                    accent={accent}
-                    visible={showViewers}
-                />
-                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowViewers(!showViewers); }} style={styles.eyesBtn}>
-                    <SafeBlur intensity={30} style={styles.blurCover}>
-                        <Fontisto name="heart-eyes" size={30} color="#000" />
-                    </SafeBlur>
-                </Pressable>
-            </View>
         </GestureHandlerRootView>
     );
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: 'rgba(251,250,246,1)' },
-    header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 200, alignItems: 'center', paddingBottom: 10 },
-    backBtn: { position: 'absolute', left: 16, width: 36, height: 36, justifyContent: 'center', alignItems: 'center', zIndex: 201 },
+    loadingContainer: {
+        flex: 1,
+        backgroundColor: '#FBFAF6',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // ── Bubble ─────────────────────────────────────────────────
+    bubble: {
+        position: 'absolute',
+        overflow: 'hidden',
+        backgroundColor: '#e8e7e4',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
+    },
+    activeDot: {
+        position: 'absolute',
+        top: 6, right: 6,
+        width: 9, height: 9,
+        borderRadius: 5,
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+
+    // ── Header ─────────────────────────────────────────────────
+    header: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0,
+        zIndex: 200,
+        alignItems: 'center',
+        paddingBottom: 10,
+    },
+    backBtn: {
+        position: 'absolute',
+        left: 16,
+        width: 36, height: 36,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 201,
+    },
     headerCenter: { alignItems: 'center', paddingHorizontal: 64 },
-    hSub: { fontFamily: FONTS.bold, fontSize: 15, fontWeight: '600', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 6 },
-    hWeekday: { fontFamily: 'DancingScript-Bold', fontSize: 36, lineHeight: 40 },
-    hDate: { fontFamily: FONTS.bold, fontSize: 12.5, fontWeight: '900', letterSpacing: 0.5, marginTop: 1.5 },
-    viewport: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent', overflow: 'visible', zIndex: 100 },
-    pivot: { position: 'absolute', left: SW / 2, top: SH / 2, width: 0, height: 0, overflow: 'visible' },
-    timeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-    timeText: { fontFamily: FONTS.bold, fontSize: 10, letterSpacing: 0.8, textTransform: 'uppercase', color: '#433D35', opacity: 0.8 },
-    timeLabelContainer: { position: 'absolute', bottom: -22, right: 0, paddingVertical: 3 },
-    card: { width: CARD_W, height: CARD_H, borderRadius: 24, overflow: 'hidden', backgroundColor: '#e8e7e4', shadowOffset: { width: 0, height: 12 }, shadowRadius: 20, elevation: 12 },
-    placeholder: { flex: 1 },
-    videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.1)' },
-    playBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', paddingLeft: 2 },
-    activeDot: { position: 'absolute', top: -4, right: -4, width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#fff' },
-    progressLayer: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 6, padding: 4, zIndex: 10 },
-    track: { height: 2, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 1, overflow: 'hidden' },
-    fill: { height: '100%', borderRadius: 1 },
-    captionWrap: { width: CARD_W + 8, marginLeft: -4, marginTop: 7, paddingHorizontal: 4 },
-    caption: { fontFamily: FONTS.regular, fontSize: 9.5, lineHeight: 13, textAlign: 'center' },
-    bottomActions: { position: 'absolute', right: 20, flexDirection: 'row', alignItems: 'center', zIndex: 300 },
-    eyesBtn: { width: 56, height: 56, borderRadius: 28, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', zIndex: 301, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-    blurCover: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-    textShadowSoft: { textShadowColor: 'rgba(255,255,255,0.85)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 6 },
-    textShadowHighlight: { textShadowColor: 'rgba(255,255,255,0.92)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+    hSub: {
+        fontFamily: FONTS.bold,
+        fontSize: 15,
+        fontWeight: '600',
+        letterSpacing: 4,
+        textTransform: 'uppercase',
+        marginBottom: 6,
+        color: rgba('#433D35', 0.8),
+    },
+    hWeekday: {
+        fontFamily: 'DancingScript-Bold',
+        fontSize: 36,
+        lineHeight: 40,
+        color: '#433D35',
+    },
+    hDate: {
+        fontFamily: FONTS.bold,
+        fontSize: 12.5,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+        marginTop: 1.5,
+        color: rgba('#433D35', 0.9),
+    },
+
+    // ── Empty ──────────────────────────────────────────────────
+    emptyOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+        zIndex: 10,
+    },
+    emptyTitle: {
+        fontFamily: FONTS.bold,
+        fontSize: 17,
+        color: COLORS.primary,
+        opacity: 0.7,
+        marginTop: 8,
+    },
+    emptyText: {
+        fontFamily: FONTS.regular,
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        lineHeight: 20,
+        paddingHorizontal: 40,
+    },
+
+    // ── Viewer overlay ─────────────────────────────────────────
+    viewerOverlay: {
+        zIndex: 400,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    avatarItem: {
+        position: 'absolute',
+        alignItems: 'center',
+    },
+    // iOS-style avatar: no border, just shadow
+    avatarRing: {
+        width: AVATAR_SIZE,
+        height: AVATAR_SIZE,
+        borderRadius: AVATAR_SIZE / 2,
+        overflow: 'hidden',
+        backgroundColor: '#e0ddd8',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.22,
+        shadowRadius: 10,
+        elevation: 8,
+    },
+    avatarImg: {
+        width: '100%',
+        height: '100%',
+    },
+    heartBadge: {
+        position: 'absolute',
+        bottom: 16,
+        right: -5,
+        width: 20, height: 20,
+        borderRadius: 10,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.12,
+        shadowRadius: 3,
+        elevation: 3,
+    },
+    avatarName: {
+        fontFamily: FONTS.bold,
+        fontSize: 11,
+        color: '#fff',
+        textAlign: 'center',
+        marginTop: 6,
+        letterSpacing: 0.2,
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 5,
+    },
+    // "No viewers" — centered pill placed in screen center,
+    // safely BELOW the ring avatars and away from the film bubble
+    noViewersCenter: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        top: SH * 0.55, // below likely film position
+    },
+    noViewersPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.18)',
+    },
+    noViewersText: {
+        fontFamily: FONTS.bold,
+        fontSize: 13.5,
+        color: 'rgba(255,255,255,0.75)',
+        letterSpacing: 0.3,
+    },
+    // Timestamp label in canvas space, rendered below each film bubble
+    timestampHolder: {
+        position: 'absolute',
+        width: 80,
+        alignItems: 'center',
+    },
+    timestampText: {
+        fontFamily: FONTS.bold,
+        fontSize: 10,
+        color: 'rgba(67,61,53,0.55)',
+        letterSpacing: 0.4,
+        textShadowColor: 'rgba(255,255,255,0.6)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
+    },
 });

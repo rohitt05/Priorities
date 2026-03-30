@@ -21,15 +21,12 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { Film as UserFilm } from '@/types/domain';
 import { FONTS, COLORS } from '@/theme/theme';
 import FilmMedia from './FilmMedia';
-import { formatRelativeTime } from '../utils/dateUtils';
 import * as Haptics from 'expo-haptics';
 import { useFilmLike } from '@/hooks/useFilmLike';
-import { supabase } from '@/lib/supabase';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DEFAULT_STORY_DURATION = 15000;
 const SNAP_INTERVAL = SCREEN_WIDTH;
-const VIEW_RECORD_THRESHOLD_MS = 3000; // record a view after 3 seconds of watching
 
 interface FilmStoryModalProps {
     films: UserFilm[];
@@ -55,8 +52,6 @@ const StoryItem = ({
     nextStory,
 }: any) => {
     const isActive = index === currentIndex;
-
-    // ✅ Real Supabase-backed like state
     const { isLiked, toggleLike } = useFilmLike(item.id, item.creatorId);
 
     const handleLikePress = () => {
@@ -129,37 +124,7 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     const [isMediaReady, setIsMediaReady] = useState(false);
     const flatListRef = useRef<FlatList>(null);
     const translateY = useSharedValue(0);
-    const modalOpacity = useSharedValue(0); // ✅ moved above useEffect that uses it
-    const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const recordedFilmIds = useRef<Set<string>>(new Set());
-
-    // ── Record a view after threshold ────────────────────────
-    const recordView = async (filmId: string, creatorId: string) => {
-        if (recordedFilmIds.current.has(filmId)) return;
-        try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const viewerId = sessionData?.session?.user?.id;
-            if (!viewerId || viewerId === creatorId) return; // don't record own views
-            await supabase.from('film_views').insert({ film_id: filmId, viewer_id: viewerId });
-            recordedFilmIds.current.add(filmId);
-        } catch (e) {
-            // silent — view recording is non-critical
-        }
-    };
-
-    const startViewTimer = (film: UserFilm) => {
-        if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
-        viewTimerRef.current = setTimeout(() => {
-            recordView(film.id, film.creatorId);
-        }, VIEW_RECORD_THRESHOLD_MS);
-    };
-
-    const clearViewTimer = () => {
-        if (viewTimerRef.current) {
-            clearTimeout(viewTimerRef.current);
-            viewTimerRef.current = null;
-        }
-    };
+    const modalOpacity = useSharedValue(0);
 
     useEffect(() => {
         if (visible) {
@@ -184,7 +149,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             setIsMediaReady(false);
             translateY.value = 0;
             progress.value = 0;
-            clearViewTimer();
         }
     }, [visible, initialIndex, onClose]);
 
@@ -195,12 +159,8 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     useEffect(() => {
         if (visible && isMediaReady && !isPaused) {
             startStory(duration * (1 - progress.value) || DEFAULT_STORY_DURATION);
-            // ✅ Start view recording timer when film becomes active and playing
-            const film = films[currentIndex];
-            if (film) startViewTimer(film);
         } else {
             cancelAnimation(progress);
-            if (isPaused) clearViewTimer(); // pause = stop the timer
         }
     }, [isMediaReady, currentIndex, visible, isPaused]);
 
