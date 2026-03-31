@@ -49,10 +49,15 @@ function ProfileScreenContent() {
     const router = useRouter();
     const { triggerRefresh } = usePrioritiesRefresh();
 
-    // If no userId param = viewing own profile
-    // If userId param exists = viewing someone else's profile (it's their @handle)
+    // If no userId param = viewing own profile directly
+    // If userId param exists = viewing via @handle (could still be own profile)
     const isOwner = !userId;
     const effectiveUserId = userId || authId || '';
+
+    // true once currentUser loads and we confirm it's the logged-in user's own profile.
+    // Used for UI decisions: sticky bar icon, action modal, pull-to-edit.
+    // Separate from isOwner so the DB fetch query (which uses unique_user_id) stays correct.
+    const [isActuallyOwner, setIsActuallyOwner] = useState(isOwner);
 
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
     const [isEditing, setIsEditing] = useState(false);
@@ -72,7 +77,7 @@ function ProfileScreenContent() {
         headerAnimatedStyle,
         imageScaleStyle,
         partnerContainerStyle,
-    } = useProfilePull(isOwner ? triggerEditMode : () => { });
+    } = useProfilePull(isActuallyOwner ? triggerEditMode : () => { });
 
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => {
@@ -146,6 +151,11 @@ function ProfileScreenContent() {
                         };
                         setCurrentUser(userObj);
 
+                        // Resolve isActuallyOwner once we have the real UUID
+                        if (isMounted) {
+                            setIsActuallyOwner(dbUser.id === authId);
+                        }
+
                         // Always read partner from DB — works for both owner and viewer
                         const partnerId = dbUser.partner_id;
                         if (partnerId) {
@@ -169,7 +179,6 @@ function ProfileScreenContent() {
                                 });
                             }
                         } else {
-                            // Clear partner if DB has none
                             if (isMounted) setPartnerUser(null);
                         }
                     }
@@ -247,9 +256,13 @@ function ProfileScreenContent() {
                 pointerEvents="none"
             />
 
+            {/* isActuallyOwner=false AND isOwner=false → dots icon
+                isActuallyOwner=true  AND isOwner=false → no icon (navigated to own via @handle)
+                isActuallyOwner=true  AND isOwner=true  → settings icon */}
             <ProfileStickyBar
                 user={currentUser}
                 isOwner={isOwner}
+                isActuallyOwner={isActuallyOwner}
                 scrollY={scrollY}
                 animatedBarColor={animatedCapsuleColor}
                 onActionPress={() => setIsActionModalVisible(true)}
@@ -285,11 +298,11 @@ function ProfileScreenContent() {
                         pullY={pullY}
                         scrollY={scrollY}
                         capsuleFadeStyle={capsuleFadeStyle}
-                        onRemove={isOwner ? handleRemovePartner : undefined}
+                        onRemove={isActuallyOwner ? handleRemovePartner : undefined}
                     />
                 )}
 
-                {isOwner && !partnerUser && (
+                {isActuallyOwner && !partnerUser && (
                     <Reanimated.View style={[styles.capsuleRow, capsuleFadeStyle]}>
                         <PartnerSection
                             partnerUser={null}
@@ -328,7 +341,7 @@ function ProfileScreenContent() {
 
             </Reanimated.ScrollView>
 
-            {isEditing && (
+            {isActuallyOwner && isEditing && (
                 <EditProfileScreen
                     user={currentUser}
                     onBack={handleCloseEdit}
@@ -338,50 +351,54 @@ function ProfileScreenContent() {
                 />
             )}
 
-            <AddPartnerModal
-                visible={isAddPartnerVisible}
-                onClose={() => setIsAddPartnerVisible(false)}
-                currentUserUniqueUserId={currentUser?.uniqueUserId || ''}
-                onSelectPartner={async (selectedUserId) => {
-                    // Instantly update UI without waiting for next focus
-                    const { data } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .eq('unique_user_id', selectedUserId)
-                        .single();
-                    if (data) {
-                        setPartnerUser({
-                            id: data.id,
-                            name: data.name,
-                            uniqueUserId: data.unique_user_id,
-                            profilePicture: data.profile_picture || '',
-                            dominantColor: data.dominant_color || '#44562F',
-                            gender: data.gender || 'female',
-                            birthday: data.birthday || undefined,
-                            partnerId: data.partner_id || undefined,
-                            relationship: data.relationship || undefined,
-                            priorities: [],
-                        });
-                    }
-                }}
-            />
+            {isActuallyOwner && (
+                <AddPartnerModal
+                    visible={isAddPartnerVisible}
+                    onClose={() => setIsAddPartnerVisible(false)}
+                    currentUserUniqueUserId={currentUser?.uniqueUserId || ''}
+                    onSelectPartner={async (selectedUserId) => {
+                        const { data } = await supabase
+                            .from('profiles')
+                            .select('*')
+                            .eq('unique_user_id', selectedUserId)
+                            .single();
+                        if (data) {
+                            setPartnerUser({
+                                id: data.id,
+                                name: data.name,
+                                uniqueUserId: data.unique_user_id,
+                                profilePicture: data.profile_picture || '',
+                                dominantColor: data.dominant_color || '#44562F',
+                                gender: data.gender || 'female',
+                                birthday: data.birthday || undefined,
+                                partnerId: data.partner_id || undefined,
+                                relationship: data.relationship || undefined,
+                                priorities: [],
+                            });
+                        }
+                    }}
+                />
+            )}
 
-            <ProfileActionModal
-                visible={isActionModalVisible}
-                onClose={() => setIsActionModalVisible(false)}
-                userId={currentUser.uniqueUserId}
-                userName={currentUser.name}
-                authId={authId}
-                targetUUID={currentUser.id}
-                onRemoved={() => {
-                    triggerRefresh();
-                    router.back();
-                }}
-                onBlocked={() => {
-                    triggerRefresh();
-                    router.back();
-                }}
-            />
+            {/* Only render for genuinely other users — never for own profile */}
+            {!isActuallyOwner && (
+                <ProfileActionModal
+                    visible={isActionModalVisible}
+                    onClose={() => setIsActionModalVisible(false)}
+                    userId={currentUser.uniqueUserId}
+                    userName={currentUser.name}
+                    authId={authId}
+                    targetUUID={currentUser.id}
+                    onRemoved={() => {
+                        triggerRefresh();
+                        router.back();
+                    }}
+                    onBlocked={() => {
+                        triggerRefresh();
+                        router.back();
+                    }}
+                />
+            )}
 
             {showFlashBanner && (
                 <View style={styles.flashBannerContainer} pointerEvents="none">

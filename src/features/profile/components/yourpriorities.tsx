@@ -1,7 +1,8 @@
 // src/features/profile/components/yourpriorities.tsx
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -12,6 +13,19 @@ import { getMyPriorities } from '@/services/priorityService';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 
+type Priority = {
+    id: string;
+    uniqueUserId: string;
+    name: string;
+    profilePicture: string;
+    dominantColor: string;
+    relationship: string | null;
+    partnerId: string | null;
+    rank: number;
+    pinned: boolean;
+    priorityRowId: string;
+};
+
 type YourPrioritiesProps = {
     user: User;
     onUnauthorizedAccess?: () => void;
@@ -19,48 +33,42 @@ type YourPrioritiesProps = {
 
 export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthorizedAccess }) => {
     const router = useRouter();
-    const authId = useAuthUser(); // null while loading, UUID once resolved
+    const authId = useAuthUser();
     const { refreshKey } = usePrioritiesRefresh();
     const [activeLongPressId, setActiveLongPressId] = useState<string | null>(null);
 
-    // Priorities of the profile being viewed (shown as the avatar list)
-    const [prioritiesList, setPrioritiesList] = useState<any[]>([]);
+    const [prioritiesList, setPrioritiesList] = useState<Priority[]>([]);
 
-    // The logged-in user's own priority UUIDs (used for access gate)
-    // null = still loading, [] = loaded (empty or owner case)
     const [myPriorityIds, setMyPriorityIds] = useState<string[] | null>(null);
     const [accessLoaded, setAccessLoaded] = useState(false);
 
-    // true only once authId has resolved AND matches this profile's UUID
     const isOwner = !!authId && authId === user.id;
 
     // ── Fetch priorities of the profile being viewed ───────────────────────
     useEffect(() => {
         if (!user.id) return;
-        setPrioritiesList([]); // clear stale list on profile switch
+        setPrioritiesList([]);
         getMyPriorities(user.id)
-            .then((list) => setPrioritiesList(list))
+            .then((list) => setPrioritiesList(list as Priority[]))
             .catch(() => setPrioritiesList([]));
     }, [user.id, refreshKey]);
 
     // ── Fetch logged-in user's own priority UUIDs for access gate ──────────
     useEffect(() => {
-        if (!authId) return; // session still loading — wait
+        if (!authId) return;
 
         if (isOwner) {
-            // Own profile — always allowed, skip fetch
             setMyPriorityIds([]);
             setAccessLoaded(true);
             return;
         }
 
-        // Reset before fetching so stale state from previous profile doesn't leak
         setMyPriorityIds(null);
         setAccessLoaded(false);
 
         getMyPriorities(authId)
             .then((list) => {
-                setMyPriorityIds(list.map((p) => p.id));
+                setMyPriorityIds((list as Priority[]).map((p) => p.id));
                 setAccessLoaded(true);
             })
             .catch(() => {
@@ -73,6 +81,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
         ? 'My Priorities'
         : `${user.name ? user.name.split(' ')[0] : 'Their'}'s Priorities`;
 
+    // Hide the entire section when there are no priorities
     if (prioritiesList.length === 0) return null;
 
     return (
@@ -86,7 +95,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                     contentContainerStyle={styles.scrollContent}
                     style={styles.scrollView}
                 >
-                    {prioritiesList.slice(0, 10).map((u, index: number) => {
+                    {prioritiesList.slice(0, 9).map((u, index: number) => {
                         const isBeingPressed = activeLongPressId === u.uniqueUserId;
 
                         return (
@@ -115,13 +124,12 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         pressed && { transform: [{ scale: 0.94 }] }
                                     ]}
                                     onPress={() => {
-                                        // Block tap until access data has fully loaded
                                         if (!accessLoaded) return;
 
                                         const canNavigate =
-                                            isOwner ||                               // own profile → always allowed
-                                            u.id === authId ||                       // tapping yourself in someone's list
-                                            (myPriorityIds ?? []).includes(u.id);    // they're in my priorities
+                                            isOwner ||
+                                            u.id === authId ||
+                                            (myPriorityIds ?? []).includes(u.id);
 
                                         if (canNavigate) {
                                             router.push({
@@ -144,6 +152,8 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                             <Image
                                                 source={{ uri: u.profilePicture }}
                                                 style={styles.avatarImage}
+                                                contentFit="cover"
+                                                cachePolicy="memory-disk"
                                             />
                                         ) : (
                                             <View style={[styles.avatarImage, styles.placeholder]}>

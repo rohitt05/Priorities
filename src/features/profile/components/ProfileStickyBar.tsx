@@ -16,14 +16,16 @@ import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 interface ProfileStickyBarProps {
     user: User;
     isOwner?: boolean;
+    isActuallyOwner?: boolean;
     scrollY: SharedValue<number>;
-    animatedBarColor: any; // RNAnimated.AnimatedInterpolation
+    animatedBarColor: any;
     onActionPress?: () => void;
 }
 
 export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
     user,
     isOwner = false,
+    isActuallyOwner = false,
     scrollY,
     animatedBarColor,
     onActionPress,
@@ -31,9 +33,8 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    const headerHeight = insets.top + 60; // Safe area + icon row height
+    const headerHeight = insets.top + 60;
 
-    // Fade the sticky bar background in right before the original header leaves the screen
     const fadeEnd = HEADER_HEIGHT - headerHeight;
     const fadeStart = fadeEnd - 40;
 
@@ -47,23 +48,56 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
         return { opacity };
     });
 
+    // Determine what to show on the right side:
+    // - isOwner (direct /profile route)      → settings icon
+    // - isActuallyOwner but !isOwner          → nothing (own profile via @handle navigation)
+    // - !isActuallyOwner                      → dots icon
+    const renderRightIcon = () => {
+        if (isOwner) {
+            return (
+                <Link href="/settings" asChild>
+                    <TouchableOpacity
+                        style={styles.iconButton}
+                        hitSlop={12}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open settings"
+                    >
+                        <Ionicons name="settings-outline" size={24} color="white" />
+                    </TouchableOpacity>
+                </Link>
+            );
+        }
+
+        if (isActuallyOwner) {
+            // Own profile reached via @handle — show nothing, just a spacer
+            return <View style={styles.iconButton} />;
+        }
+
+        // Someone else's profile — show dots
+        return (
+            <TouchableOpacity
+                style={styles.iconButton}
+                hitSlop={12}
+                onPress={onActionPress}
+                accessible={true}
+                accessibilityRole="button"
+                accessibilityLabel="Profile actions"
+            >
+                <Entypo name="dots-two-horizontal" size={24} color="white" />
+            </TouchableOpacity>
+        );
+    };
+
     return (
         <View style={[styles.container, { height: headerHeight, paddingTop: insets.top }]} pointerEvents="box-none">
-            {/* 1. Animated solid background layer that fades in on scroll */}
             <Reanimated.View style={[StyleSheet.absoluteFill, barBgStyle]} pointerEvents="none">
-                {/* Use the profile picture itself as the background. We make sure it fills the area.
-                    Using an absolute absolute filling image creates a clean, matching aesthetic.
-                */}
                 <Reanimated.Image
                     source={{ uri: user.profilePicture }}
                     style={StyleSheet.absoluteFill}
                     resizeMode="cover"
                 />
-
-                {/* Darker overlay on top of the image to ensure the icons remain completely readable */}
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
-
-                {/* User preference: Little light linear gradient effect at the bottom */}
                 <LinearGradient
                     colors={['rgba(0,0,0,0.4)', 'transparent']}
                     style={styles.bottomGradient}
@@ -71,9 +105,7 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                 />
             </Reanimated.View>
 
-            {/* 2. Header Row containing Icons */}
             <View style={styles.headerRow} pointerEvents="box-none">
-                {/* Left — back */}
                 <TouchableOpacity
                     style={styles.iconButton}
                     hitSlop={12}
@@ -85,7 +117,6 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                     <Ionicons name="chevron-back" size={24} color="white" />
                 </TouchableOpacity>
 
-                {/* Center name */}
                 <View style={styles.nameCenterSlot} pointerEvents="none">
                     <Text
                         style={styles.name}
@@ -98,31 +129,7 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                     </Text>
                 </View>
 
-                {/* Right — settings (owner) or spacer */}
-                {isOwner ? (
-                    <Link href="/settings" asChild>
-                        <TouchableOpacity
-                            style={styles.iconButton}
-                            hitSlop={12}
-                            accessible={true}
-                            accessibilityRole="button"
-                            accessibilityLabel="Open settings"
-                        >
-                            <Ionicons name="settings-outline" size={24} color="white" />
-                        </TouchableOpacity>
-                    </Link>
-                ) : (
-                    <TouchableOpacity
-                        style={styles.iconButton}
-                        hitSlop={12}
-                        onPress={onActionPress}
-                        accessible={true}
-                        accessibilityRole="button"
-                        accessibilityLabel="Profile actions"
-                    >
-                        <Entypo name="dots-two-horizontal" size={24} color="white" />
-                    </TouchableOpacity>
-                )}
+                {renderRightIcon()}
             </View>
         </View>
     );
@@ -134,11 +141,11 @@ const styles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-        zIndex: 100, // Stay above everything else
+        zIndex: 100,
     },
     bottomGradient: {
         position: 'absolute',
-        bottom: -10, // Hangs slightly below the solid bar
+        bottom: -10,
         left: 0,
         right: 0,
         height: 10,
@@ -148,7 +155,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        marginTop: 10, // Padding below safe area
+        marginTop: 10,
     },
     iconButton: {
         padding: 8,
