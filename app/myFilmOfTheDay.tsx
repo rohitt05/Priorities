@@ -1,10 +1,13 @@
 /**
- * myFilmOfTheDay.tsx — Free Canvas Film Map (circle bubbles, same as UserFilms)
+ * myFilmOfTheDay.tsx — Free Canvas Film Map (circle bubbles)
+ * - Only shows films posted within the last 24 hours
+ * - Long press to view viewers (owner only)
+ * - Countdown label below each bubble
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     StyleSheet, View, Text, Pressable,
-    Dimensions, Animated as RNAnimated, Platform,
+    Dimensions, Animated as RNAnimated,
     ActivityIndicator, Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -19,12 +22,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import FilmMedia from '../src/features/film-my-day/components/FilmMedia';
 import FilmStoryModal from '../src/features/film-my-day/components/FilmStoryModal';
-import { Profile, Film } from '@/types/domain';
+import { Profile } from '@/types/domain';
 import { getColors } from 'react-native-image-colors';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import Animated, {
-    useSharedValue, useAnimatedStyle, withSpring, withTiming,
-    interpolate, runOnJS,
+    useSharedValue, useAnimatedStyle, withTiming,
+    runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
@@ -33,22 +36,23 @@ import {
     buildDecoCircleLayout,
     rgba,
 } from '@/features/film-my-day/components/canvas';
+import { useFilmCountdown } from '@/features/film-my-day/components/filmCountdown';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 const BUBBLE_R_MIN = 35;
 const BUBBLE_R_MAX = 100;
-// Slightly zoomed out — latest film visible but neighbouring bubbles also in frame
 const DEF_SC = (SW * 0.48) / (BUBBLE_R_MAX * 2);
 const VIEW_THRESHOLD_MS = 2000;
+const FILM_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
-// ── Seeded radii (must match buildCardLayout seed 77) ─────────
+// Filter helper — only keep films within 24 hrs
+function isWithin24hrs(createdAtIso: string): boolean {
+    return Date.now() - new Date(createdAtIso).getTime() < FILM_LIFETIME_MS;
+}
+
 function buildBubbleRadii(count: number): number[] {
-    let s = 77;
-    const rand = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
-    // skip the positions consumed inside buildCardLayout
-    // radii are derived independently from count
-    let rs = 42; // separate seed for radii
+    let rs = 42;
     const randR = () => { rs = (rs * 16807) % 2147483647; return (rs - 1) / 2147483646; };
     return Array.from({ length: count }, () =>
         BUBBLE_R_MIN + randR() * (BUBBLE_R_MAX - BUBBLE_R_MIN)
@@ -61,18 +65,6 @@ function fmtDate(iso: string) {
         weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
         date: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
     };
-}
-
-// Relative time label rendered below each bubble
-function relativeTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const min = Math.floor(diff / 60000);
-    if (min < 1) return 'just now';
-    if (min < 60) return `${min}m ago`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h ago`;
-    const days = Math.floor(hr / 24);
-    return days === 1 ? 'yesterday' : `${days}d ago`;
 }
 
 interface FilmItem {
@@ -100,7 +92,7 @@ const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; wid
 ));
 DoodleUnderline.displayName = 'DoodleUnderline';
 
-// ── Viewer overlay — scattered avatars on visible screen ───────
+// ── Viewer overlay ─────────────────────────────────────────────
 interface ViewerOverlayProps {
     viewers: Profile[];
     likedByIds: Set<string>;
@@ -108,23 +100,16 @@ interface ViewerOverlayProps {
     onDismiss: () => void;
 }
 
-// Ring layout around screen center — avatars are AROUND the film, never on it.
-// Min radius (130px) > largest possible bubble screen radius at DEF_SC (~93px).
 function buildAvatarRingPositions(count: number): { x: number; y: number }[] {
     if (count === 0) return [];
     const cx = SW / 2;
     const cy = SH / 2;
-    const INNER_R = 140; // clear of the film bubble
-    const OUTER_R = 210; // max spread
+    const INNER_R = 140;
+    const OUTER_R = 210;
     return Array.from({ length: count }, (_, i) => {
-        // Evenly spaced angle, start from top (−π/2)
         const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-        // Alternate inner/outer radii for a natural scattered-ring feel
         const radius = i % 2 === 0 ? INNER_R : OUTER_R;
-        return {
-            x: cx + Math.cos(angle) * radius,
-            y: cy + Math.sin(angle) * radius,
-        };
+        return { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
     });
 }
 
@@ -138,7 +123,6 @@ const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            // No spring — clean, instant iOS-style pop-in
             scale.value = withTiming(1, { duration: 160 });
             opacity.value = withTiming(1, { duration: 160 });
         }, delay);
@@ -150,17 +134,12 @@ const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
         opacity: opacity.value,
     }));
 
-    // Show relationship label if set, else "Friend"
     const label = viewer.relationship || 'Friend';
 
     return (
         <Animated.View style={[styles.avatarItem, { left: x - AVATAR_SIZE / 2, top: y - AVATAR_SIZE / 2 }, style]}>
-            {/* iOS-style: no border, real shadow */}
             <View style={styles.avatarRing}>
-                <Image
-                    source={{ uri: viewer.profilePicture }}
-                    style={styles.avatarImg}
-                />
+                <Image source={{ uri: viewer.profilePicture }} style={styles.avatarImg} />
             </View>
             {hasLiked && (
                 <View style={styles.heartBadge}>
@@ -175,11 +154,9 @@ ViewerAvatar.displayName = 'ViewerAvatar';
 
 const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: ViewerOverlayProps) => {
     const bgOpacity = useSharedValue(0);
-    // Ring positions: avatars orbit around screen center (where the long-pressed bubble is)
     const positions = useMemo(() => buildAvatarRingPositions(viewers.length), [viewers.length]);
 
     useEffect(() => {
-        // Fade in on hold, snap out on release
         bgOpacity.value = withTiming(visible ? 1 : 0, { duration: visible ? 260 : 100 });
     }, [visible]);
 
@@ -193,9 +170,7 @@ const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: V
     return (
         <Animated.View style={[StyleSheet.absoluteFill, styles.viewerOverlay, bgStyle]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
-
             {viewers.length === 0 ? (
-                // Centered pill — clearly on the dark overlay, never on the film circle
                 <View style={styles.noViewersCenter} pointerEvents="none">
                     <View style={styles.noViewersPill}>
                         <Ionicons name="eye-off-outline" size={18} color="rgba(255,255,255,0.7)" />
@@ -219,25 +194,23 @@ const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: V
 });
 ViewerOverlay.displayName = 'ViewerOverlay';
 
-// ── FilmBubble ─────────────────────────────────────
-const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress, onLongPress, onLongPressEnd }: {
+// ── FilmBubble ─────────────────────────────────────────────────
+const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, onLongPressEnd }: {
     film: FilmItem; x: number; y: number; r: number;
-    isActive: boolean; isVisible: boolean;
+    isActive: boolean;
     onPress: () => void; onLongPress: () => void; onLongPressEnd: () => void;
 }) => {
     const size = r * 2;
     const isVideo = film.mediaType === 'video';
-    const timeLabel = relativeTime(film.timestamp);
+    const countdownLabel = useFilmCountdown(film.timestamp);
 
     const longPress = Gesture.LongPress()
         .minDuration(400)
-        // Allow 50px of finger wiggle — prevents canvas pan from killing the hold
         .maxDistance(50)
         .onStart(() => {
             runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Heavy);
             runOnJS(onLongPress)();
         })
-        // onFinalize fires in ALL terminal states (lift, cancel, system interrupt)
         .onFinalize(() => { runOnJS(onLongPressEnd)(); });
 
     const tap = Gesture.Tap()
@@ -277,12 +250,11 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress, on
                     )}
                 </Animated.View>
             </GestureDetector>
-            {/* Timestamp label in canvas space, below the bubble */}
             <View
-                style={[styles.timestampHolder, { left: x - 40, top: y + r + 7 }]}
+                style={[styles.timestampHolder, { left: x - 44, top: y + r + 7 }]}
                 pointerEvents="none"
             >
-                <Text style={styles.timestampText}>{timeLabel}</Text>
+                <Text style={styles.timestampText}>{countdownLabel}</Text>
             </View>
         </>
     );
@@ -315,7 +287,10 @@ export default function MyFilmOfTheDay() {
         const uid = currentUserId.current;
         if (!uid || uid === creatorId) return;
         try {
-            await supabase.from('film_views').insert({ film_id: filmId, viewer_id: uid });
+            await supabase.from('film_views').upsert(
+                { film_id: filmId, viewer_id: uid },
+                { onConflict: 'film_id,viewer_id', ignoreDuplicates: true }
+            );
             recordedIds.current.add(filmId);
         } catch { }
     };
@@ -332,15 +307,22 @@ export default function MyFilmOfTheDay() {
             currentUserId.current = uid;
 
             const { data: fd, error } = await supabase
-                .from('films').select('*')
-                .eq('creator_id', uid).order('created_at', { ascending: true });
+                .from('films')
+                .select('*')
+                .eq('creator_id', uid)
+                // Only fetch films from the last 24 hrs at DB level too
+                .gte('created_at', new Date(Date.now() - FILM_LIFETIME_MS).toISOString())
+                .order('created_at', { ascending: true });
             if (error || !fd?.length) { setIsLoading(false); return; }
 
-            const ids = fd.map(f => f.id);
+            // Double-filter on client side (clock drift safety)
+            const recent = fd.filter(f => isWithin24hrs(f.created_at));
+            if (!recent.length) { setIsLoading(false); return; }
+
+            const ids = recent.map(f => f.id);
 
             const { data: vd } = await supabase
                 .from('film_views')
-                // Also fetch relationship so we can show e.g. "GF", "Bro", fallback "Friend"
                 .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color, relationship)')
                 .in('film_id', ids);
 
@@ -365,7 +347,7 @@ export default function MyFilmOfTheDay() {
                 likedByFilm[l.film_id].add(l.user_id);
             });
 
-            setFilms(fd.map(f => ({
+            setFilms(recent.map(f => ({
                 id: f.id, mediaUrl: f.uri, mediaType: f.type,
                 timestamp: f.created_at, creatorId: f.creator_id,
                 viewers: viewersByFilm[f.id] || [],
@@ -382,7 +364,7 @@ export default function MyFilmOfTheDay() {
         if (films[0]) startViewTimer(films[0]);
     }, [films]);
 
-    // ── Dynamic background ─────────────────────────────────────
+    // ── Dynamic background crossfade ───────────────────────────
     const bgAnim = useRef(new RNAnimated.Value(0)).current;
     const colorCache = useRef<Record<string, string[]>>({});
     const [bgColors, setBgColors] = useState<[string, string, string]>([
@@ -433,7 +415,6 @@ export default function MyFilmOfTheDay() {
         if (idx - 1 >= 0) extractColor(idx - 1);
     }, [bgColors, bgAnim, films, extractColor]);
 
-    // ── Stable layouts ─────────────────────────────────────────
     const decoItems = useMemo(() => buildDecoCircleLayout(40, 15, 40, 99), []);
     const cardPositions = useMemo(() =>
         buildCardLayout(films.length, BUBBLE_R_MAX * 2, BUBBLE_R_MAX * 2, 42),
@@ -441,7 +422,6 @@ export default function MyFilmOfTheDay() {
     );
     const bubbleRadii = useMemo(() => buildBubbleRadii(films.length), [films.length]);
 
-    // Latest film (last in ascending order) — center canvas on open
     const latestFilmPos = cardPositions.length > 0
         ? cardPositions[cardPositions.length - 1]
         : undefined;
@@ -452,7 +432,6 @@ export default function MyFilmOfTheDay() {
         [activeFilm]
     );
 
-    // ── Header ─────────────────────────────────────────────────
     const Header = useMemo(() => (
         <View style={[styles.header, { paddingTop: insets.top + 32 }]} pointerEvents="box-none">
             <Pressable
@@ -478,7 +457,7 @@ export default function MyFilmOfTheDay() {
         );
     }
 
-    // ── Empty state ────────────────────────────────────────────
+    // ── Empty state — no films posted today ────────────────────
     if (films.length === 0) {
         return (
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -490,9 +469,11 @@ export default function MyFilmOfTheDay() {
                     overlay={
                         <>
                             <View style={styles.emptyOverlay} pointerEvents="none">
-                                <Ionicons name="film-outline" size={44} color="rgba(67,61,53,0.25)" />
-                                <Text style={styles.emptyTitle}>No Films Yet</Text>
-                                <Text style={styles.emptyText}>Film your day and it'll appear here</Text>
+                                <Ionicons name="film-outline" size={48} color="rgba(67,61,53,0.22)" />
+                                <Text style={styles.emptyTitle}>No films today</Text>
+                                <Text style={styles.emptyText}>
+                                    You haven't posted any films today.{'\n'}Go on, post some! 🎞️
+                                </Text>
                             </View>
                             {Header}
                         </>
@@ -506,8 +487,6 @@ export default function MyFilmOfTheDay() {
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-
-            {/* Animated bg crossfade */}
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <RNAnimated.View style={[StyleSheet.absoluteFill, {
                     opacity: bgAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
@@ -519,7 +498,6 @@ export default function MyFilmOfTheDay() {
                 </RNAnimated.View>
             </View>
 
-            {/* Canvas — transparent bg so crossfade shows through */}
             <FilmCanvas
                 bgColors={['transparent', 'transparent', 'transparent']}
                 decoItems={decoItems}
@@ -539,13 +517,11 @@ export default function MyFilmOfTheDay() {
                                 film={film}
                                 x={p.x} y={p.y} r={r}
                                 isActive={i === activeIdx}
-                                isVisible={visibleIndices.includes(i)}
                                 onPress={() => {
                                     setIdx(i);
                                     updateBg(i);
                                     startViewTimer(film);
                                     setShowViewers(false);
-                                    // Open full-screen story view on tap
                                     setModalIndex(i);
                                     setModalVisible(true);
                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -561,7 +537,6 @@ export default function MyFilmOfTheDay() {
                 }
             </FilmCanvas>
 
-            {/* Viewer overlay — rendered outside canvas, covers full screen */}
             <ViewerOverlay
                 viewers={activeFilm?.viewers ?? []}
                 likedByIds={activeFilm?.likedByIds ?? new Set()}
@@ -569,7 +544,6 @@ export default function MyFilmOfTheDay() {
                 onDismiss={() => setShowViewers(false)}
             />
 
-            {/* Full-screen story modal — tap on any bubble to open */}
             <FilmStoryModal
                 films={films.map(f => ({
                     id: f.id,
@@ -584,7 +558,6 @@ export default function MyFilmOfTheDay() {
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
             />
-
         </GestureHandlerRootView>
     );
 }
@@ -596,8 +569,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-
-    // ── Bubble ─────────────────────────────────────────────────
     bubble: {
         position: 'absolute',
         overflow: 'hidden',
@@ -614,8 +585,6 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#fff',
     },
-
-    // ── Header ─────────────────────────────────────────────────
     header: {
         position: 'absolute',
         top: 0, left: 0, right: 0,
@@ -655,32 +624,28 @@ const styles = StyleSheet.create({
         marginTop: 1.5,
         color: rgba('#433D35', 0.9),
     },
-
-    // ── Empty ──────────────────────────────────────────────────
     emptyOverlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
         zIndex: 10,
     },
     emptyTitle: {
-        fontFamily: FONTS.bold,
-        fontSize: 17,
-        color: COLORS.primary,
-        opacity: 0.7,
-        marginTop: 8,
+        fontFamily: 'DancingScript-Bold',
+        fontSize: 30,
+        color: '#433D35',
+        opacity: 0.75,
+        marginTop: 10,
     },
     emptyText: {
         fontFamily: FONTS.regular,
-        fontSize: 13,
-        color: COLORS.textSecondary,
+        fontSize: 14,
+        color: rgba('#433D35', 0.6),
         textAlign: 'center',
-        lineHeight: 20,
-        paddingHorizontal: 40,
+        lineHeight: 22,
+        paddingHorizontal: 48,
     },
-
-    // ── Viewer overlay ─────────────────────────────────────────
     viewerOverlay: {
         zIndex: 400,
         backgroundColor: 'rgba(0,0,0,0.45)',
@@ -689,7 +654,6 @@ const styles = StyleSheet.create({
         position: 'absolute',
         alignItems: 'center',
     },
-    // iOS-style avatar: no border, just shadow
     avatarRing: {
         width: AVATAR_SIZE,
         height: AVATAR_SIZE,
@@ -702,14 +666,10 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
         elevation: 8,
     },
-    avatarImg: {
-        width: '100%',
-        height: '100%',
-    },
+    avatarImg: { width: '100%', height: '100%' },
     heartBadge: {
         position: 'absolute',
-        bottom: 16,
-        right: -5,
+        bottom: 16, right: -5,
         width: 20, height: 20,
         borderRadius: 10,
         backgroundColor: '#fff',
@@ -732,13 +692,11 @@ const styles = StyleSheet.create({
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 5,
     },
-    // "No viewers" — centered pill placed in screen center,
-    // safely BELOW the ring avatars and away from the film bubble
     noViewersCenter: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
-        top: SH * 0.55, // below likely film position
+        top: SH * 0.55,
     },
     noViewersPill: {
         flexDirection: 'row',
@@ -757,10 +715,9 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.75)',
         letterSpacing: 0.3,
     },
-    // Timestamp label in canvas space, rendered below each film bubble
     timestampHolder: {
         position: 'absolute',
-        width: 80,
+        width: 90,
         alignItems: 'center',
     },
     timestampText: {
