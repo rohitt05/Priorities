@@ -27,7 +27,6 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-// Shared constant — always in sync with actual header height
 import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 
 const { width } = Dimensions.get('window');
@@ -46,7 +45,10 @@ interface FloatingPartnerIconProps {
     animatedBgColor: any;
     pullY: SharedValue<number>;
     scrollY?: SharedValue<number>;
-    capsuleFadeStyle?: any; // Added for scroll fade
+    capsuleFadeStyle?: any;
+    // If true → owner viewing own profile → can tap to navigate + long press to remove
+    // If false → someone else viewing this profile → partner icon is display-only
+    isOwner: boolean;
     onRemove?: () => void;
 }
 
@@ -57,13 +59,13 @@ export default function FloatingPartnerIcon({
     pullY,
     scrollY,
     capsuleFadeStyle,
+    isOwner,
     onRemove,
 }: FloatingPartnerIconProps) {
     const router = useRouter();
     const translateY = useSharedValue(0);
     const [showRemovalMenu, setShowRemovalMenu] = React.useState(false);
 
-    // Continuous breathing float on the speech bubble
     useEffect(() => {
         translateY.value = withRepeat(
             withSequence(
@@ -75,28 +77,23 @@ export default function FloatingPartnerIcon({
         );
     }, [translateY]);
 
-    // Speech bubble breathes up/down
-    const floatingStyle = useAnimatedStyle(() => {
-        return { transform: [{ translateY: translateY.value }] };
-    });
+    const floatingStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: translateY.value }],
+    }));
 
-    // Whole container moves with pull-to-edit gesture
-    // Also compensates for parent scroll if scrollY is provided, allowing it to stay fixed
-    const partnerContainerStyle = useAnimatedStyle(() => {
-        return {
-            transform: [
-                { translateY: pullY.value + (scrollY ? scrollY.value : 0) }
-            ],
-        };
-    });
+    const partnerContainerStyle = useAnimatedStyle(() => ({
+        transform: [
+            { translateY: pullY.value + (scrollY ? scrollY.value : 0) }
+        ],
+    }));
 
-    const animatedProps = useAnimatedProps(() => {
-        return {
-            pointerEvents: (scrollY?.value ?? 0) > 40 ? 'none' : 'auto'
-        } as any;
-    });
+    const animatedProps = useAnimatedProps(() => ({
+        pointerEvents: (scrollY?.value ?? 0) > 40 ? 'none' : 'auto',
+    } as any));
 
     const handlePress = () => {
+        // Only navigate if this is the owner viewing their own profile
+        if (!isOwner) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push({
             pathname: '/profile',
@@ -105,6 +102,8 @@ export default function FloatingPartnerIcon({
     };
 
     const handleLongPress = () => {
+        // Only allow removal if this is the owner
+        if (!isOwner) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setShowRemovalMenu(true);
     };
@@ -116,10 +115,12 @@ export default function FloatingPartnerIcon({
                 animatedProps={animatedProps}
             >
                 <TouchableOpacity
-                    activeOpacity={0.9}
+                    activeOpacity={isOwner ? 0.9 : 1}
                     onPress={handlePress}
                     onLongPress={handleLongPress}
                     delayLongPress={400}
+                    // Disable touch feedback entirely for non-owners
+                    disabled={!isOwner}
                 >
                     <View style={styles.partnerContent}>
                         <Image
@@ -144,20 +145,10 @@ export default function FloatingPartnerIcon({
                                 </RNAnimated.View>
                             </View>
                             <View style={styles.curvedTailContainer}>
-                                <Svg
-                                    width={24}
-                                    height={24}
-                                    viewBox="0 0 24 24"
-                                    style={styles.tailSvgBacking}
-                                >
+                                <Svg width={24} height={24} viewBox="0 0 24 24" style={styles.tailSvgBacking}>
                                     <Path d="M0,0 Q12,0 20,20 Q4,12 0,0 Z" fill="white" />
                                 </Svg>
-                                <Svg
-                                    width={24}
-                                    height={24}
-                                    viewBox="0 0 24 24"
-                                    style={styles.tailSvgOverlay}
-                                >
+                                <Svg width={24} height={24} viewBox="0 0 24 24" style={styles.tailSvgOverlay}>
                                     {/* @ts-ignore */}
                                     <AnimatedPath
                                         d="M0,0 Q12,0 20,20 Q4,12 0,0 Z"
@@ -167,10 +158,7 @@ export default function FloatingPartnerIcon({
                                     />
                                 </Svg>
                                 <RNAnimated.View
-                                    style={[
-                                        styles.tailHiderPatch,
-                                        { backgroundColor: animatedBgColor },
-                                    ]}
+                                    style={[styles.tailHiderPatch, { backgroundColor: animatedBgColor }]}
                                 />
                             </View>
                         </Reanimated.View>
@@ -178,40 +166,43 @@ export default function FloatingPartnerIcon({
                 </TouchableOpacity>
             </Reanimated.View>
 
-            <Modal
-                visible={showRemovalMenu}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowRemovalMenu(false)}
-            >
-                <TouchableWithoutFeedback onPress={() => setShowRemovalMenu(false)}>
-                    <View style={styles.modalOverlay}>
-                        <TouchableWithoutFeedback>
-                            <View style={styles.menuContainer}>
-                                <TouchableOpacity
-                                    style={styles.menuItem}
-                                    onPress={() => {
-                                        setShowRemovalMenu(false);
-                                        Haptics.notificationAsync(
-                                            Haptics.NotificationFeedbackType.Success
-                                        );
-                                        onRemove?.();
-                                    }}
-                                >
-                                    <View style={styles.menuIconBox}>
-                                        <MaterialCommunityIcons
-                                            name="heart-broken"
-                                            size={20}
-                                            color="#FF6B6B"
-                                        />
-                                    </View>
-                                    <Text style={styles.menuItemText}>Remove as Partner</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
+            {/* Only render removal modal for owner */}
+            {isOwner && (
+                <Modal
+                    visible={showRemovalMenu}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setShowRemovalMenu(false)}
+                >
+                    <TouchableWithoutFeedback onPress={() => setShowRemovalMenu(false)}>
+                        <View style={styles.modalOverlay}>
+                            <TouchableWithoutFeedback>
+                                <View style={styles.menuContainer}>
+                                    <TouchableOpacity
+                                        style={styles.menuItem}
+                                        onPress={() => {
+                                            setShowRemovalMenu(false);
+                                            Haptics.notificationAsync(
+                                                Haptics.NotificationFeedbackType.Success
+                                            );
+                                            onRemove?.();
+                                        }}
+                                    >
+                                        <View style={styles.menuIconBox}>
+                                            <MaterialCommunityIcons
+                                                name="heart-broken"
+                                                size={20}
+                                                color="#FF6B6B"
+                                            />
+                                        </View>
+                                        <Text style={styles.menuItemText}>Remove as Partner</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </TouchableWithoutFeedback>
+                        </View>
+                    </TouchableWithoutFeedback>
+                </Modal>
+            )}
         </>
     );
 }
@@ -219,12 +210,6 @@ export default function FloatingPartnerIcon({
 const styles = StyleSheet.create({
     floatingPartnerContainer: {
         position: 'absolute',
-        /*
-         * HEADER_HEIGHT is imported from profileConstants (height * 0.63).
-         * marginTop: -36 pulls the avatar up to straddle the header's
-         * bottom rounded edge — half the avatar (56/2 = 28) plus 8px
-         * extra overlap so it sits naturally on the curve.
-         */
         top: HEADER_HEIGHT,
         right: 24,
         zIndex: 20,

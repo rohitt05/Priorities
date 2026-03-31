@@ -40,23 +40,17 @@ import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
 import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar';
 import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
-import { updateProfile } from '@/services/profileService';
+import { removePartner } from '@/services/partnerService';
 
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
-    const authId = useAuthUser(); // real UUID from session
+    const authId = useAuthUser();
     const router = useRouter();
     const { triggerRefresh } = usePrioritiesRefresh();
 
-    // If no userId param = viewing own profile directly
-    // If userId param exists = viewing via @handle (could still be own profile)
     const isOwner = !userId;
     const effectiveUserId = userId || authId || '';
-
-    // true once currentUser loads and we confirm it's the logged-in user's own profile.
-    // Used for UI decisions: sticky bar icon, action modal, pull-to-edit.
-    // Separate from isOwner so the DB fetch query (which uses unique_user_id) stays correct.
     const [isActuallyOwner, setIsActuallyOwner] = useState(isOwner);
 
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
@@ -67,7 +61,6 @@ function ProfileScreenContent() {
     const bannerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
     const scrollY = useSharedValue(0);
-
     const triggerEditMode = () => setIsEditing(true);
     const handleCloseEdit = () => setIsEditing(false);
 
@@ -76,13 +69,10 @@ function ProfileScreenContent() {
         panGesture,
         headerAnimatedStyle,
         imageScaleStyle,
-        partnerContainerStyle,
     } = useProfilePull(isActuallyOwner ? triggerEditMode : () => { });
 
     const scrollHandler = useAnimatedScrollHandler({
-        onScroll: (event) => {
-            scrollY.value = event.contentOffset.y;
-        },
+        onScroll: (event) => { scrollY.value = event.contentOffset.y; },
     });
 
     const capsuleFadeStyle = useAnimatedStyle(() => {
@@ -91,26 +81,21 @@ function ProfileScreenContent() {
         return {
             opacity,
             transform: [{ translateY }],
-            display: scrollY.value > 120 ? 'none' : 'flex'
+            display: scrollY.value > 120 ? 'none' : 'flex',
         };
     });
 
-    const prioritiesFadeStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(scrollY.value, [40, 120], [1, 0], Extrapolation.CLAMP);
-        return { opacity };
-    });
+    const prioritiesFadeStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(scrollY.value, [40, 120], [1, 0], Extrapolation.CLAMP),
+    }));
 
-    const filmsSlideUpStyle = useAnimatedStyle(() => {
-        const translateY = interpolate(scrollY.value, [40, 140], [0, -130], Extrapolation.CLAMP);
-        return { transform: [{ translateY }] };
-    });
+    const filmsSlideUpStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: interpolate(scrollY.value, [40, 140], [0, -130], Extrapolation.CLAMP) }],
+    }));
 
     useEffect(() => {
         const onBackPress = () => {
-            if (isEditing) {
-                handleCloseEdit();
-                return true;
-            }
+            if (isEditing) { handleCloseEdit(); return true; }
             return false;
         };
         const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -121,13 +106,35 @@ function ProfileScreenContent() {
     const [partnerUser, setPartnerUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Re-fetches every time screen comes into focus
-    // so profile picture updates from settings screen reflect immediately
+    // ── Helper: fetch and set partner profile by UUID ─────────────────────────
+    const fetchAndSetPartner = React.useCallback(async (partnerId: string) => {
+        const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', partnerId)
+            .single();
+        if (data) {
+            setPartnerUser({
+                id: data.id,
+                name: data.name,
+                uniqueUserId: data.unique_user_id,
+                profilePicture: data.profile_picture || '',
+                dominantColor: data.dominant_color || '#44562F',
+                gender: data.gender || 'female',
+                birthday: data.birthday || undefined,
+                partnerId: data.partner_id || undefined,
+                relationship: data.relationship || undefined,
+                priorities: [],
+            });
+        }
+    }, []);
+
+    // ── Main profile fetch ────────────────────────────────────────────────────
     useFocusEffect(
         React.useCallback(() => {
             if (!authId) return;
-
             let isMounted = true;
+
             const fetchProfiles = async () => {
                 try {
                     const { data: dbUser } = await supabase
@@ -150,34 +157,10 @@ function ProfileScreenContent() {
                             priorities: [],
                         };
                         setCurrentUser(userObj);
+                        if (isMounted) setIsActuallyOwner(dbUser.id === authId);
 
-                        // Resolve isActuallyOwner once we have the real UUID
-                        if (isMounted) {
-                            setIsActuallyOwner(dbUser.id === authId);
-                        }
-
-                        // Always read partner from DB — works for both owner and viewer
-                        const partnerId = dbUser.partner_id;
-                        if (partnerId) {
-                            const { data: pDbUser } = await supabase
-                                .from('profiles')
-                                .select('*')
-                                .eq('id', partnerId)
-                                .single();
-                            if (pDbUser && isMounted) {
-                                setPartnerUser({
-                                    id: pDbUser.id,
-                                    name: pDbUser.name,
-                                    uniqueUserId: pDbUser.unique_user_id,
-                                    profilePicture: pDbUser.profile_picture || '',
-                                    dominantColor: pDbUser.dominant_color || '#44562F',
-                                    gender: pDbUser.gender || 'female',
-                                    birthday: pDbUser.birthday || undefined,
-                                    partnerId: pDbUser.partner_id || undefined,
-                                    relationship: pDbUser.relationship || undefined,
-                                    priorities: [],
-                                });
-                            }
+                        if (dbUser.partner_id) {
+                            await fetchAndSetPartner(dbUser.partner_id);
                         } else {
                             if (isMounted) setPartnerUser(null);
                         }
@@ -188,17 +171,70 @@ function ProfileScreenContent() {
                     if (isMounted) setIsLoading(false);
                 }
             };
+
             fetchProfiles();
             return () => { isMounted = false; };
-        }, [authId, effectiveUserId, isOwner])
+        }, [authId, effectiveUserId, isOwner, fetchAndSetPartner])
     );
 
-    // Clears partner_id in Supabase AND local state
+    // ── Realtime: watch for accepted partner requests where I am the SENDER ───
+    // This makes the sender's screen auto-update when the receiver accepts —
+    // no metro restart needed, no manual refresh.
+    useEffect(() => {
+        if (!authId || !isActuallyOwner) return;
+
+        const channel = supabase
+            .channel(`profile_partner_watch_${authId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'partner_requests',
+                    filter: `sender_id=eq.${authId}`,
+                },
+                async (payload: any) => {
+                    const row = payload.new;
+                    if (!row) return;
+                    if (row.status === 'accepted') {
+                        // My outgoing request was accepted — fetch and show partner immediately
+                        await fetchAndSetPartner(row.receiver_id);
+                    } else if (row.status === 'declined') {
+                        // Do nothing — partner section just stays as "+ partner"
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${authId}`,
+                },
+                async (payload: any) => {
+                    const row = payload.new;
+                    if (!row) return;
+                    if (row.partner_id) {
+                        // My own profile's partner_id was set (e.g. I accepted someone)
+                        await fetchAndSetPartner(row.partner_id);
+                    } else {
+                        // partner_id was cleared — remove partner from UI
+                        setPartnerUser(null);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [authId, isActuallyOwner, fetchAndSetPartner]);
+
+    // ── Remove partner — nulls BOTH sides ─────────────────────────────────────
     const handleRemovePartner = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.id) {
-                await updateProfile(session.user.id, { partner_id: null });
+            if (session?.user?.id && partnerUser?.id) {
+                await removePartner(session.user.id, partnerUser.id);
             }
             setPartnerUser(null);
         } catch (e) {
@@ -207,12 +243,11 @@ function ProfileScreenContent() {
     };
 
     const lightDominantColor = useMemo(
-        () => (currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)'),
+        () => currentUser ? hexToRgba(currentUser.dominantColor, BG_OPACITY) : 'rgba(255,255,255,1)',
         [currentUser]
     );
-
     const solidDominantColor = useMemo(
-        () => (currentUser ? hexToRgba(currentUser.dominantColor, 0.85) : 'rgba(255,255,255,0.85)'),
+        () => currentUser ? hexToRgba(currentUser.dominantColor, 0.85) : 'rgba(255,255,255,0.85)',
         [currentUser]
     );
 
@@ -224,7 +259,6 @@ function ProfileScreenContent() {
         inputRange: [0, 1],
         outputRange: [prevBgColor, bgColor],
     });
-
     const animatedCapsuleColor = colorAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [
@@ -235,14 +269,12 @@ function ProfileScreenContent() {
 
     const relationshipLabel = useMemo(() => {
         if (!currentUser) return '';
-        if (isOwner) return 'Mine';
+        if (isActuallyOwner) return 'Mine';
         const ownerGender = currentUser.gender || 'male';
         const possessive = ownerGender === 'male' ? 'his' : (ownerGender === 'female' ? 'hers' : 'theirs');
-        if (authId === currentUser.partnerId) {
-            return `you're ${possessive}`;
-        }
+        if (authId === currentUser.partnerId) return `you're ${possessive}`;
         return possessive.charAt(0).toUpperCase() + possessive.slice(1);
-    }, [currentUser, isOwner, authId]);
+    }, [currentUser, isActuallyOwner, authId]);
 
     if (!authId || isLoading) return null;
     if (!currentUser) return null;
@@ -256,9 +288,6 @@ function ProfileScreenContent() {
                 pointerEvents="none"
             />
 
-            {/* isActuallyOwner=false AND isOwner=false → dots icon
-                isActuallyOwner=true  AND isOwner=false → no icon (navigated to own via @handle)
-                isActuallyOwner=true  AND isOwner=true  → settings icon */}
             <ProfileStickyBar
                 user={currentUser}
                 isOwner={isOwner}
@@ -272,10 +301,10 @@ function ProfileScreenContent() {
                 style={styles.container}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { minHeight: Dimensions.get('window').height + HEADER_HEIGHT }
+                    { minHeight: Dimensions.get('window').height + HEADER_HEIGHT },
                 ]}
                 showsVerticalScrollIndicator={false}
-                bounces={true}
+                bounces
                 scrollEventThrottle={16}
                 onScroll={scrollHandler}
             >
@@ -290,6 +319,7 @@ function ProfileScreenContent() {
                     </View>
                 </GestureDetector>
 
+                {/* Partner icon — visible to EVERYONE who views this profile */}
                 {partnerUser && (
                     <FloatingPartnerIcon
                         partnerUser={partnerUser}
@@ -298,21 +328,17 @@ function ProfileScreenContent() {
                         pullY={pullY}
                         scrollY={scrollY}
                         capsuleFadeStyle={capsuleFadeStyle}
+                        isOwner={isActuallyOwner}
                         onRemove={isActuallyOwner ? handleRemovePartner : undefined}
                     />
                 )}
 
+                {/* + partner capsule — only shown to actual owner when no partner */}
                 {isActuallyOwner && !partnerUser && (
                     <Reanimated.View style={[styles.capsuleRow, capsuleFadeStyle]}>
                         <PartnerSection
-                            partnerUser={null}
-                            relationshipLabel={relationshipLabel}
-                            animatedBgColor={animatedBgColor}
                             animatedCapsuleColor={animatedCapsuleColor}
-                            pullY={pullY}
-                            partnerContainerStyle={partnerContainerStyle}
                             onAddPartner={() => setIsAddPartnerVisible(true)}
-                            onRemovePartner={handleRemovePartner}
                         />
                     </Reanimated.View>
                 )}
@@ -324,9 +350,7 @@ function ProfileScreenContent() {
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                             if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
                             setShowFlashBanner(true);
-                            bannerTimeoutRef.current = setTimeout(() => {
-                                setShowFlashBanner(false);
-                            }, 2000);
+                            bannerTimeoutRef.current = setTimeout(() => setShowFlashBanner(false), 2000);
                         }}
                     />
                 </Reanimated.View>
@@ -345,9 +369,7 @@ function ProfileScreenContent() {
                 <EditProfileScreen
                     user={currentUser}
                     onBack={handleCloseEdit}
-                    onSave={async (updatedUser) => {
-                        setCurrentUser(updatedUser);
-                    }}
+                    onSave={async (updatedUser) => { setCurrentUser(updatedUser); }}
                 />
             )}
 
@@ -356,31 +378,12 @@ function ProfileScreenContent() {
                     visible={isAddPartnerVisible}
                     onClose={() => setIsAddPartnerVisible(false)}
                     currentUserUniqueUserId={currentUser?.uniqueUserId || ''}
-                    onSelectPartner={async (selectedUserId) => {
-                        const { data } = await supabase
-                            .from('profiles')
-                            .select('*')
-                            .eq('unique_user_id', selectedUserId)
-                            .single();
-                        if (data) {
-                            setPartnerUser({
-                                id: data.id,
-                                name: data.name,
-                                uniqueUserId: data.unique_user_id,
-                                profilePicture: data.profile_picture || '',
-                                dominantColor: data.dominant_color || '#44562F',
-                                gender: data.gender || 'female',
-                                birthday: data.birthday || undefined,
-                                partnerId: data.partner_id || undefined,
-                                relationship: data.relationship || undefined,
-                                priorities: [],
-                            });
-                        }
+                    onPartnerAccepted={async (partnerUUID: string) => {
+                        await fetchAndSetPartner(partnerUUID);
                     }}
                 />
             )}
 
-            {/* Only render for genuinely other users — never for own profile */}
             {!isActuallyOwner && (
                 <ProfileActionModal
                     visible={isActionModalVisible}
@@ -389,14 +392,8 @@ function ProfileScreenContent() {
                     userName={currentUser.name}
                     authId={authId}
                     targetUUID={currentUser.id}
-                    onRemoved={() => {
-                        triggerRefresh();
-                        router.back();
-                    }}
-                    onBlocked={() => {
-                        triggerRefresh();
-                        router.back();
-                    }}
+                    onRemoved={() => { triggerRefresh(); router.back(); }}
+                    onBlocked={() => { triggerRefresh(); router.back(); }}
                 />
             )}
 
@@ -426,21 +423,14 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
-    scrollContent: {
-        flexGrow: 1,
-        paddingBottom: 20,
-    },
+    container: { flex: 1 },
+    scrollContent: { flexGrow: 1, paddingBottom: 20 },
     capsuleRow: {
         marginTop: -15,
         paddingHorizontal: 24,
         alignItems: 'flex-end',
     },
-    bottomPad: {
-        height: 60,
-    },
+    bottomPad: { height: 60 },
     flashBannerContainer: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
