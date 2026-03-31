@@ -100,7 +100,7 @@ export const filmService = {
                     uri: freshUri ?? f.uri,
                     thumbnail: freshThumb ?? undefined,
                     location: f.location ?? undefined,
-                    isPublic: false,             // DB column doesn't exist yet, safe default
+                    isPublic: false,
                     targetUserId: f.target_user_id ?? null,
                     createdAt: f.created_at,
                     viewers: viewersByFilm[f.id] ?? [],
@@ -143,7 +143,42 @@ export const filmService = {
                     uri: freshUri ?? f.uri,
                     thumbnail: freshThumb ?? undefined,
                     location: f.location ?? undefined,
-                    isPublic: false,             // DB column doesn't exist yet, safe default
+                    isPublic: false,
+                    targetUserId: f.target_user_id ?? null,
+                    createdAt: f.created_at,
+                    viewers: viewersByFilm[f.id] ?? [],
+                    likedByIds: likedByFilm[f.id] ?? new Set(),
+                } satisfies FilmWithMeta;
+            })
+        );
+    },
+
+    // ── ALL films for a profile timeline — NO 24hr cutoff (FilmsInProfile) ───
+    getAllFilmsByUserId: async (userUUID: string): Promise<FilmWithMeta[]> => {
+        const { data, error } = await supabase
+            .from('films')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .eq('creator_id', userUUID)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (!data?.length) return [];
+
+        const ids = data.map((f) => f.id);
+        const { viewersByFilm, likedByFilm } = await fetchFilmMeta(ids);
+
+        return await Promise.all(
+            data.map(async (f) => {
+                const freshUri = await refreshSignedUrl(f.uri);
+                const freshThumb = await refreshSignedUrl(f.thumbnail);
+                return {
+                    id: f.id,
+                    creatorId: f.creator_id,
+                    type: f.type as 'image' | 'video',
+                    uri: freshUri ?? f.uri,
+                    thumbnail: freshThumb ?? undefined,
+                    location: f.location ?? undefined,
+                    isPublic: false,
                     targetUserId: f.target_user_id ?? null,
                     createdAt: f.created_at,
                     viewers: viewersByFilm[f.id] ?? [],

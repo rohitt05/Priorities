@@ -333,7 +333,7 @@ function ProfileScreenContent() {
 
                 <Reanimated.View style={filmsSlideUpStyle}>
                     <FilmsInProfile
-                        userId={currentUser.uniqueUserId}
+                        userUUID={currentUser.id}
                         dominantColor={currentUser.dominantColor}
                     />
                     <View style={styles.bottomPad} />

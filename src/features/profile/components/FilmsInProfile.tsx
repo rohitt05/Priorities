@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+// src/features/profile/components/FilmsInProfile.tsx
+
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
-import profileFilms from '@/data/profilesfilm.json';
+import { filmService, FilmWithMeta } from '@/services/filmService';
 import { MediaItem } from '@/types/mediaTypes';
 import ProfileMediaModal from './ProfileMediaModal';
 import TimelineVideoPreview from './TimelineVideoPreview';
@@ -11,77 +12,81 @@ import { SharedValue } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 
-// Responsive sizing for the timeline items
-const TIMELINE_ITEM_WIDTH = width * 0.40; // Max width for a branch side
+const TIMELINE_ITEM_WIDTH = width * 0.40;
 const SINGLE_ITEM_HEIGHT = TIMELINE_ITEM_WIDTH * 1.3;
 
 interface FilmsInProfileProps {
-    userId: string;
+    userUUID: string;       // creator_id UUID — NOT the @handle
     dominantColor: string;
     scrollY?: SharedValue<number>;
 }
 
-export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominantColor, scrollY }) => {
-    const [viewerVisible, setViewerVisible] = React.useState(false);
-    const [initialViewerIndex, setInitialViewerIndex] = React.useState(0);
+export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, dominantColor, scrollY }) => {
+    const [films, setFilms] = useState<FilmWithMeta[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [viewerVisible, setViewerVisible] = useState(false);
+    const [initialViewerIndex, setInitialViewerIndex] = useState(0);
 
-    // Map all films to MediaItem structure so MediaViewer can read them
-    const allMappedMediaParams = useMemo(() => {
-        const films = profileFilms.filter(f => f.userId === userId);
-        // Sort chronologically (descending for the timeline layout)
-        const sorted = films.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // ── Fetch ALL films for this profile (no 24hr cutoff) ────────────────────
+    useEffect(() => {
+        if (!userUUID) return;
+        setLoading(true);
+        setFilms([]);
+        filmService
+            .getAllFilmsByUserId(userUUID)
+            .then(setFilms)
+            .catch(() => setFilms([]))
+            .finally(() => setLoading(false));
+    }, [userUUID]);
 
-        return sorted.map((film): MediaItem => ({
-            id: film.id,
-            type: film.type === 'image' ? 'photo' : 'video',
-            uri: film.uri || film.thumbnail,
-            thumbUri: film.thumbnail,
-            timestamp: film.timestamp,
-        }));
-    }, [userId]);
+    // ── Map to MediaItem for the modal viewer ─────────────────────────────────
+    const allMappedMediaParams = useMemo((): MediaItem[] =>
+        films.map((f) => ({
+            id: f.id,
+            type: f.type === 'image' ? 'photo' : 'video',
+            uri: f.uri,
+            thumbUri: f.thumbnail,
+            timestamp: f.createdAt,
+        })),
+        [films]
+    );
 
-    // Group films by day
+    // ── Group films by calendar day ───────────────────────────────────────────
     const groupedFilms = useMemo(() => {
-        const films = profileFilms.filter(f => f.userId === userId);
+        const groups: Record<string, FilmWithMeta[]> = {};
 
-        // Group by YYYY-MM-DD
-        const groups: Record<string, typeof films> = {};
-        films.forEach(film => {
-            const dateObj = new Date(film.timestamp);
-            const key = `${dateObj.getFullYear()}-${dateObj.getMonth() + 1}-${dateObj.getDate()}`;
+        films.forEach((film) => {
+            const d = new Date(film.createdAt);
+            const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
             if (!groups[key]) groups[key] = [];
             groups[key].push(film);
         });
 
-        // Convert to array and sort days descending
-        const sortedGroups = Object.keys(groups).map(key => ({
-            dateKey: key,
-            timestamp: groups[key][0].timestamp, // user first item's exact timestamp for display
-            films: groups[key].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        })).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return Object.keys(groups)
+            .map((key) => ({
+                dateKey: key,
+                timestamp: groups[key][0].createdAt,
+                films: groups[key], // already sorted desc from service
+            }))
+            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [films]);
 
-        return sortedGroups;
-    }, [userId]);
-
-    if (groupedFilms.length === 0) return null;
-
-    // Helper to format the date
     const extractDateText = (isoString: string) => {
         const date = new Date(isoString);
         return `${date.getDate()} ${date.toLocaleString('default', { month: 'short' }).toLowerCase()}`;
     };
 
     const handleMediaPress = (filmId: string) => {
-        const index = allMappedMediaParams.findIndex(m => m.id === filmId);
+        const index = allMappedMediaParams.findIndex((m) => m.id === filmId);
         setInitialViewerIndex(index >= 0 ? index : 0);
         setViewerVisible(true);
     };
 
-    const renderMediaGroup = (films: typeof profileFilms) => {
-        const count = films.length;
+    const renderMediaGroup = (groupFilms: FilmWithMeta[]) => {
+        const count = groupFilms.length;
 
         if (count === 1) {
-            const film = films[0];
+            const film = groupFilms[0];
             return (
                 <TouchableOpacity
                     activeOpacity={0.9}
@@ -90,13 +95,18 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
                 >
                     {film.type === 'video' ? (
                         <TimelineVideoPreview
-                            uri={film.uri || film.thumbnail}
-                            thumbnailUri={film.thumbnail}
+                            uri={film.uri}
+                            thumbnailUri={film.thumbnail ?? film.uri}
                             scrollY={scrollY}
-                            style={styles.thumbnail}
+                            style={styles.mediaThumbnail}
                         />
                     ) : (
-                        <Image source={{ uri: film.thumbnail }} style={styles.thumbnail} />
+                        <Image
+                            source={{ uri: film.thumbnail ?? film.uri }}
+                            style={styles.mediaThumbnail}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                        />
                     )}
                 </TouchableOpacity>
             );
@@ -105,7 +115,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
         if (count === 2) {
             return (
                 <View style={{ flexDirection: 'row', width: TIMELINE_ITEM_WIDTH, gap: 4, height: TIMELINE_ITEM_WIDTH * 0.8 }}>
-                    {films.map(film => (
+                    {groupFilms.map((film) => (
                         <TouchableOpacity
                             key={film.id}
                             activeOpacity={0.9}
@@ -114,13 +124,18 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
                         >
                             {film.type === 'video' ? (
                                 <TimelineVideoPreview
-                                    uri={film.uri || film.thumbnail}
-                                    thumbnailUri={film.thumbnail}
+                                    uri={film.uri}
+                                    thumbnailUri={film.thumbnail ?? film.uri}
                                     scrollY={scrollY}
-                                    style={styles.thumbnail}
+                                    style={styles.mediaThumbnail}
                                 />
                             ) : (
-                                <Image source={{ uri: film.thumbnail }} style={styles.thumbnail} cachePolicy="memory-disk" />
+                                <Image
+                                    source={{ uri: film.thumbnail ?? film.uri }}
+                                    style={styles.mediaThumbnail}
+                                    contentFit="cover"
+                                    cachePolicy="memory-disk"
+                                />
                             )}
                         </TouchableOpacity>
                     ))}
@@ -128,25 +143,33 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
             );
         }
 
-        // 3 or more items - grid layout
+        // 3+ items — grid
         return (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', width: TIMELINE_ITEM_WIDTH, gap: 4 }}>
-                {films.map(film => (
+                {groupFilms.map((film) => (
                     <TouchableOpacity
                         key={film.id}
                         activeOpacity={0.9}
-                        style={[styles.mediaCard, { width: (TIMELINE_ITEM_WIDTH - 8) / 3, height: (TIMELINE_ITEM_WIDTH - 8) / 3 }]}
+                        style={[styles.mediaCard, {
+                            width: (TIMELINE_ITEM_WIDTH - 8) / 3,
+                            height: (TIMELINE_ITEM_WIDTH - 8) / 3,
+                        }]}
                         onPress={() => handleMediaPress(film.id)}
                     >
                         {film.type === 'video' ? (
                             <TimelineVideoPreview
-                                uri={film.uri || film.thumbnail}
-                                thumbnailUri={film.thumbnail}
+                                uri={film.uri}
+                                thumbnailUri={film.thumbnail ?? film.uri}
                                 scrollY={scrollY}
-                                style={styles.thumbnail}
+                                style={styles.mediaThumbnail}
                             />
                         ) : (
-                            <Image source={{ uri: film.thumbnail }} style={styles.thumbnail} cachePolicy="memory-disk" />
+                            <Image
+                                source={{ uri: film.thumbnail ?? film.uri }}
+                                style={styles.mediaThumbnail}
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                            />
                         )}
                     </TouchableOpacity>
                 ))}
@@ -154,13 +177,19 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
         );
     };
 
+    // Still loading — show nothing (no flicker)
+    if (loading) return null;
+
+    // Loaded but empty — hide entire section
+    if (groupedFilms.length === 0) return null;
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.sectionTitle}>Films</Text>
                 <View style={[styles.badge, { backgroundColor: dominantColor + '40' }]}>
                     <Text style={[styles.badgeText, { color: '#2C2720' }]}>
-                        {groupedFilms.reduce((acc, curr) => acc + curr.films.length, 0)}
+                        {films.length}
                     </Text>
                 </View>
             </View>
@@ -170,16 +199,17 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
                 <View style={styles.centerLine} />
 
                 {groupedFilms.map((group, index) => {
-                    const isEven = index % 2 === 0; // Even -> Media on Left, Date on Right
+                    const isEven = index % 2 === 0; // Even → media on left, date on right
 
                     return (
                         <View key={group.dateKey} style={styles.timelineRow}>
 
                             {/* LEFT SIDE */}
                             <View style={[styles.halfSide, { alignItems: 'flex-end', paddingRight: 20 }]}>
-                                {isEven ? renderMediaGroup(group.films) : (
-                                    <Text style={styles.dateText}>{extractDateText(group.timestamp)}</Text>
-                                )}
+                                {isEven
+                                    ? renderMediaGroup(group.films)
+                                    : <Text style={styles.dateText}>{extractDateText(group.timestamp)}</Text>
+                                }
                             </View>
 
                             {/* CENTER DOT */}
@@ -189,9 +219,10 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
 
                             {/* RIGHT SIDE */}
                             <View style={[styles.halfSide, { alignItems: 'flex-start', paddingLeft: 20 }]}>
-                                {!isEven ? renderMediaGroup(group.films) : (
-                                    <Text style={styles.dateText}>{extractDateText(group.timestamp)}</Text>
-                                )}
+                                {!isEven
+                                    ? renderMediaGroup(group.films)
+                                    : <Text style={styles.dateText}>{extractDateText(group.timestamp)}</Text>
+                                }
                             </View>
 
                         </View>
@@ -212,14 +243,14 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userId, dominant
 const styles = StyleSheet.create({
     container: {
         marginTop: SPACING.xl,
-        paddingBottom: 40
+        paddingBottom: 40,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: SPACING.xl,
         paddingHorizontal: 24,
-        gap: 8
+        gap: 8,
     },
     sectionTitle: {
         fontFamily: FONTS.bold,
@@ -237,7 +268,7 @@ const styles = StyleSheet.create({
     },
     badgeText: {
         fontSize: 10,
-        fontFamily: FONTS.bold
+        fontFamily: FONTS.bold,
     },
     timelineContainer: {
         position: 'relative',
@@ -269,7 +300,7 @@ const styles = StyleSheet.create({
         height: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: COLORS.background, // Match screen background to clip line
+        backgroundColor: COLORS.background,
         position: 'absolute',
         left: '50%',
         transform: [{ translateX: -6 }],
@@ -292,35 +323,16 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         overflow: 'hidden',
         backgroundColor: COLORS.surfaceLight,
-        shadowColor: "#000",
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.1,
         shadowRadius: 10,
         elevation: 6,
     },
-    thumbnail: {
+    mediaThumbnail: {
         width: '100%',
         height: '100%',
-        resizeMode: 'cover'
     },
-    videoIndicator: {
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        // Removed backgroundColor, padding, and borderRadius
-    },
-    videoIndicatorSmall: {
-        position: 'absolute',
-        top: 4,
-        right: 4,
-        // Removed backgroundColor, padding, and borderRadius
-    },
-    iconShadow: {
-        // Added text shadow so the white icon remains visible against light video thumbnails
-        textShadowColor: 'rgba(0, 0, 0, 0.75)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
-    }
 });
 
 export default FilmsInProfile;
