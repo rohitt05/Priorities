@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     StyleSheet,
     View,
@@ -7,50 +7,110 @@ import {
     FlatList,
     Animated,
     StatusBar,
+    ActivityIndicator,
+    RefreshControl,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { COLORS, FONTS, SPACING } from '@/theme/theme';
+import { COLORS, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
-
-interface BlockedUser {
-    id: string;
-    name: string;
-    username: string;
-}
-
-const MOCK_BLOCKED_USERS: BlockedUser[] = [
-    { id: '1', name: 'John Doe', username: '@johndoe' },
-    { id: '2', name: 'Jane Smith', username: '@janesmith' },
-];
+import { getBlockedUsers, unblockUser, BlockedUser } from '@/services/blockService';
 
 const BlockedUsersScreen = () => {
     const router = useRouter();
-    const insets = useSafeAreaInsets();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
+
+    const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [unblockingId, setUnblockingId] = useState<string | null>(null);
 
     const animatedBgColor = colorAnim.interpolate({
         inputRange: [0, 1],
         outputRange: [prevBgColor, bgColor],
     });
 
-    const renderItem = ({ item }: { item: BlockedUser }) => (
-        <View style={styles.userRow}>
-            <View style={styles.userInfo}>
-                <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarText}>{item.name[0]}</Text>
+    // ── Fetch blocked users ───────────────────────────────────────────────────
+    const fetchBlockedUsers = useCallback(async (isRefresh = false) => {
+        try {
+            if (isRefresh) setIsRefreshing(true);
+            const data = await getBlockedUsers();
+            setBlockedUsers(data);
+        } catch (e) {
+            console.error('Failed to fetch blocked users:', e);
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchBlockedUsers();
+    }, [fetchBlockedUsers]);
+
+    // ── Unblock ───────────────────────────────────────────────────────────────
+    const handleUnblock = async (item: BlockedUser) => {
+        if (unblockingId) return;
+        try {
+            setUnblockingId(item.blockedId);
+            await unblockUser(item.blockedId);
+            // Optimistically remove from list
+            setBlockedUsers((prev) => prev.filter((u) => u.blockedId !== item.blockedId));
+        } catch (e) {
+            console.error('Failed to unblock user:', e);
+        } finally {
+            setUnblockingId(null);
+        }
+    };
+
+    // ── Row ───────────────────────────────────────────────────────────────────
+    const renderItem = ({ item }: { item: BlockedUser }) => {
+        const isProcessing = unblockingId === item.blockedId;
+
+        return (
+            <View style={styles.userRow}>
+                <View style={styles.userInfo}>
+                    {item.profilePicture ? (
+                        <Image
+                            source={{ uri: item.profilePicture }}
+                            style={styles.avatar}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                        />
+                    ) : (
+                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                            <Text style={styles.avatarText}>
+                                {item.name?.[0]?.toUpperCase() ?? '?'}
+                            </Text>
+                        </View>
+                    )}
+                    <View style={styles.userTextBlock}>
+                        <Text style={styles.userName} numberOfLines={1}>
+                            {item.name}
+                        </Text>
+                        <Text style={styles.userHandle} numberOfLines={1}>
+                            @{item.uniqueUserId}
+                        </Text>
+                    </View>
                 </View>
-                <View>
-                    <Text style={styles.userName}>{item.name}</Text>
-                    <Text style={styles.userHandle}>{item.username}</Text>
-                </View>
+
+                <TouchableOpacity
+                    style={[styles.unblockButton, isProcessing && styles.unblockButtonDisabled]}
+                    onPress={() => handleUnblock(item)}
+                    disabled={!!unblockingId}
+                    activeOpacity={0.7}
+                >
+                    {isProcessing ? (
+                        <ActivityIndicator size="small" color={COLORS.text} />
+                    ) : (
+                        <Text style={styles.unblockText}>unblock</Text>
+                    )}
+                </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.unblockButton}>
-                <Text style={styles.unblockText}>unblock</Text>
-            </TouchableOpacity>
-        </View>
-    );
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -58,6 +118,7 @@ const BlockedUsersScreen = () => {
             <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]} />
 
             <SafeAreaView style={styles.safeArea} edges={['top']}>
+                {/* Header */}
                 <View style={styles.header}>
                     <TouchableOpacity
                         style={styles.backButton}
@@ -70,19 +131,45 @@ const BlockedUsersScreen = () => {
                     <View style={styles.headerSpacer} />
                 </View>
 
-                <FlatList
-                    data={MOCK_BLOCKED_USERS}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderItem}
-                    contentContainerStyle={styles.listContent}
-                    ItemSeparatorComponent={() => <View style={styles.divider} />}
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Ionicons name="shield-outline" size={48} color={COLORS.textSecondary} style={{ opacity: 0.5 }} />
-                            <Text style={styles.emptyText}>no blocked users</Text>
-                        </View>
-                    }
-                />
+                {/* Loading */}
+                {isLoading ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                    </View>
+                ) : (
+                    <FlatList
+                        data={blockedUsers}
+                        keyExtractor={(item) => item.id}
+                        renderItem={renderItem}
+                        contentContainerStyle={[
+                            styles.listContent,
+                            blockedUsers.length === 0 && styles.emptyListContent,
+                        ]}
+                        ItemSeparatorComponent={() => <View style={styles.divider} />}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={isRefreshing}
+                                onRefresh={() => fetchBlockedUsers(true)}
+                                tintColor={COLORS.textSecondary}
+                            />
+                        }
+                        ListEmptyComponent={
+                            <View style={styles.emptyContainer}>
+                                <Ionicons
+                                    name="shield-outline"
+                                    size={48}
+                                    color={COLORS.textSecondary}
+                                    style={{ opacity: 0.4 }}
+                                />
+                                <Text style={styles.emptyText}>no blocked users</Text>
+                                <Text style={styles.emptySubText}>
+                                    people you block won't be able to see your priorities
+                                </Text>
+                            </View>
+                        }
+                    />
+                )}
             </SafeAreaView>
         </View>
     );
@@ -121,54 +208,75 @@ const styles = StyleSheet.create({
     headerSpacer: {
         width: 40,
     },
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     listContent: {
         paddingHorizontal: 20,
         paddingBottom: 40,
+        paddingTop: 4,
+    },
+    emptyListContent: {
+        flex: 1,
     },
     userRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingVertical: 16,
+        paddingVertical: 14,
     },
     userInfo: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
+        marginRight: 12,
     },
-    avatarPlaceholder: {
+    avatar: {
         width: 48,
         height: 48,
         borderRadius: 24,
+    },
+    avatarPlaceholder: {
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 16,
     },
     avatarText: {
         color: '#FFF',
         fontSize: 20,
         fontFamily: FONTS.bold,
     },
+    userTextBlock: {
+        flex: 1,
+        marginLeft: 14,
+    },
     userName: {
-        fontSize: 16,
+        fontSize: 15,
         fontFamily: FONTS.bold,
         color: COLORS.text,
         textTransform: 'lowercase',
     },
     userHandle: {
-        fontSize: 14,
+        fontSize: 13,
         fontFamily: FONTS.regular,
         color: COLORS.textSecondary,
-        textTransform: 'lowercase',
         marginTop: 2,
     },
     unblockButton: {
         paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingVertical: 9,
         borderRadius: 99,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderWidth: 1,
         borderColor: 'rgba(0,0,0,0.1)',
+        minWidth: 80,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    unblockButtonDisabled: {
+        opacity: 0.5,
     },
     unblockText: {
         color: COLORS.text,
@@ -184,13 +292,22 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 100,
     },
     emptyText: {
         marginTop: 16,
         fontSize: 15,
-        fontFamily: FONTS.medium,
+        fontFamily: FONTS.bold,
         color: COLORS.textSecondary,
         textTransform: 'lowercase',
-    }
+    },
+    emptySubText: {
+        marginTop: 6,
+        fontSize: 13,
+        fontFamily: FONTS.regular,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        paddingHorizontal: 40,
+        opacity: 0.7,
+        textTransform: 'lowercase',
+    },
 });
