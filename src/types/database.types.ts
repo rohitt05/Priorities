@@ -7,6 +7,7 @@ export type Json =
     | Json[]
 
 
+
 export type Database = {
     // Allows to automatically instantiate createClient with right options
     // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -451,6 +452,14 @@ export type Database = {
             [_ in never]: never
         }
         Functions: {
+            accept_partner_request: {
+                Args: {
+                    p_request_id: string
+                    p_sender_id: string
+                    p_receiver_id: string
+                }
+                Returns: undefined
+            }
             accept_priority_request:
             | {
                 Args: {
@@ -477,6 +486,13 @@ export type Database = {
                 Args: { viewer_id: string }
                 Returns: string[]
             }
+            remove_partner: {
+                Args: {
+                    p_my_id: string
+                    p_partner_id: string
+                }
+                Returns: undefined
+            }
             remove_priority: {
                 Args: { p_priority_user_id: string; p_user_id: string }
                 Returns: undefined
@@ -492,10 +508,13 @@ export type Database = {
 }
 
 
+
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 
 
+
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
 
 
 export type Tables<
@@ -528,6 +547,7 @@ export type Tables<
     : never
 
 
+
 export type TablesInsert<
     DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -552,6 +572,7 @@ export type TablesInsert<
     ? I
     : never
     : never
+
 
 
 export type TablesUpdate<
@@ -580,6 +601,7 @@ export type TablesUpdate<
     : never
 
 
+
 export type Enums<
     DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
@@ -598,6 +620,7 @@ export type Enums<
     : never
 
 
+
 export type CompositeTypes<
     PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
@@ -614,6 +637,7 @@ export type CompositeTypes<
     : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
 
 
 export const Constants = {

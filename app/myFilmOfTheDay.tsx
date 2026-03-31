@@ -267,12 +267,16 @@ export default function MyFilmOfTheDay() {
         if (viewTimerRef.current) { clearTimeout(viewTimerRef.current); viewTimerRef.current = null; }
     };
 
-    // Owner viewing own films — no view recording needed
     const startViewTimer = useCallback((_film: FilmWithMeta) => {
         clearViewTimer();
     }, []);
 
-    // ── Load my films via service (24hr filter applied inside) ─
+    // ── Handle film deleted from modal ─────────────────────────
+    const handleFilmDeleted = useCallback((filmId: string) => {
+        setFilms(prev => prev.filter(f => f.id !== filmId));
+    }, []);
+
+    // ── Load my films ──────────────────────────────────────────
     useEffect(() => {
         (async () => {
             setIsLoading(true);
@@ -280,7 +284,6 @@ export default function MyFilmOfTheDay() {
                 const { data: sd } = await supabase.auth.getSession();
                 const myId = sd?.session?.user?.id;
                 if (!myId) { setIsLoading(false); return; }
-
                 const result = await filmService.getMyFilms(myId);
                 setFilms(result);
             } catch (e) {
@@ -482,6 +485,8 @@ export default function MyFilmOfTheDay() {
                 initialIndex={modalIndex}
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
+                isOwner={true}
+                onFilmDeleted={handleFilmDeleted}
             />
         </GestureHandlerRootView>
     );

@@ -12,19 +12,7 @@ export interface PartnerRequest {
     senderUniqueUserId: string;
 }
 
-async function setPartnerIdForUser(
-    userId: string,
-    partnerId: string | null
-): Promise<void> {
-    const { error } = await supabase
-        .from('profiles')
-        .update({ partner_id: partnerId })
-        .eq('id', userId);
-    if (error) throw error;
-}
-
 // ── Check if a user already has a partner ─────────────────────────────────────
-// Returns true if userId.partner_id is non-null in DB
 export async function checkIfAlreadyPartnered(userId: string): Promise<boolean> {
     const { data, error } = await supabase
         .from('profiles')
@@ -35,6 +23,7 @@ export async function checkIfAlreadyPartnered(userId: string): Promise<boolean> 
     return data?.partner_id != null;
 }
 
+// ── Send a partner request ────────────────────────────────────────────────────
 export async function sendPartnerRequest(
     senderId: string,
     receiverId: string
@@ -48,6 +37,7 @@ export async function sendPartnerRequest(
     if (error) throw error;
 }
 
+// ── Get all incoming pending requests for a user ──────────────────────────────
 export async function getIncomingPartnerRequests(
     myId: string
 ): Promise<PartnerRequest[]> {
@@ -82,6 +72,7 @@ export async function getIncomingPartnerRequests(
     }));
 }
 
+// ── Get the outgoing request from senderId to receiverId (if any) ─────────────
 export async function getOutgoingRequestTo(
     senderId: string,
     receiverId: string
@@ -107,23 +98,23 @@ export async function getOutgoingRequestTo(
     };
 }
 
+// ── Accept a partner request via SECURITY DEFINER RPC ────────────────────────
+// Atomic: validates ownership, marks accepted, sets both partner_ids in one
+// Postgres transaction. Replaces the old 3-step client-side write.
 export async function acceptPartnerRequest(
     requestId: string,
     senderId: string,
     receiverId: string
 ): Promise<void> {
-    const { error: updateErr } = await supabase
-        .from('partner_requests')
-        .update({ status: 'accepted' })
-        .eq('id', requestId);
-    if (updateErr) throw updateErr;
-
-    await Promise.all([
-        setPartnerIdForUser(senderId, receiverId),
-        setPartnerIdForUser(receiverId, senderId),
-    ]);
+    const { error } = await supabase.rpc('accept_partner_request', {
+        p_request_id: requestId,
+        p_sender_id: senderId,
+        p_receiver_id: receiverId,
+    });
+    if (error) throw error;
 }
 
+// ── Decline a partner request ─────────────────────────────────────────────────
 export async function declinePartnerRequest(requestId: string): Promise<void> {
     const { error } = await supabase
         .from('partner_requests')
@@ -132,12 +123,16 @@ export async function declinePartnerRequest(requestId: string): Promise<void> {
     if (error) throw error;
 }
 
+// ── Remove partner via SECURITY DEFINER RPC ───────────────────────────────────
+// Atomic: validates both users are actually partners, clears both partner_ids,
+// and cleans up the partner_requests row — all in one Postgres transaction.
 export async function removePartner(
     myId: string,
     partnerId: string
 ): Promise<void> {
-    await Promise.all([
-        setPartnerIdForUser(myId, null),
-        setPartnerIdForUser(partnerId, null),
-    ]);
+    const { error } = await supabase.rpc('remove_partner', {
+        p_my_id: myId,
+        p_partner_id: partnerId,
+    });
+    if (error) throw error;
 }

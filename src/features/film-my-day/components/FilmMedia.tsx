@@ -1,14 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-    useAnimatedStyle,
-    useSharedValue,
-    withTiming,
-    SharedValue
-} from 'react-native-reanimated';
+import { SharedValue } from 'react-native-reanimated';
 
 interface FilmMediaProps {
     uri: string;
@@ -29,89 +23,64 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     style,
     resizeMode = 'cover',
     isPlaying = false,
-    accent = '#fff',
     onReady,
     onDuration,
     onComplete,
-    progress: externalProgress,
 }) => {
-    const internalProgress = useSharedValue(0);
-    const progress = externalProgress || internalProgress;
-    const progressOpacity = useSharedValue(1);
     const isReadyReported = React.useRef(false);
-    
-    // Always initialize the player for videos to enable pre-loading
+    const durationReported = React.useRef(false);
+
     const player = useVideoPlayer(type === 'video' ? uri : null, (p) => {
-        p.loop = false; // Disable loop to detect completion
-        p.muted = false; // User might want sound for stories
+        p.loop = false;
+        p.muted = false;
         p.staysActiveInBackground = false;
-        if (isPlaying) {
-            p.play();
-        }
+        if (isPlaying) p.play();
     });
 
+    // Images: fire onReady immediately
     useEffect(() => {
         if (type === 'image') {
             onReady?.();
-            return;
         }
+    }, [type]);
+
+    // Videos: fire onReady + onDuration ONCE when readyToPlay
+    useEffect(() => {
+        if (type !== 'video') return;
+
+        // Reset refs when uri changes (new video)
+        isReadyReported.current = false;
+        durationReported.current = false;
 
         const statusSub = player.addListener('statusChange', (payload: any) => {
             if (payload.status === 'readyToPlay' && !isReadyReported.current) {
                 isReadyReported.current = true;
                 onReady?.();
-                if (player.duration > 0) {
+                if (player.duration > 0 && !durationReported.current) {
+                    durationReported.current = true;
                     onDuration?.(player.duration * 1000);
                 }
             }
         });
 
-        return () => {
-            statusSub.remove();
-        };
-    }, [player, type, onReady, onDuration]);
+        return () => statusSub.remove();
+    }, [player, type, uri]);
 
+    // Play / pause
     useEffect(() => {
         if (type !== 'video') return;
-        if (isPlaying) {
-            player.play();
-            // Show progress bar briefly then fade it
-            progressOpacity.value = 1;
-            progressOpacity.value = withTiming(0, { duration: 2500 });
-        } else {
-            player.pause();
-            progressOpacity.value = withTiming(1, { duration: 300 });
-        }
+        if (isPlaying) player.play();
+        else player.pause();
     }, [isPlaying, player, type]);
 
-    // Use the player's timeUpdate listener to keep the progress bar updated
+    // Fire onComplete when video ends — this is the ONLY signal modal needs
     useEffect(() => {
-        const sub = player.addListener('timeUpdate', (payload: any) => {
-            if (player.duration > 0) {
-                progress.value = payload.currentTime / player.duration;
-            }
-            if (player.duration > 0 && isReadyReported.current) {
-                onDuration?.(player.duration * 1000);
-            }
-        });
-        
+        if (type !== 'video') return;
         const completeSub = player.addListener('playToEnd', () => {
             onComplete?.();
         });
-
-        return () => {
-            sub.remove();
-            completeSub.remove();
-        };
-    }, [player, onDuration, onComplete, progress]);
-
-    const barStyle = useAnimatedStyle(() => ({
-        width: `${progress.value * 100}%`,
-    }));
-
-    const barContainerStyle = useAnimatedStyle(() => ({
-        opacity: progressOpacity.value,
-    }));
+        return () => completeSub.remove();
+    }, [player, type, onComplete]);
 
     if (type === 'video') {
         return (
@@ -141,20 +110,6 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         backgroundColor: '#000',
-    },
-    progressContainer: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 3,
-    },
-    progressBarTrack: {
-        flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.25)',
-    },
-    progressBarFill: {
-        height: '100%',
     },
 });
 
