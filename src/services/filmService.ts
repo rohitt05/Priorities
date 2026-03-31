@@ -1,54 +1,169 @@
 // src/services/filmService.ts
-
-import profilesFilmRaw from '@/data/profilesfilm.json';
-import userFilmsRaw from '@/data/userFilms.json';
-import { TIMELINE_EVENTS as timelineEventsRaw } from '@/data/timelineData';
-import { FilmDTO, UserFilmCardDTO, TimelineEventDTO } from '@/types/dto';
-import { mapFilmDTOToFilm, mapUserFilmCardDTOToFilm, mapTimelineEventDTOToEvent } from '@/types/mappers';
-import { Film, TimelineEvent } from '@/types/domain';
 import { supabase } from '@/lib/supabase';
+import { Film, Profile } from '@/types/domain';
+
+const FILM_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+// ── Re-signs a Supabase Storage signed URL so it never expires ───────────────
+const refreshSignedUrl = async (uri: string | null | undefined): Promise<string | undefined> => {
+    if (!uri) return undefined;
+    if (!uri.includes('/storage/v1/object/sign/')) return uri ?? undefined;
+    const match = uri.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
+    if (!match) return uri;
+    const [, bucket, path] = match;
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
+    if (error || !data?.signedUrl) return uri;
+    return data.signedUrl;
+};
+
+// ── Shared type for a film enriched with viewers + likes ─────────────────────
+export interface FilmWithMeta extends Film {
+    viewers: Profile[];
+    likedByIds: Set<string>;
+}
+
+// ── Internal helper: fetch viewers + likes for a list of film IDs ────────────
+const fetchFilmMeta = async (
+    filmIds: string[]
+): Promise<{
+    viewersByFilm: Record<string, Profile[]>;
+    likedByFilm: Record<string, Set<string>>;
+}> => {
+    const [viewsRes, likesRes] = await Promise.all([
+        supabase
+            .from('film_views')
+            .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color, relationship)')
+            .in('film_id', filmIds),
+        supabase
+            .from('film_likes')
+            .select('film_id, user_id')
+            .in('film_id', filmIds),
+    ]);
+
+    const viewersByFilm: Record<string, Profile[]> = {};
+    (viewsRes.data ?? []).forEach((v: any) => {
+        if (!v.profiles) return;
+        if (!viewersByFilm[v.film_id]) viewersByFilm[v.film_id] = [];
+        if (!viewersByFilm[v.film_id].some((p) => p.id === v.profiles.id)) {
+            viewersByFilm[v.film_id].push({
+                id: v.profiles.id,
+                uniqueUserId: v.profiles.unique_user_id,
+                name: v.profiles.name,
+                profilePicture: v.profiles.profile_picture,
+                dominantColor: v.profiles.dominant_color || '#D4A373',
+                relationship: v.profiles.relationship ?? undefined,
+            });
+        }
+    });
+
+    const likedByFilm: Record<string, Set<string>> = {};
+    (likesRes.data ?? []).forEach((l: any) => {
+        if (!likedByFilm[l.film_id]) likedByFilm[l.film_id] = new Set();
+        likedByFilm[l.film_id].add(l.user_id);
+    });
+
+    return { viewersByFilm, likedByFilm };
+};
 
 export const filmService = {
-    getFilmsByUserId: (userId: string): Film[] => {
-        const films = (profilesFilmRaw as FilmDTO[])
-            .filter(f => f.userId === userId)
-            .map(mapFilmDTOToFilm);
 
-        const additionalFilms = (userFilmsRaw as UserFilmCardDTO[])
-            .filter(f => f.userId === userId)
-            .map(mapUserFilmCardDTOToFilm);
+    // ── MY films — only within the last 24 hrs (myFilmOfTheDay screen) ───────
+    getMyFilms: async (myId: string): Promise<FilmWithMeta[]> => {
+        const cutoff = new Date(Date.now() - FILM_LIFETIME_MS).toISOString();
 
-        return [...films, ...additionalFilms]
-            .filter(f => !!f.uri)
-            .map(f => ({
-                ...f,
-                createdAt: f.createdAt || new Date().toISOString()
-            }))
-            .sort((a, b) =>
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        const { data, error } = await supabase
+            .from('films')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .eq('creator_id', myId)
+            .gte('created_at', cutoff)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        if (!data?.length) return [];
+
+        const live = data.filter(
+            (f) => Date.now() - new Date(f.created_at).getTime() < FILM_LIFETIME_MS
+        );
+        if (!live.length) return [];
+
+        const ids = live.map((f) => f.id);
+        const { viewersByFilm, likedByFilm } = await fetchFilmMeta(ids);
+
+        return await Promise.all(
+            live.map(async (f) => {
+                const freshUri = await refreshSignedUrl(f.uri);
+                const freshThumb = await refreshSignedUrl(f.thumbnail);
+                return {
+                    id: f.id,
+                    creatorId: f.creator_id,
+                    type: f.type as 'image' | 'video',
+                    uri: freshUri ?? f.uri,
+                    thumbnail: freshThumb ?? undefined,
+                    location: f.location ?? undefined,
+                    isPublic: false,             // DB column doesn't exist yet, safe default
+                    targetUserId: f.target_user_id ?? null,
+                    createdAt: f.created_at,
+                    viewers: viewersByFilm[f.id] ?? [],
+                    likedByIds: likedByFilm[f.id] ?? new Set(),
+                } satisfies FilmWithMeta;
+            })
+        );
+    },
+
+    // ── THEIR films — only within the last 24 hrs (UserFilms screen) ─────────
+    getFilmsByUserId: async (userId: string): Promise<FilmWithMeta[]> => {
+        const cutoff = new Date(Date.now() - FILM_LIFETIME_MS).toISOString();
+
+        const { data, error } = await supabase
+            .from('films')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .eq('creator_id', userId)
+            .gte('created_at', cutoff)
+            .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        if (!data?.length) return [];
+
+        const live = data.filter(
+            (f) => Date.now() - new Date(f.created_at).getTime() < FILM_LIFETIME_MS
+        );
+        if (!live.length) return [];
+
+        const ids = live.map((f) => f.id);
+        const { viewersByFilm, likedByFilm } = await fetchFilmMeta(ids);
+
+        return await Promise.all(
+            live.map(async (f) => {
+                const freshUri = await refreshSignedUrl(f.uri);
+                const freshThumb = await refreshSignedUrl(f.thumbnail);
+                return {
+                    id: f.id,
+                    creatorId: f.creator_id,
+                    type: f.type as 'image' | 'video',
+                    uri: freshUri ?? f.uri,
+                    thumbnail: freshThumb ?? undefined,
+                    location: f.location ?? undefined,
+                    isPublic: false,             // DB column doesn't exist yet, safe default
+                    targetUserId: f.target_user_id ?? null,
+                    createdAt: f.created_at,
+                    viewers: viewersByFilm[f.id] ?? [],
+                    likedByIds: likedByFilm[f.id] ?? new Set(),
+                } satisfies FilmWithMeta;
+            })
+        );
+    },
+
+    // ── Record a film view ────────────────────────────────────────────────────
+    recordView: async (filmId: string, viewerId: string): Promise<void> => {
+        await supabase
+            .from('film_views')
+            .upsert(
+                { film_id: filmId, viewer_id: viewerId },
+                { onConflict: 'film_id,viewer_id', ignoreDuplicates: true }
             );
     },
 
-    getTimelineEventsByUserId: (userId: string): TimelineEvent[] => {
-        return (timelineEventsRaw as unknown as TimelineEventDTO[])
-            .filter(e => e.userUniqueId === userId)
-            .map(mapTimelineEventDTOToEvent);
-    },
-
-    getAllTimelineEvents: (): TimelineEvent[] => {
-        return (timelineEventsRaw as unknown as TimelineEventDTO[])
-            .map(mapTimelineEventDTOToEvent);
-    },
-
-    getSignedUrl: async (path: string, expiresIn = 3600): Promise<string> => {
-        const { data, error } = await supabase.storage
-            .from('films')
-            .createSignedUrl(path, expiresIn);
-        if (error) throw error;
-        return data.signedUrl;
-    },
-
-    // ✅ These three were accidentally outside the object before
+    // ── Toggle a like on a film ───────────────────────────────────────────────
     toggleLike: async (filmId: string, userId: string, currentlyLiked: boolean): Promise<void> => {
         if (currentlyLiked) {
             const { error } = await supabase
@@ -65,6 +180,7 @@ export const filmService = {
         }
     },
 
+    // ── Check if current user has liked a film ───────────────────────────────
     getLikeStatus: async (filmId: string, userId: string): Promise<boolean> => {
         const { data, error } = await supabase
             .from('film_likes')
@@ -76,6 +192,7 @@ export const filmService = {
         return !!data;
     },
 
+    // ── Get total like count for a film ──────────────────────────────────────
     getLikesCount: async (filmId: string): Promise<number> => {
         const { count, error } = await supabase
             .from('film_likes')
@@ -84,4 +201,13 @@ export const filmService = {
         if (error) throw error;
         return count ?? 0;
     },
-};                // ← single closing brace for the whole object
+
+    // ── Get a fresh signed URL for a storage path ────────────────────────────
+    getSignedUrl: async (path: string, expiresIn = 3600): Promise<string> => {
+        const { data, error } = await supabase.storage
+            .from('films')
+            .createSignedUrl(path, expiresIn);
+        if (error) throw error;
+        return data.signedUrl;
+    },
+};

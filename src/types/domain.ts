@@ -47,8 +47,8 @@ export interface Film {
     uri: string;
     thumbnail?: string;
     location?: string;
-    isPublic: boolean;
-    targetUserId?: string | null; // Optional direct send
+    isPublic?: boolean;          // optional — column does not exist in DB yet
+    targetUserId?: string | null;
     createdAt: string;
     caption?: string;
     likesCount?: number;

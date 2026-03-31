@@ -23,7 +23,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import FilmMedia from '@/features/film-my-day/components/FilmMedia';
 import FilmStoryModal from '@/features/film-my-day/components/FilmStoryModal';
-import { Profile, Film } from '@/types/domain';
 import { getColors } from 'react-native-image-colors';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import Animated, {
@@ -38,8 +37,9 @@ import {
 } from '@/features/film-my-day/components/canvas';
 import { useFilmCountdown } from '@/features/film-my-day/components/filmCountdown';
 import Svg, { Path } from 'react-native-svg';
+import { filmService, FilmWithMeta } from '@/services/filmService';
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const { width: SW } = Dimensions.get('window');
 
 const BUBBLE_R_MIN = 35;
 const BUBBLE_R_MAX = 100;
@@ -70,13 +70,8 @@ const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; wid
 DoodleUnderline.displayName = 'DoodleUnderline';
 
 // ── FilmBubble — tap only, no long press ──────────────────────
-interface FilmItemExtended extends Film {
-    viewers: Profile[];
-    likedByIds: Set<string>;
-}
-
 const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress }: {
-    film: FilmItemExtended; x: number; y: number; r: number;
+    film: FilmWithMeta; x: number; y: number; r: number;
     isActive: boolean; isVisible: boolean;
     onPress: () => void;
 }) => {
@@ -149,7 +144,7 @@ export default function UserFilms() {
         ? decodeURIComponent(dominantColor as string)
         : COLORS.primary;
 
-    const [films, setFilms] = useState<FilmItemExtended[]>([]);
+    const [films, setFilms] = useState<FilmWithMeta[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeIdx, setActiveIdx] = useState(0);
     const [modalVisible, setModalVisible] = useState(false);
@@ -162,85 +157,36 @@ export default function UserFilms() {
     const clearViewTimer = () => {
         if (viewTimerRef.current) { clearTimeout(viewTimerRef.current); viewTimerRef.current = null; }
     };
-    const recordView = async (filmId: string, creatorId: string) => {
-        if (recordedIds.current.has(filmId)) return;
-        const uid = currentUserId.current;
-        if (!uid || uid === creatorId) return;
-        try {
-            await supabase.from('film_views').upsert(
-                { film_id: filmId, viewer_id: uid },
-                { onConflict: 'film_id,viewer_id', ignoreDuplicates: true }
-            );
-            recordedIds.current.add(filmId);
-        } catch { }
-    };
-    const startViewTimer = useCallback((film: FilmItemExtended) => {
+
+    const startViewTimer = useCallback((film: FilmWithMeta) => {
         clearViewTimer();
-        viewTimerRef.current = setTimeout(
-            () => recordView(film.id, film.creatorId),
-            VIEW_THRESHOLD_MS
-        );
+        viewTimerRef.current = setTimeout(async () => {
+            if (recordedIds.current.has(film.id)) return;
+            const uid = currentUserId.current;
+            if (!uid || uid === film.creatorId) return;
+            try {
+                await filmService.recordView(film.id, uid);
+                recordedIds.current.add(film.id);
+            } catch { }
+        }, VIEW_THRESHOLD_MS);
     }, []);
 
+    // ── Load their films via service (24hr filter applied inside) ─
     useEffect(() => {
         if (!userId) return;
         (async () => {
             setIsLoading(true);
-            const { data: sd } = await supabase.auth.getSession();
-            currentUserId.current = sd?.session?.user?.id ?? null;
+            try {
+                const { data: sd } = await supabase.auth.getSession();
+                currentUserId.current = sd?.session?.user?.id ?? null;
 
-            const { data: fd, error } = await supabase
-                .from('films')
-                .select('id, type, uri, thumbnail, created_at, creator_id')
-                .eq('creator_id', userId)
-                .order('created_at', { ascending: true });
-            if (error || !fd?.length) { setIsLoading(false); return; }
-
-            const ids = fd.map(f => f.id);
-
-            const { data: vd } = await supabase
-                .from('film_views')
-                .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color, relationship)')
-                .in('film_id', ids);
-
-            const viewersByFilm: Record<string, Profile[]> = {};
-            (vd || []).forEach((v: any) => {
-                if (!v.profiles) return;
-                if (!viewersByFilm[v.film_id]) viewersByFilm[v.film_id] = [];
-                if (!viewersByFilm[v.film_id].some(p => p.id === v.profiles.id))
-                    viewersByFilm[v.film_id].push({
-                        id: v.profiles.id,
-                        uniqueUserId: v.profiles.unique_user_id,
-                        name: v.profiles.name,
-                        profilePicture: v.profiles.profile_picture,
-                        dominantColor: v.profiles.dominant_color || '#D4A373',
-                        relationship: v.profiles.relationship ?? undefined,
-                    });
-            });
-
-            const { data: ld } = await supabase
-                .from('film_likes')
-                .select('film_id, user_id')
-                .in('film_id', ids);
-            const likedByFilm: Record<string, Set<string>> = {};
-            (ld || []).forEach((l: any) => {
-                if (!likedByFilm[l.film_id]) likedByFilm[l.film_id] = new Set();
-                likedByFilm[l.film_id].add(l.user_id);
-            });
-
-            setFilms(fd.map(f => ({
-                id: f.id,
-                creatorId: f.creator_id,
-                type: f.type as 'image' | 'video',
-                uri: f.uri,
-                thumbnail: f.thumbnail ?? undefined,
-                isPublic: true,
-                targetUserId: null,
-                createdAt: f.created_at,
-                viewers: viewersByFilm[f.id] || [],
-                likedByIds: likedByFilm[f.id] || new Set(),
-            })));
-            setIsLoading(false);
+                const result = await filmService.getFilmsByUserId(userId as string);
+                setFilms(result);
+            } catch (e) {
+                console.error('[UserFilms] load error:', e);
+            } finally {
+                setIsLoading(false);
+            }
         })();
     }, [userId]);
 

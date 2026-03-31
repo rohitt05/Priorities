@@ -37,6 +37,7 @@ import {
     rgba,
 } from '@/features/film-my-day/components/canvas';
 import { useFilmCountdown } from '@/features/film-my-day/components/filmCountdown';
+import { filmService, FilmWithMeta } from '@/services/filmService';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -44,12 +45,6 @@ const BUBBLE_R_MIN = 35;
 const BUBBLE_R_MAX = 100;
 const DEF_SC = (SW * 0.48) / (BUBBLE_R_MAX * 2);
 const VIEW_THRESHOLD_MS = 2000;
-const FILM_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
-// Filter helper — only keep films within 24 hrs
-function isWithin24hrs(createdAtIso: string): boolean {
-    return Date.now() - new Date(createdAtIso).getTime() < FILM_LIFETIME_MS;
-}
 
 function buildBubbleRadii(count: number): number[] {
     let rs = 42;
@@ -65,16 +60,6 @@ function fmtDate(iso: string) {
         weekday: d.toLocaleDateString('en-US', { weekday: 'long' }),
         date: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
     };
-}
-
-interface FilmItem {
-    id: string;
-    mediaUrl: string;
-    mediaType: string;
-    timestamp: string;
-    viewers: Profile[];
-    likedByIds: Set<string>;
-    creatorId: string;
 }
 
 // ── DoodleUnderline ────────────────────────────────────────────
@@ -196,13 +181,13 @@ ViewerOverlay.displayName = 'ViewerOverlay';
 
 // ── FilmBubble ─────────────────────────────────────────────────
 const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, onLongPressEnd }: {
-    film: FilmItem; x: number; y: number; r: number;
+    film: FilmWithMeta; x: number; y: number; r: number;
     isActive: boolean;
     onPress: () => void; onLongPress: () => void; onLongPressEnd: () => void;
 }) => {
     const size = r * 2;
-    const isVideo = film.mediaType === 'video';
-    const countdownLabel = useFilmCountdown(film.timestamp);
+    const isVideo = film.type === 'video';
+    const countdownLabel = useFilmCountdown(film.createdAt);
 
     const longPress = Gesture.LongPress()
         .minDuration(400)
@@ -234,7 +219,7 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, 
                     },
                 ]}>
                     <FilmMedia
-                        uri={film.mediaUrl}
+                        uri={film.uri}
                         type={isVideo ? 'video' : 'image'}
                         isPlaying={isActive && isVideo}
                         accent={COLORS.primary}
@@ -268,7 +253,7 @@ export default function MyFilmOfTheDay() {
     const insets = useSafeAreaInsets();
     const accent = (colorParam as string) || COLORS.primary;
 
-    const [films, setFilms] = useState<FilmItem[]>([]);
+    const [films, setFilms] = useState<FilmWithMeta[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeIdx, setIdx] = useState(0);
     const [showViewers, setShowViewers] = useState(false);
@@ -277,83 +262,32 @@ export default function MyFilmOfTheDay() {
 
     const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const recordedIds = useRef<Set<string>>(new Set());
-    const currentUserId = useRef<string | null>(null);
 
     const clearViewTimer = () => {
         if (viewTimerRef.current) { clearTimeout(viewTimerRef.current); viewTimerRef.current = null; }
     };
-    const recordView = async (filmId: string, creatorId: string) => {
-        if (recordedIds.current.has(filmId)) return;
-        const uid = currentUserId.current;
-        if (!uid || uid === creatorId) return;
-        try {
-            await supabase.from('film_views').upsert(
-                { film_id: filmId, viewer_id: uid },
-                { onConflict: 'film_id,viewer_id', ignoreDuplicates: true }
-            );
-            recordedIds.current.add(filmId);
-        } catch { }
-    };
-    const startViewTimer = useCallback((film: FilmItem) => {
+
+    // Owner viewing own films — no view recording needed
+    const startViewTimer = useCallback((_film: FilmWithMeta) => {
         clearViewTimer();
-        viewTimerRef.current = setTimeout(() => recordView(film.id, film.creatorId), VIEW_THRESHOLD_MS);
     }, []);
 
+    // ── Load my films via service (24hr filter applied inside) ─
     useEffect(() => {
         (async () => {
-            const { data: sd } = await supabase.auth.getSession();
-            const uid = sd?.session?.user?.id;
-            if (!uid) { setIsLoading(false); return; }
-            currentUserId.current = uid;
+            setIsLoading(true);
+            try {
+                const { data: sd } = await supabase.auth.getSession();
+                const myId = sd?.session?.user?.id;
+                if (!myId) { setIsLoading(false); return; }
 
-            const { data: fd, error } = await supabase
-                .from('films')
-                .select('*')
-                .eq('creator_id', uid)
-                // Only fetch films from the last 24 hrs at DB level too
-                .gte('created_at', new Date(Date.now() - FILM_LIFETIME_MS).toISOString())
-                .order('created_at', { ascending: true });
-            if (error || !fd?.length) { setIsLoading(false); return; }
-
-            // Double-filter on client side (clock drift safety)
-            const recent = fd.filter(f => isWithin24hrs(f.created_at));
-            if (!recent.length) { setIsLoading(false); return; }
-
-            const ids = recent.map(f => f.id);
-
-            const { data: vd } = await supabase
-                .from('film_views')
-                .select('film_id, viewer_id, profiles:viewer_id(id, name, profile_picture, unique_user_id, dominant_color, relationship)')
-                .in('film_id', ids);
-
-            const viewersByFilm: Record<string, Profile[]> = {};
-            (vd || []).forEach((v: any) => {
-                if (!v.profiles) return;
-                if (!viewersByFilm[v.film_id]) viewersByFilm[v.film_id] = [];
-                if (!viewersByFilm[v.film_id].some(p => p.id === v.profiles.id))
-                    viewersByFilm[v.film_id].push({
-                        id: v.profiles.id, uniqueUserId: v.profiles.unique_user_id,
-                        name: v.profiles.name, profilePicture: v.profiles.profile_picture,
-                        dominantColor: v.profiles.dominant_color || '#D4A373',
-                        relationship: v.profiles.relationship ?? undefined,
-                    });
-            });
-
-            const { data: ld } = await supabase
-                .from('film_likes').select('film_id, user_id').in('film_id', ids);
-            const likedByFilm: Record<string, Set<string>> = {};
-            (ld || []).forEach((l: any) => {
-                if (!likedByFilm[l.film_id]) likedByFilm[l.film_id] = new Set();
-                likedByFilm[l.film_id].add(l.user_id);
-            });
-
-            setFilms(recent.map(f => ({
-                id: f.id, mediaUrl: f.uri, mediaType: f.type,
-                timestamp: f.created_at, creatorId: f.creator_id,
-                viewers: viewersByFilm[f.id] || [],
-                likedByIds: likedByFilm[f.id] || new Set(),
-            })));
-            setIsLoading(false);
+                const result = await filmService.getMyFilms(myId);
+                setFilms(result);
+            } catch (e) {
+                console.error('[myFilmOfTheDay] load error:', e);
+            } finally {
+                setIsLoading(false);
+            }
         })();
     }, []);
 
@@ -379,9 +313,9 @@ export default function MyFilmOfTheDay() {
         if (!film) return null;
         if (colorCache.current[film.id]) return colorCache.current[film.id];
         try {
-            let uri = film.mediaUrl;
-            if (film.mediaType === 'video') {
-                const t = await VideoThumbnails.getThumbnailAsync(film.mediaUrl, { time: 500 });
+            let uri = film.uri;
+            if (film.type === 'video') {
+                const t = await VideoThumbnails.getThumbnailAsync(film.uri, { time: 500 });
                 uri = t.uri;
             }
             const small = await ImageManipulator.manipulateAsync(uri,
@@ -428,7 +362,7 @@ export default function MyFilmOfTheDay() {
 
     const activeFilm = films[activeIdx];
     const { weekday, date } = useMemo(() =>
-        fmtDate(activeFilm?.timestamp || new Date().toISOString()),
+        fmtDate(activeFilm?.createdAt || new Date().toISOString()),
         [activeFilm]
     );
 
@@ -457,7 +391,6 @@ export default function MyFilmOfTheDay() {
         );
     }
 
-    // ── Empty state — no films posted today ────────────────────
     if (films.length === 0) {
         return (
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -545,15 +478,7 @@ export default function MyFilmOfTheDay() {
             />
 
             <FilmStoryModal
-                films={films.map(f => ({
-                    id: f.id,
-                    creatorId: f.creatorId,
-                    type: f.mediaType as 'image' | 'video',
-                    uri: f.mediaUrl,
-                    isPublic: true,
-                    targetUserId: null,
-                    createdAt: f.timestamp,
-                }))}
+                films={films}
                 initialIndex={modalIndex}
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
@@ -563,170 +488,27 @@ export default function MyFilmOfTheDay() {
 }
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        backgroundColor: '#FBFAF6',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    bubble: {
-        position: 'absolute',
-        overflow: 'hidden',
-        backgroundColor: '#e8e7e4',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 8,
-    },
-    activeDot: {
-        position: 'absolute',
-        top: 6, right: 6,
-        width: 9, height: 9,
-        borderRadius: 5,
-        borderWidth: 2,
-        borderColor: '#fff',
-    },
-    header: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0,
-        zIndex: 200,
-        alignItems: 'center',
-        paddingBottom: 10,
-    },
-    backBtn: {
-        position: 'absolute',
-        left: 16,
-        width: 36, height: 36,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 201,
-    },
+    loadingContainer: { flex: 1, backgroundColor: '#FBFAF6', justifyContent: 'center', alignItems: 'center' },
+    bubble: { position: 'absolute', overflow: 'hidden', backgroundColor: '#e8e7e4', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+    activeDot: { position: 'absolute', top: 6, right: 6, width: 9, height: 9, borderRadius: 5, borderWidth: 2, borderColor: '#fff' },
+    header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 200, alignItems: 'center', paddingBottom: 10 },
+    backBtn: { position: 'absolute', left: 16, width: 36, height: 36, justifyContent: 'center', alignItems: 'center', zIndex: 201 },
     headerCenter: { alignItems: 'center', paddingHorizontal: 64 },
-    hSub: {
-        fontFamily: FONTS.bold,
-        fontSize: 15,
-        fontWeight: '600',
-        letterSpacing: 4,
-        textTransform: 'uppercase',
-        marginBottom: 6,
-        color: rgba('#433D35', 0.8),
-    },
-    hWeekday: {
-        fontFamily: 'DancingScript-Bold',
-        fontSize: 36,
-        lineHeight: 40,
-        color: '#433D35',
-    },
-    hDate: {
-        fontFamily: FONTS.bold,
-        fontSize: 12.5,
-        fontWeight: '900',
-        letterSpacing: 0.5,
-        marginTop: 1.5,
-        color: rgba('#433D35', 0.9),
-    },
-    emptyOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: 12,
-        zIndex: 10,
-    },
-    emptyTitle: {
-        fontFamily: 'DancingScript-Bold',
-        fontSize: 30,
-        color: '#433D35',
-        opacity: 0.75,
-        marginTop: 10,
-    },
-    emptyText: {
-        fontFamily: FONTS.regular,
-        fontSize: 14,
-        color: rgba('#433D35', 0.6),
-        textAlign: 'center',
-        lineHeight: 22,
-        paddingHorizontal: 48,
-    },
-    viewerOverlay: {
-        zIndex: 400,
-        backgroundColor: 'rgba(0,0,0,0.45)',
-    },
-    avatarItem: {
-        position: 'absolute',
-        alignItems: 'center',
-    },
-    avatarRing: {
-        width: AVATAR_SIZE,
-        height: AVATAR_SIZE,
-        borderRadius: AVATAR_SIZE / 2,
-        overflow: 'hidden',
-        backgroundColor: '#e0ddd8',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.22,
-        shadowRadius: 10,
-        elevation: 8,
-    },
+    hSub: { fontFamily: FONTS.bold, fontSize: 15, fontWeight: '600', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 6, color: rgba('#433D35', 0.8) },
+    hWeekday: { fontFamily: 'DancingScript-Bold', fontSize: 36, lineHeight: 40, color: '#433D35' },
+    hDate: { fontFamily: FONTS.bold, fontSize: 12.5, fontWeight: '900', letterSpacing: 0.5, marginTop: 1.5, color: rgba('#433D35', 0.9) },
+    emptyOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 12, zIndex: 10 },
+    emptyTitle: { fontFamily: 'DancingScript-Bold', fontSize: 30, color: '#433D35', opacity: 0.75, marginTop: 10 },
+    emptyText: { fontFamily: FONTS.regular, fontSize: 14, color: rgba('#433D35', 0.6), textAlign: 'center', lineHeight: 22, paddingHorizontal: 48 },
+    viewerOverlay: { zIndex: 400, backgroundColor: 'rgba(0,0,0,0.45)' },
+    avatarItem: { position: 'absolute', alignItems: 'center' },
+    avatarRing: { width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2, overflow: 'hidden', backgroundColor: '#e0ddd8', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.22, shadowRadius: 10, elevation: 8 },
     avatarImg: { width: '100%', height: '100%' },
-    heartBadge: {
-        position: 'absolute',
-        bottom: 16, right: -5,
-        width: 20, height: 20,
-        borderRadius: 10,
-        backgroundColor: '#fff',
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.12,
-        shadowRadius: 3,
-        elevation: 3,
-    },
-    avatarName: {
-        fontFamily: FONTS.bold,
-        fontSize: 11,
-        color: '#fff',
-        textAlign: 'center',
-        marginTop: 6,
-        letterSpacing: 0.2,
-        textShadowColor: 'rgba(0,0,0,0.6)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 5,
-    },
-    noViewersCenter: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        top: SH * 0.55,
-    },
-    noViewersPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.18)',
-    },
-    noViewersText: {
-        fontFamily: FONTS.bold,
-        fontSize: 13.5,
-        color: 'rgba(255,255,255,0.75)',
-        letterSpacing: 0.3,
-    },
-    timestampHolder: {
-        position: 'absolute',
-        width: 90,
-        alignItems: 'center',
-    },
-    timestampText: {
-        fontFamily: FONTS.bold,
-        fontSize: 10,
-        color: 'rgba(67,61,53,0.55)',
-        letterSpacing: 0.4,
-        textShadowColor: 'rgba(255,255,255,0.6)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
-    },
+    heartBadge: { position: 'absolute', bottom: 16, right: -5, width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 3 },
+    avatarName: { fontFamily: FONTS.bold, fontSize: 11, color: '#fff', textAlign: 'center', marginTop: 6, letterSpacing: 0.2, textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
+    noViewersCenter: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', top: SH * 0.55 },
+    noViewersPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,255,255,0.12)', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+    noViewersText: { fontFamily: FONTS.bold, fontSize: 13.5, color: 'rgba(255,255,255,0.75)', letterSpacing: 0.3 },
+    timestampHolder: { position: 'absolute', width: 90, alignItems: 'center' },
+    timestampText: { fontFamily: FONTS.bold, fontSize: 10, color: 'rgba(67,61,53,0.55)', letterSpacing: 0.4, textShadowColor: 'rgba(255,255,255,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
 });
