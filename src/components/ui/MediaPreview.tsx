@@ -1,3 +1,4 @@
+// src/components/ui/MediaPreview.tsx
 import React, { useEffect, useState, useRef } from 'react';
 import {
     StyleSheet,
@@ -9,17 +10,19 @@ import {
     BackHandler,
     Alert,
     ActivityIndicator,
-    Text
+    Text,
+    LayoutChangeEvent,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import * as MediaLibrary from 'expo-media-library';
-import StoryTextOverlay, { StoryTextOverlayRef } from './StoryTextOverlay';
+import StoryTextOverlay, { StoryTextOverlayRef, TextItemData } from './StoryTextOverlay';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
 import { captureRef } from 'react-native-view-shot';
+import { OverlayData } from './OverlayRenderer';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -28,8 +31,8 @@ interface MediaPreviewProps {
     isFrontCamera: boolean;
     onDiscard: () => void;
     onSave: () => void;
-    recipient?: string;   // present = came from PriorityList
-    recipientId?: string; // UUID of recipient
+    recipient?: string;
+    recipientId?: string;
 }
 
 const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
@@ -51,15 +54,13 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const mediaCardRef = useRef<View>(null);
     const [isEditingText, setIsEditingText] = useState(false);
 
+    // Track card layout for normalization
+    const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
+
     const isMountedRef = useRef(true);
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // ─── THE KEY FLAG ───────────────────────────────────────────
-    // true  → PriorityList flow → upload to messages bucket + table
-    // false → FilmMyDay tab flow → upload to films bucket + table
     const isMessageMode = Boolean(recipient);
-    // ────────────────────────────────────────────────────────────
-
     const isVideo = capturedMedia?.type === 'video';
     const videoSource = isVideo ? capturedMedia.uri : null;
 
@@ -126,50 +127,73 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         return () => backHandler.remove();
     }, [onDiscard]);
 
-    // ─────────────────────────────────────────────────────────────
-    // SHARED: upload file to a given bucket
-    // Returns the storage file path, or null on failure
-    // ─────────────────────────────────────────────────────────────
+    const handleCardLayout = (e: LayoutChangeEvent) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardLayout({ width, height });
+    };
+
+    /**
+     * Build OverlayData from current text items.
+     * x/y are normalized: store as (raw_px / cardDimension).
+     * This makes them resolution-independent for any viewer's screen.
+     */
+    const buildOverlayData = (items: TextItemData[]): OverlayData | null => {
+        if (!items.length || !cardLayout) return null;
+        return {
+            version: 1,
+            cardWidth: cardLayout.width,
+            cardHeight: cardLayout.height,
+            items: items.map((item) => ({
+                id: item.id,
+                text: item.text,
+                alignment: item.alignment,
+                scale: item.scale,
+                rotation: item.rotation,
+                // Normalize: divide raw px by card size so it's 0..1
+                // OverlayRenderer multiplies back: item.x * cardWidth * scaleX
+                x: item.x / cardLayout.width,
+                y: item.y / cardLayout.height,
+                hasBackground: item.hasBackground,
+                color: item.color,
+                isBold: item.isBold,
+            })),
+        };
+    };
+
     const uploadFileToBucket = async (
         bucket: string,
         senderId: string,
         finalMediaUri: string
     ): Promise<string | null> => {
         if (!capturedMedia) return null;
-
         const isVideoFile = capturedMedia.type === 'video';
         const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
         const ext = isVideoFile ? 'mp4' : 'jpg';
         const fileName = `${senderId}/media/${Date.now()}.${ext}`;
-
-        // ✅ Use FormData + Blob — works correctly on React Native
-        // arrayBuffer() causes silent upload failures on RN
         const formData = new FormData();
         formData.append('file', {
             uri: finalMediaUri,
             type: mimeType,
             name: fileName,
         } as any);
-
         const { error: uploadError } = await supabase.storage
             .from(bucket)
             .upload(fileName, formData, { contentType: mimeType, upsert: false });
-
         if (uploadError) {
             console.error(`[MediaPreview] Upload to "${bucket}" failed:`, uploadError);
-            console.error('Upload error details:', JSON.stringify(uploadError));
             return null;
         }
         return fileName;
     };
 
-    // ─────────────────────────────────────────────────────────────
-    // PATH A: PriorityList → send as a private message
-    // ─────────────────────────────────────────────────────────────
-    const sendAsMessage = async (senderId: string, finalUri: string) => {
+    // ── PATH A: send as private message ──────────────────────────
+    const sendAsMessage = async (
+        senderId: string,
+        finalUri: string,
+        overlayData: OverlayData | null
+    ) => {
         if (!capturedMedia || !recipient) return;
 
-        // Resolve receiver UUID
         let receiverId: string | null = null;
         if (recipientId) {
             receiverId = recipientId;
@@ -187,165 +211,113 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         }
 
         const fileName = await uploadFileToBucket('messages', senderId, finalUri);
-        if (!fileName) {
-            Alert.alert('Error', 'Failed to upload media. Please try again.');
-            return;
-        }
+        if (!fileName) { Alert.alert('Error', 'Failed to upload media. Please try again.'); return; }
 
-        // 7-day signed URL (messages bucket is private)
         const { data: signedData, error: signedError } = await supabase.storage
             .from('messages')
             .createSignedUrl(fileName, 60 * 60 * 24 * 7);
-
         if (signedError || !signedData?.signedUrl) {
-            Alert.alert('Error', 'Failed to process media. Please try again.');
-            return;
+            Alert.alert('Error', 'Failed to process media. Please try again.'); return;
         }
 
         const isVideoFile = capturedMedia.type === 'video';
-
-        const { error: insertError } = await supabase
-            .from('messages')
-            .insert({
-                sender_id: senderId,
-                receiver_id: receiverId,
-                type: isVideoFile ? 'video' : 'photo',
-                uri: signedData.signedUrl,
-                duration_sec: isVideoFile ? Math.round(duration) || null : null,
-                disappeared: false,
-            });
-
-        if (insertError) {
-            Alert.alert('Error', 'Failed to send message. Please try again.');
-            return;
-        }
+        const { error: insertError } = await supabase.from('messages').insert({
+            sender_id: senderId,
+            receiver_id: receiverId,
+            type: isVideoFile ? 'video' : 'photo',
+            uri: signedData.signedUrl,
+            duration_sec: isVideoFile ? Math.round(duration) || null : null,
+            disappeared: false,
+            overlay_data: overlayData ?? null,   // ✅
+        });
+        if (insertError) { Alert.alert('Error', 'Failed to send message. Please try again.'); return; }
 
         Alert.alert('Sent!', `Your ${isVideoFile ? 'video' : 'photo'} was sent to ${recipient.split(' ')[0]}.`);
         onDiscard();
     };
 
-    // ─────────────────────────────────────────────────────────────
-    // PATH B: FilmMyDay tab → post to films table
-    // ─────────────────────────────────────────────────────────────
-    const postAsFilm = async (senderId: string, finalUri: string) => {
+    // ── PATH B: post as film ──────────────────────────────────────
+    const postAsFilm = async (
+        senderId: string,
+        finalUri: string,
+        overlayData: OverlayData | null
+    ) => {
         if (!capturedMedia) return;
-
         const isVideoFile = capturedMedia.type === 'video';
         const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
         const ext = isVideoFile ? 'mp4' : 'jpg';
         const fileName = `${senderId}/media/${Date.now()}.${ext}`;
 
         try {
-            // Step 1: Get auth token
             const { data: sessionData } = await supabase.auth.getSession();
             const token = sessionData?.session?.access_token;
-            if (!token) {
-                Alert.alert('Error', 'Not logged in.');
-                return;
-            }
+            if (!token) { Alert.alert('Error', 'Not logged in.'); return; }
 
-            // Step 2: Get Supabase project URL
             const supabaseUrl = 'https://olpnssfgzhpwrjiejfnr.supabase.co';
-
-            // Step 3: Upload via raw XHR — bypasses SDK blob handling issues on Android
             const uploadSuccess = await new Promise<boolean>((resolve) => {
                 const xhr = new XMLHttpRequest();
-                xhr.open(
-                    'POST',
-                    `${supabaseUrl}/storage/v1/object/films/${fileName}`,
-                );
+                xhr.open('POST', `${supabaseUrl}/storage/v1/object/films/${fileName}`);
                 xhr.setRequestHeader('Authorization', `Bearer ${token}`);
                 xhr.setRequestHeader('Content-Type', mimeType);
                 xhr.setRequestHeader('x-upsert', 'false');
-
-                xhr.onload = () => {
-                    console.log('[Film] XHR status:', xhr.status);
-                    console.log('[Film] XHR response:', xhr.responseText);
-                    resolve(xhr.status === 200);
-                };
-                xhr.onerror = (e) => {
-                    console.error('[Film] XHR error:', e);
-                    resolve(false);
-                };
-
+                xhr.onload = () => resolve(xhr.status === 200);
+                xhr.onerror = () => resolve(false);
                 xhr.send({ uri: finalUri, type: mimeType, name: fileName } as any);
             });
 
-            if (!uploadSuccess) {
-                Alert.alert('Error', 'Failed to upload film. Please try again.');
-                return;
-            }
+            if (!uploadSuccess) { Alert.alert('Error', 'Failed to upload film. Please try again.'); return; }
 
-            console.log('[Film] Upload success via XHR');
-
-            // Step 4: Create signed URL
             const { data: signedData, error: signedError } = await supabase.storage
                 .from('films')
                 .createSignedUrl(fileName, 60 * 60 * 24 * 30);
-
             if (signedError || !signedData?.signedUrl) {
-                console.error('[Film] Signed URL error:', JSON.stringify(signedError));
-                Alert.alert('Error', 'Failed to get signed URL.');
-                return;
+                Alert.alert('Error', 'Failed to get signed URL.'); return;
             }
 
-            // Step 5: Insert into films table
-            const { error: insertError } = await supabase
-                .from('films')
-                .insert({
-                    creator_id: senderId,
-                    type: isVideoFile ? 'video' : 'image',
-                    uri: signedData.signedUrl,
-                });
-
-            if (insertError) {
-                console.error('[Film] Insert error:', JSON.stringify(insertError));
-                Alert.alert('Error', insertError.message);
-                return;
-            }
+            const { error: insertError } = await supabase.from('films').insert({
+                creator_id: senderId,
+                type: isVideoFile ? 'video' : 'image',
+                uri: signedData.signedUrl,
+                overlay_data: overlayData ?? null,   // ✅
+            });
+            if (insertError) { Alert.alert('Error', insertError.message); return; }
 
             Alert.alert('Posted!', 'Your film has been added to your day.');
             onDiscard();
-
         } catch (err: any) {
-            console.error('[Film] Error:', err?.message || err);
             Alert.alert('Error', err?.message || 'Something went wrong.');
         }
     };
-    // ─────────────────────────────────────────────────────────────
-    // MAIN HANDLER — routes to correct path based on isMessageMode
-    // ─────────────────────────────────────────────────────────────
+
+    // ── MAIN HANDLER ─────────────────────────────────────────────
     const handleSend = async () => {
         if (!capturedMedia) return;
         setIsSending(true);
+
+        const textItems = overlayRef.current?.getAllTextItems() ?? [];
+        const overlayData = buildOverlayData(textItems);
+
         let finalUri = capturedMedia.uri;
-        
-        // Render text overlay into image pixels for images
-        if (capturedMedia.type === 'image' && mediaCardRef.current && overlayRef.current?.getAllTextItems().length) {
+        // For images with text overlays: burn them in via view-shot
+        if (capturedMedia.type === 'image' && mediaCardRef.current && textItems.length) {
             try {
-                // Remove borders, ui states etc. by closing text editor
                 setIsEditingText(false);
-                const captureUri = await captureRef(mediaCardRef, {
-                    format: 'jpg',
-                    quality: 1,
-                });
+                const captureUri = await captureRef(mediaCardRef, { format: 'jpg', quality: 1 });
                 finalUri = captureUri;
             } catch (err) {
-                console.error("View shot error:", err);
+                console.error('View shot error:', err);
             }
         }
-        
+
         try {
             const { data: sessionData } = await supabase.auth.getSession();
             const senderId = sessionData?.session?.user?.id;
-            if (!senderId) {
-                Alert.alert('Error', 'You must be logged in.');
-                return;
-            }
+            if (!senderId) { Alert.alert('Error', 'You must be logged in.'); return; }
+
             if (isMessageMode) {
-                await sendAsMessage(senderId, finalUri);
+                await sendAsMessage(senderId, finalUri, overlayData);
             } else {
-                await postAsFilm(senderId, finalUri);
+                await postAsFilm(senderId, finalUri, overlayData);
             }
         } catch (err) {
             console.error('[MediaPreview] handleSend error:', err);
@@ -363,8 +335,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 const { status } = await requestPermission();
                 if (status !== 'granted') {
                     Alert.alert('Permission required', 'Please allow access to save media.');
-                    setIsSaving(false);
-                    return;
+                    setIsSaving(false); return;
                 }
             }
             const asset = await MediaLibrary.createAssetAsync(capturedMedia.uri);
@@ -402,7 +373,12 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             <StatusBar barStyle="light-content" />
 
             <View style={[styles.cardContainer, { paddingTop: STATUS_BAR_HEIGHT + 10 }]}>
-                <View style={styles.mediaCard} ref={mediaCardRef} collapsable={false}>
+                <View
+                    style={styles.mediaCard}
+                    ref={mediaCardRef}
+                    collapsable={false}
+                    onLayout={handleCardLayout}
+                >
                     {isVideo ? (
                         <VideoView
                             style={[styles.mediaFill, mirrorStyle]}
@@ -419,6 +395,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             resizeMode="cover"
                         />
                     )}
+
                     <StoryTextOverlay
                         ref={overlayRef}
                         onOpenEditor={() => setIsEditingText(true)}
@@ -436,11 +413,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             activeOpacity={0.7}
                             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                         >
-                            <Ionicons
-                                name={isMuted ? 'volume-mute' : 'volume-high'}
-                                size={22}
-                                color="#FFF"
-                            />
+                            <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={22} color="#FFF" />
                         </TouchableOpacity>
                         <View style={styles.progressContainer}>
                             <View style={styles.progressBar}>
@@ -555,16 +528,6 @@ const styles = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
     },
     capsuleButtonText: { color: '#FFF', fontSize: 14, fontWeight: '600', letterSpacing: 0.5 },
-    captionDisplay: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-    captionGradient: {
-        paddingHorizontal: 20, paddingTop: 60,
-        paddingBottom: Platform.OS === 'ios' ? 45 : 30,
-        alignItems: 'center', justifyContent: 'center',
-    },
-    captionDisplayText: {
-        color: '#FFF', fontSize: 24, fontWeight: '700', textAlign: 'center', width: '100%',
-        textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
-    },
 });
 
 export default MediaPreview;

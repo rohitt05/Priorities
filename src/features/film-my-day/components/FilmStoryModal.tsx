@@ -1,8 +1,9 @@
+// src/features/film-my-day/components/FilmStoryModal.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     StyleSheet, View, TouchableOpacity,
     Dimensions, Pressable, Platform, FlatList,
-    ViewToken, BackHandler, Text, Alert,
+    ViewToken, BackHandler, Text, Alert, LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useFilmLike } from '@/hooks/useFilmLike';
 import { supabase } from '@/lib/supabase';
+import OverlayRenderer, { OverlayData } from '@/components/ui/OverlayRenderer';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_DURATION = 5000;
@@ -115,6 +117,15 @@ const StoryItem = React.memo(({
     const isActive = index === currentIndex;
     const { isLiked, toggleLike } = useFilmLike(item.id, item.creatorId);
 
+    // Measure card so OverlayRenderer can scale correctly
+    const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
+    const handleCardLayout = (e: LayoutChangeEvent) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardLayout({ width, height });
+    };
+
+    const overlayData: OverlayData | null = item.overlay_data ?? null;
+
     return (
         <View style={styles.cardWrapper}>
             <Pressable
@@ -123,15 +134,27 @@ const StoryItem = React.memo(({
                 onPress={(e) => handleTap(e, index)}
                 style={styles.card}
             >
-                <FilmMedia
-                    uri={item.uri}
-                    type={item.type as 'image' | 'video'}
-                    isPlaying={visible && !isPaused && isActive}
-                    resizeMode="cover"
-                    onReady={isActive ? onReady : undefined}
-                    onDuration={isActive ? onDuration : undefined}
-                    onComplete={isActive ? onComplete : undefined}
-                />
+                {/* Wrapper captures card dimensions */}
+                <View style={StyleSheet.absoluteFill} onLayout={handleCardLayout}>
+                    <FilmMedia
+                        uri={item.uri}
+                        type={item.type as 'image' | 'video'}
+                        isPlaying={visible && !isPaused && isActive}
+                        resizeMode="cover"
+                        onReady={isActive ? onReady : undefined}
+                        onDuration={isActive ? onDuration : undefined}
+                        onComplete={isActive ? onComplete : undefined}
+                    />
+
+                    {/* ✅ Replay text overlays — works for both image and video */}
+                    {cardLayout && overlayData && (
+                        <OverlayRenderer
+                            overlayData={overlayData}
+                            containerWidth={cardLayout.width}
+                            containerHeight={cardLayout.height}
+                        />
+                    )}
+                </View>
 
                 {isActive && (
                     <>
@@ -199,7 +222,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     const modalOpacity = useSharedValue(0);
     const flatListRef = useRef<FlatList>(null);
 
-    // Always-fresh refs — avoids ALL stale closure bugs
     const durationRef = useRef(IMAGE_DURATION);
     const currentIdxRef = useRef(currentIndex);
     const filmsRef = useRef(films);
@@ -208,7 +230,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     const onCloseRef = useRef(onClose);
     const onFilmDeletedRef = useRef(onFilmDeleted);
 
-    // Keep refs in sync
     currentIdxRef.current = currentIndex;
     filmsRef.current = films;
     isPausedRef.current = isPaused;
@@ -218,16 +239,12 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
 
     useEffect(() => { setFilms(initialFilms); }, [initialFilms]);
 
-    // ── Core: start the progress bar ──────────────────────────────
-    // Stored as ref so it's NEVER stale inside other callbacks
     const startProgressRef = useRef((fromZero = true) => {
         const dur = durationRef.current;
         const fromVal = fromZero ? 0 : progress.value;
         const remaining = dur * (1 - fromVal);
-
         cancelAnimation(progress);
         if (fromZero) progress.value = 0;
-
         progress.value = withTiming(1, {
             duration: remaining > 50 ? remaining : dur,
             easing: Easing.linear,
@@ -236,7 +253,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         });
     });
 
-    // ── nextStory / prevStory stored as refs too ──────────────────
     const nextStoryRef = useRef(() => { });
     const prevStoryRef = useRef(() => { });
 
@@ -244,7 +260,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         const idx = currentIdxRef.current;
         const total = filmsRef.current.length;
         cancelAnimation(progress);
-
         if (idx < total - 1) {
             const next = idx + 1;
             progress.value = 0;
@@ -261,7 +276,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     prevStoryRef.current = () => {
         const idx = currentIdxRef.current;
         cancelAnimation(progress);
-
         if (idx > 0) {
             const prev = idx - 1;
             progress.value = 0;
@@ -275,11 +289,9 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         }
     };
 
-    // Stable wrappers for JSX callbacks
     const nextStory = useCallback(() => nextStoryRef.current(), []);
     const prevStory = useCallback(() => prevStoryRef.current(), []);
 
-    // ── Visibility ─────────────────────────────────────────────────
     useEffect(() => {
         if (visible) {
             setCurrentIndex(initialIndex);
@@ -289,11 +301,9 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             setSheetVisible(false);
             cancelAnimation(progress);
             progress.value = 0;
-
             setTimeout(() => {
                 flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
             }, 30);
-
             const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
                 if (sheetVisible) { setSheetVisible(false); return true; }
                 onClose(); return true;
@@ -310,60 +320,42 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         }
     }, [visible, initialIndex]);
 
-    // Modal fade
     useEffect(() => {
         modalOpacity.value = withTiming(visible ? 1 : 0, { duration: 300 });
     }, [visible]);
 
-    // ── Start bar when media becomes ready ────────────────────────
     useEffect(() => {
         if (!visible || !isMediaReady || isPaused) return;
         startProgressRef.current(true);
     }, [isMediaReady, currentIndex, visible]);
 
-    // ── Pause / resume ─────────────────────────────────────────────
     useEffect(() => {
         if (!visible || !isMediaReadyRef.current) return;
-        if (isPaused) {
-            cancelAnimation(progress);
-        } else {
-            startProgressRef.current(false); // resume from current position
-        }
+        if (isPaused) { cancelAnimation(progress); }
+        else { startProgressRef.current(false); }
     }, [isPaused]);
 
-    // ── Sheet pause ────────────────────────────────────────────────
-    useEffect(() => {
-        setIsPaused(sheetVisible);
-    }, [sheetVisible]);
+    useEffect(() => { setIsPaused(sheetVisible); }, [sheetVisible]);
 
-    // ── Callbacks for FilmMedia ────────────────────────────────────
-    const onReady = useCallback(() => {
-        setIsMediaReady(true);
-    }, []);
+    const onReady = useCallback(() => setIsMediaReady(true), []);
 
     const onDuration = useCallback((ms: number) => {
         if (ms <= 0) return;
         durationRef.current = ms;
-        // restart with real video duration from 0
         cancelAnimation(progress);
         progress.value = 0;
         progress.value = withTiming(1, {
-            duration: ms,
-            easing: Easing.linear,
+            duration: ms, easing: Easing.linear,
         }, (finished) => {
             if (finished) runOnJS(nextStory)();
         });
     }, [nextStory]);
 
-    const onComplete = useCallback(() => {
-        nextStory();
-    }, [nextStory]);
+    const onComplete = useCallback(() => nextStory(), [nextStory]);
 
-    // ── Press handlers ─────────────────────────────────────────────
     const handlePressIn = useCallback(() => { cancelAnimation(progress); setIsPaused(true); }, []);
     const handlePressOut = useCallback(() => { setIsPaused(false); }, []);
 
-    // ── Swipe down ─────────────────────────────────────────────────
     const panGesture = Gesture.Pan()
         .onUpdate((e) => { if (e.translationY > 0) translateY.value = e.translationY; })
         .onEnd((e) => {
@@ -371,7 +363,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             else translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
         });
 
-    // ── Tap ────────────────────────────────────────────────────────
     const handleTap = useCallback((evt: any, index: number) => {
         if (sheetVisible) return;
         const x = evt.nativeEvent.pageX;
@@ -384,7 +375,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         else isPausedRef.current ? handlePressOut() : handlePressIn();
     }, [sheetVisible, nextStory, prevStory, handlePressIn, handlePressOut]);
 
-    // ── FlatList viewability ───────────────────────────────────────
     const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
         if (!viewableItems.length) return;
         const first = viewableItems[0];
@@ -397,7 +387,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         }
     }).current;
 
-    // ── Save ───────────────────────────────────────────────────────
     const handleSave = useCallback(async () => {
         const film = filmsRef.current[currentIdxRef.current];
         if (!film) return;
@@ -416,7 +405,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         finally { setIsSaving(false); }
     }, []);
 
-    // ── Delete ─────────────────────────────────────────────────────
     const handleDelete = useCallback(() => {
         const film = filmsRef.current[currentIdxRef.current];
         if (!film) return;
@@ -434,13 +422,11 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
                         }
                         const { error } = await supabase.from('films').delete().eq('id', film.id);
                         if (error) throw error;
-
                         const newFilms = filmsRef.current.filter(f => f.id !== film.id);
                         setFilms(newFilms);
                         onFilmDeletedRef.current?.(film.id);
                         setSheetVisible(false);
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
                         if (newFilms.length === 0) {
                             onCloseRef.current();
                         } else {
@@ -457,7 +443,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         ]);
     }, []);
 
-    // ── Animated styles ────────────────────────────────────────────
     const progressStyle = useAnimatedStyle(() => ({
         width: `${progress.value * 100}%`,
     }));
@@ -533,9 +518,6 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     );
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
     modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000', zIndex: 1000 },
     container: { flex: 1, backgroundColor: '#000' },
