@@ -222,7 +222,6 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, 
                         uri={film.uri}
                         type={isVideo ? 'video' : 'image'}
                         isPlaying={isActive && isVideo}
-                        accent={COLORS.primary}
                         resizeMode="cover"
                     />
                     <LinearGradient

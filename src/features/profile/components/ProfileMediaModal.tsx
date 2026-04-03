@@ -10,10 +10,12 @@ import {
     TouchableWithoutFeedback,
     ActivityIndicator
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Entypo } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { MediaItem } from '@/types/mediaTypes';
+import MediaOptionsBottomSheet from './MediaOptionsBottomSheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -200,11 +202,15 @@ interface ProfileMediaModalProps {
     mediaItems: MediaItem[];
     initialIndex: number;
     onClose: () => void;
+    isOwner?: boolean;
+    onDeleteSuccess?: (id: string) => void;
 }
 
-export default function ProfileMediaModal({ visible, mediaItems, initialIndex, onClose }: ProfileMediaModalProps) {
+export default function ProfileMediaModal({ visible, mediaItems, initialIndex, onClose, isOwner, onDeleteSuccess }: ProfileMediaModalProps) {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
+    const [isOptionsVisible, setIsOptionsVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         if (visible) setCurrentIndex(initialIndex);
@@ -232,6 +238,8 @@ export default function ProfileMediaModal({ visible, mediaItems, initialIndex, o
     });
 
     if (!visible) return null;
+
+    const currentMedia = mediaItems[currentIndex];
 
     return (
         <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
@@ -286,14 +294,31 @@ export default function ProfileMediaModal({ visible, mediaItems, initialIndex, o
                     }}
                 />
 
-                {/* Close Button Below Card */}
-                <View style={styles.closeContainer} pointerEvents="box-none">
+                {/* Bottom Actions Row below card */}
+                <View style={[styles.bottomActionsRow, { bottom: Math.max(30, insets.bottom + 10) }]} pointerEvents="box-none">
                     <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.8}>
                         <View style={styles.closeIconWrapper}>
                             <Ionicons name="close" size={28} color="#FFFFFF" />
                         </View>
                     </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.optionsButton} onPress={() => setIsOptionsVisible(true)} activeOpacity={0.7}>
+                        <Entypo name="dots-two-horizontal" size={28} color="#FFFFFF" />
+                    </TouchableOpacity>
                 </View>
+
+                {/* iPhone style Bottom Sheet for Save/Delete */}
+                <MediaOptionsBottomSheet
+                    isVisible={isOptionsVisible}
+                    onClose={() => setIsOptionsVisible(false)}
+                    mediaItem={currentMedia}
+                    isOwner={isOwner}
+                    onDeleteSuccess={(id) => {
+                        setIsOptionsVisible(false);
+                        onDeleteSuccess?.(id);
+                        onClose(); // Close the viewer if media is deleted
+                    }}
+                />
             </View>
         </Modal>
     );
@@ -336,14 +361,20 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
-    closeContainer: {
+    bottomActionsRow: {
         position: 'absolute',
-        bottom: 30, // move down slightly
         width: '100%',
+        flexDirection: 'row',
+        justifyContent: 'center',
         alignItems: 'center',
     },
     closeButton: {
         elevation: 30,
+    },
+    optionsButton: {
+        position: 'absolute',
+        right: 24,
+        padding: 8,
     },
     closeIconWrapper: {
         width: 60,

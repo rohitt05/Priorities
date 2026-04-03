@@ -359,6 +359,7 @@ function ProfileScreenContent() {
                     <FilmsInProfile
                         userUUID={currentUser.id}
                         dominantColor={currentUser.dominantColor}
+                        isOwner={isActuallyOwner}
                     />
                     <View style={styles.bottomPad} />
                 </Reanimated.View>

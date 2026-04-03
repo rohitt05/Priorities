@@ -245,4 +245,13 @@ export const filmService = {
         if (error) throw error;
         return data.signedUrl;
     },
+
+    // ── Delete a film ────────────────────────────────────────────────────────
+    deleteFilm: async (filmId: string): Promise<void> => {
+        const { error } = await supabase
+            .from('films')
+            .delete()
+            .eq('id', filmId);
+        if (error) throw error;
+    },
 };

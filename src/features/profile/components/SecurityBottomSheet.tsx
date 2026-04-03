@@ -7,27 +7,31 @@ import {
     Modal,
     TouchableWithoutFeedback,
     Dimensions,
-    Keyboard,
     Animated,
     PanResponder,
     Easing,
     Switch,
     Platform,
     TextInput,
-    ScrollView
+    ScrollView,
+    Alert,
+    ActivityIndicator
 } from 'react-native';
-import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '@/theme/theme';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { COLORS, FONTS } from '@/theme/theme';
 import { Link } from 'expo-router';
 import * as Contacts from 'expo-contacts';
 import * as SMS from 'expo-sms';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '@/types/userTypes';
 import { updateProfile } from '@/services/profileService';
-import { Alert, ActivityIndicator } from 'react-native';
+
 
 const { height } = Dimensions.get('window');
 const SHEET_HEIGHT = height * 0.8;
 const SWIPE_THRESHOLD = 120;
+const CONTACT_SYNC_KEY = 'priorities_contact_sync_enabled';
+
 
 const COUNTRIES = [
     { code: '+91', flag: '🇮🇳', name: 'India' },
@@ -40,11 +44,13 @@ const COUNTRIES = [
     { code: '+61', flag: '🇦🇺', name: 'Australia' },
 ];
 
+
 interface SecurityBottomSheetProps {
     isVisible: boolean;
     onClose: () => void;
     user: User | null;
 }
+
 
 const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetProps) => {
     const [password, setPassword] = useState('');
@@ -60,12 +66,26 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     const [isSaving, setIsSaving] = useState(false);
 
     const panY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+    const isScrolling = useRef(false);
+
+
+    // ── Load persisted contact sync state on mount ──────────────────────────
+    useEffect(() => {
+        AsyncStorage.getItem(CONTACT_SYNC_KEY).then((val) => {
+            if (val === 'true') {
+                setContactSync(true);
+                handleSyncContacts(true);
+            }
+        });
+    }, []);
+
 
     useEffect(() => {
         if (user?.phoneNumber) {
             setPhoneNumber(user.phoneNumber);
         }
     }, [user]);
+
 
     useEffect(() => {
         if (isVisible) {
@@ -78,6 +98,7 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         }
     }, [isVisible]);
 
+
     const handleClose = () => {
         Animated.timing(panY, {
             toValue: SHEET_HEIGHT,
@@ -89,10 +110,17 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         });
     };
 
+
     const panResponder = useRef(
         PanResponder.create({
-            onStartShouldSetPanResponder: () => true,
-            onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                return (
+                    !isScrolling.current &&
+                    gestureState.dy > 8 &&
+                    Math.abs(gestureState.dx) < Math.abs(gestureState.dy)
+                );
+            },
             onPanResponderMove: (_, gestureState) => {
                 if (gestureState.dy > 0) panY.setValue(gestureState.dy);
             },
@@ -114,8 +142,11 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         })
     ).current;
 
+
     const handleSyncContacts = async (syncing: boolean) => {
         setContactSync(syncing);
+        await AsyncStorage.setItem(CONTACT_SYNC_KEY, syncing ? 'true' : 'false');
+
         if (!syncing) {
             setContacts([]);
             return;
@@ -129,23 +160,28 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                     fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
                 });
                 if (data.length > 0) {
-                    // Filter contacts that have phone numbers
-                    const validContacts = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
-                    // Sort by name
-                    const sorted = validContacts.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                    setContacts(sorted.slice(0, 50)); // only first 50 for quick rendering
+                    const validContacts = data.filter(
+                        c => c.phoneNumbers && c.phoneNumbers.length > 0
+                    );
+                    const sorted = validContacts.sort(
+                        (a, b) => (a.name || '').localeCompare(b.name || '')
+                    );
+                    setContacts(sorted);
                 }
             } else {
                 Alert.alert('Permission denied', 'We need access to your contacts to connect with friends.');
                 setContactSync(false);
+                await AsyncStorage.setItem(CONTACT_SYNC_KEY, 'false');
             }
         } catch (err) {
             console.error('Failed to fetch contacts:', err);
             setContactSync(false);
+            await AsyncStorage.setItem(CONTACT_SYNC_KEY, 'false');
         } finally {
             setIsSyncing(false);
         }
     };
+
 
     const handleInvite = async (contact: Contacts.Contact) => {
         if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) return;
@@ -154,11 +190,15 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
         const isAvailable = await SMS.isAvailableAsync();
         if (isAvailable) {
-            await SMS.sendSMSAsync([number], `Hey! Join me on Priorities - the app for our circle. Download it here: https://priorities-app.com`);
+            await SMS.sendSMSAsync(
+                [number],
+                `Hey! Join me on Priorities - the app for our circle. Download it here: https://priorities-app.com`
+            );
         } else {
             Alert.alert('SMS unavailable', 'Your device does not support sending SMS.');
         }
     };
+
 
     const handleSaveAndDone = async () => {
         if (!user) return;
@@ -170,11 +210,12 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
             handleClose();
         } catch (err) {
             console.error('Failed to update phone number:', err);
-            handleClose(); // Close anyway, but log the error
+            handleClose();
         } finally {
             setIsSaving(false);
         }
     };
+
 
     const SecurityOption = ({
         icon,
@@ -203,6 +244,7 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         </View>
     );
 
+
     return (
         <Modal
             visible={isVisible}
@@ -226,10 +268,15 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                     ]}
                     {...panResponder.panHandlers}
                 >
+                    {/* ── Handle + Title ── */}
                     <View style={styles.header}>
                         <View style={styles.handleBar} />
                         <Text style={styles.title}>security & privacy</Text>
-                        <TouchableOpacity style={styles.doneButton} onPress={handleSaveAndDone} disabled={isSaving}>
+                        <TouchableOpacity
+                            style={styles.doneButton}
+                            onPress={handleSaveAndDone}
+                            disabled={isSaving}
+                        >
                             {isSaving ? (
                                 <ActivityIndicator size="small" color={COLORS.primary} />
                             ) : (
@@ -238,11 +285,18 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                         </TouchableOpacity>
                     </View>
 
+                    {/* ── Main scroll ── */}
                     <ScrollView
                         style={styles.content}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled={true}
+                        onScrollBeginDrag={() => { isScrolling.current = true; }}
+                        onScrollEndDrag={() => { isScrolling.current = false; }}
+                        onMomentumScrollBegin={() => { isScrolling.current = true; }}
+                        onMomentumScrollEnd={() => { isScrolling.current = false; }}
                     >
+                        {/* ── Account ── */}
                         <View style={styles.section}>
                             <Text style={styles.sectionHeader}>account</Text>
                             <View style={styles.card}>
@@ -314,9 +368,12 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                     </View>
                                 )}
                             </View>
-                            <Text style={styles.helperText}>your number is used for recovery and security alerts.</Text>
+                            <Text style={styles.helperText}>
+                                your number is used for recovery and security alerts.
+                            </Text>
                         </View>
 
+                        {/* ── Privacy ── */}
                         <View style={styles.section}>
                             <Text style={styles.sectionHeader}>privacy</Text>
                             <View style={styles.card}>
@@ -347,51 +404,86 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                 </Link>
                             </View>
                             <View style={styles.infoGroup}>
-                                <Text style={styles.infoText}>• sync contacts to find and connect with friends who are already here.</Text>
-                                <Text style={styles.infoText}>• when active, your profile won't appear in explore or search results.</Text>
+                                <Text style={styles.infoText}>
+                                    • sync contacts to find and connect with friends who are already here.
+                                </Text>
+                                <Text style={styles.infoText}>
+                                    • when active, your profile won't appear in explore or search results.
+                                </Text>
                             </View>
 
+                            {/* ── Contacts list ── */}
                             {contactSync && (
                                 <View style={styles.contactListSection}>
                                     <View style={styles.contactListHeader}>
                                         <Text style={styles.contactListTitle}>invite contacts</Text>
-                                        {isSyncing && <ActivityIndicator size="small" color={COLORS.primary} />}
+                                        {isSyncing && (
+                                            <ActivityIndicator size="small" color={COLORS.primary} />
+                                        )}
                                     </View>
 
                                     {contacts.length > 0 ? (
                                         <View style={styles.contactCard}>
-                                            {contacts.map((contact, idx) => (
-                                                <React.Fragment key={(contact as any).id || idx}>
-                                                    <View style={styles.contactRow}>
-                                                        <View style={styles.contactAvatar}>
-                                                            <Text style={styles.contactAvatarText}>
-                                                                {contact.name?.charAt(0).toUpperCase() || '?'}
-                                                            </Text>
+                                            <ScrollView
+                                                style={styles.contactsScrollView}
+                                                showsVerticalScrollIndicator={true}
+                                                nestedScrollEnabled={true}
+                                                scrollEventThrottle={16}
+                                                keyboardShouldPersistTaps="handled"
+                                                onScrollBeginDrag={() => { isScrolling.current = true; }}
+                                                onScrollEndDrag={() => { isScrolling.current = false; }}
+                                                onMomentumScrollBegin={() => { isScrolling.current = true; }}
+                                                onMomentumScrollEnd={() => { isScrolling.current = false; }}
+                                            >
+                                                {contacts.map((contact, idx) => (
+                                                    <React.Fragment key={(contact as any).id || idx}>
+                                                        <View style={styles.contactRow}>
+                                                            <View style={styles.contactAvatar}>
+                                                                <Text style={styles.contactAvatarText}>
+                                                                    {contact.name?.charAt(0).toUpperCase() || '?'}
+                                                                </Text>
+                                                            </View>
+                                                            <View style={styles.contactInfo}>
+                                                                <Text style={styles.contactName}>
+                                                                    {contact.name}
+                                                                </Text>
+                                                                <Text style={styles.contactPhone}>
+                                                                    {contact.phoneNumbers?.[0]?.number}
+                                                                </Text>
+                                                            </View>
+                                                            <TouchableOpacity
+                                                                style={styles.inviteButton}
+                                                                onPress={() => handleInvite(contact)}
+                                                            >
+                                                                <Text style={styles.inviteButtonText}>invite</Text>
+                                                            </TouchableOpacity>
                                                         </View>
-                                                        <View style={styles.contactInfo}>
-                                                            <Text style={styles.contactName}>{contact.name}</Text>
-                                                            <Text style={styles.contactPhone}>{contact.phoneNumbers?.[0]?.number}</Text>
-                                                        </View>
-                                                        <TouchableOpacity
-                                                            style={styles.inviteButton}
-                                                            onPress={() => handleInvite(contact)}
-                                                        >
-                                                            <Text style={styles.inviteButtonText}>invite</Text>
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                    {idx < contacts.length - 1 && <View style={[styles.divider, { marginLeft: 52 }]} />}
-                                                </React.Fragment>
-                                            ))}
+                                                        {idx < contacts.length - 1 && (
+                                                            <View style={[styles.divider, { marginLeft: 52 }]} />
+                                                        )}
+                                                    </React.Fragment>
+                                                ))}
+                                            </ScrollView>
                                         </View>
                                     ) : !isSyncing ? (
                                         <View style={styles.noContactsContainer}>
-                                            <MaterialIcons name="people-outline" size={32} color={COLORS.textSecondary} opacity={0.3} />
-                                            <Text style={styles.noContactsText}>no contacts found with phone numbers</Text>
+                                            <MaterialIcons
+                                                name="people-outline"
+                                                size={32}
+                                                color={COLORS.textSecondary}
+                                                opacity={0.3}
+                                            />
+                                            <Text style={styles.noContactsText}>
+                                                no contacts found with phone numbers
+                                            </Text>
                                         </View>
                                     ) : null}
                                 </View>
                             )}
                         </View>
+
+                        {/* Bottom padding */}
+                        <View style={{ height: 40 }} />
                     </ScrollView>
                 </Animated.View>
             </View>
@@ -399,7 +491,9 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     );
 };
 
+
 export default SecurityBottomSheet;
+
 
 const styles = StyleSheet.create({
     overlayContainer: {
@@ -411,11 +505,11 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
     },
     modalCard: {
-        backgroundColor: '#F8F7F2', // Solid off-white/beige ("darker white shade")
+        backgroundColor: '#F8F7F2',
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
         overflow: 'hidden',
-        shadowColor: "#000",
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: -4 },
         shadowOpacity: 0.1,
         shadowRadius: 12,
@@ -455,9 +549,6 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     section: {
-        marginBottom: 16,
-    },
-    optionContainer: {
         marginBottom: 16,
     },
     sectionHeader: {
@@ -619,6 +710,9 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'rgba(0,0,0,0.05)',
+    },
+    contactsScrollView: {
+        maxHeight: height * 0.4,
     },
     contactRow: {
         flexDirection: 'row',

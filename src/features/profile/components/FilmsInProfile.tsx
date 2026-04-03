@@ -19,9 +19,10 @@ interface FilmsInProfileProps {
     userUUID: string;       // creator_id UUID — NOT the @handle
     dominantColor: string;
     scrollY?: SharedValue<number>;
+    isOwner?: boolean;
 }
 
-export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, dominantColor, scrollY }) => {
+export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, dominantColor, scrollY, isOwner }) => {
     const [films, setFilms] = useState<FilmWithMeta[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewerVisible, setViewerVisible] = useState(false);
@@ -235,6 +236,10 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                 initialIndex={initialViewerIndex}
                 mediaItems={allMappedMediaParams}
                 onClose={() => setViewerVisible(false)}
+                isOwner={isOwner}
+                onDeleteSuccess={(id) => {
+                    setFilms(prev => prev.filter(f => f.id !== id));
+                }}
             />
         </View>
     );

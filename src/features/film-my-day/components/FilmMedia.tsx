@@ -1,8 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { SharedValue } from 'react-native-reanimated';
 
 interface FilmMediaProps {
     uri: string;
@@ -10,11 +9,9 @@ interface FilmMediaProps {
     style?: any;
     resizeMode?: 'cover' | 'contain';
     isPlaying?: boolean;
-    accent?: string;
     onReady?: () => void;
-    onDuration?: (duration: number) => void;
+    onDuration?: (durationMs: number) => void;
     onComplete?: () => void;
-    progress?: SharedValue<number>;
 }
 
 const FilmMedia: React.FC<FilmMediaProps> = ({
@@ -27,60 +24,71 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     onDuration,
     onComplete,
 }) => {
-    const isReadyReported = React.useRef(false);
-    const durationReported = React.useRef(false);
+    // Always keep latest callbacks in refs — never stale, never cause re-renders
+    const onReadyRef = useRef(onReady);
+    const onDurationRef = useRef(onDuration);
+    const onCompleteRef = useRef(onComplete);
+    onReadyRef.current = onReady;
+    onDurationRef.current = onDuration;
+    onCompleteRef.current = onComplete;
 
-    const player = useVideoPlayer(type === 'video' ? uri : null, (p) => {
+    const firedRef = useRef({ ready: false, duration: false });
+
+    const player = useVideoPlayer(uri, (p) => {
         p.loop = false;
         p.muted = false;
         p.staysActiveInBackground = false;
-        if (isPlaying) p.play();
     });
+
+    // Reset fired flags every time URI changes
+    useEffect(() => {
+        firedRef.current = { ready: false, duration: false };
+    }, [uri]);
 
     // Images: fire onReady immediately
     useEffect(() => {
-        if (type === 'image') {
-            onReady?.();
-        }
-    }, [type]);
+        if (type !== 'image') return;
+        onReadyRef.current?.();
+    }, [uri, type]);
 
-    // Videos: fire onReady + onDuration ONCE when readyToPlay
+    // Videos: listen to statusChange for ready + duration
     useEffect(() => {
         if (type !== 'video') return;
 
-        // Reset refs when uri changes (new video)
-        isReadyReported.current = false;
-        durationReported.current = false;
+        const statusSub = player.addListener('statusChange', ({ status }: { status: string }) => {
+            if (status === 'readyToPlay' && !firedRef.current.ready) {
+                firedRef.current.ready = true;
+                onReadyRef.current?.();
 
-        const statusSub = player.addListener('statusChange', (payload: any) => {
-            if (payload.status === 'readyToPlay' && !isReadyReported.current) {
-                isReadyReported.current = true;
-                onReady?.();
-                if (player.duration > 0 && !durationReported.current) {
-                    durationReported.current = true;
-                    onDuration?.(player.duration * 1000);
-                }
+                // Small delay to let player.duration settle
+                setTimeout(() => {
+                    const dur = player.duration;
+                    if (dur > 0 && !firedRef.current.duration) {
+                        firedRef.current.duration = true;
+                        onDurationRef.current?.(dur * 1000);
+                    }
+                }, 50);
             }
         });
 
-        return () => statusSub.remove();
-    }, [player, type, uri]);
-
-    // Play / pause
-    useEffect(() => {
-        if (type !== 'video') return;
-        if (isPlaying) player.play();
-        else player.pause();
-    }, [isPlaying, player, type]);
-
-    // Fire onComplete when video ends — this is the ONLY signal modal needs
-    useEffect(() => {
-        if (type !== 'video') return;
-        const completeSub = player.addListener('playToEnd', () => {
-            onComplete?.();
+        const endSub = player.addListener('playToEnd', () => {
+            onCompleteRef.current?.();
         });
-        return () => completeSub.remove();
-    }, [player, type, onComplete]);
+
+        return () => {
+            statusSub.remove();
+            endSub.remove();
+        };
+    }, [player, type]);
+
+    // Play / pause control
+    useEffect(() => {
+        if (type !== 'video') return;
+        try {
+            if (isPlaying) player.play();
+            else player.pause();
+        } catch (_) { }
+    }, [isPlaying, player, type]);
 
     if (type === 'video') {
         return (
@@ -90,6 +98,8 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
                     player={player}
                     contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
                     nativeControls={false}
+                    allowsFullscreen={false}
+                    allowsPictureInPicture={false}
                 />
             </View>
         );

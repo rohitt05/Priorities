@@ -19,6 +19,7 @@ import * as MediaLibrary from 'expo-media-library';
 import StoryTextOverlay, { StoryTextOverlayRef } from './StoryTextOverlay';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
+import { captureRef } from 'react-native-view-shot';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -47,6 +48,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const [duration, setDuration] = useState(0);
     const [isVideoReady, setIsVideoReady] = useState(false);
     const overlayRef = useRef<StoryTextOverlayRef>(null);
+    const mediaCardRef = useRef<View>(null);
     const [isEditingText, setIsEditingText] = useState(false);
 
     const isMountedRef = useRef(true);
@@ -131,6 +133,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const uploadFileToBucket = async (
         bucket: string,
         senderId: string,
+        finalMediaUri: string
     ): Promise<string | null> => {
         if (!capturedMedia) return null;
 
@@ -143,7 +146,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         // arrayBuffer() causes silent upload failures on RN
         const formData = new FormData();
         formData.append('file', {
-            uri: capturedMedia.uri,
+            uri: finalMediaUri,
             type: mimeType,
             name: fileName,
         } as any);
@@ -163,7 +166,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     // ─────────────────────────────────────────────────────────────
     // PATH A: PriorityList → send as a private message
     // ─────────────────────────────────────────────────────────────
-    const sendAsMessage = async (senderId: string) => {
+    const sendAsMessage = async (senderId: string, finalUri: string) => {
         if (!capturedMedia || !recipient) return;
 
         // Resolve receiver UUID
@@ -183,7 +186,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             receiverId = data.id;
         }
 
-        const fileName = await uploadFileToBucket('messages', senderId);
+        const fileName = await uploadFileToBucket('messages', senderId, finalUri);
         if (!fileName) {
             Alert.alert('Error', 'Failed to upload media. Please try again.');
             return;
@@ -224,7 +227,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     // ─────────────────────────────────────────────────────────────
     // PATH B: FilmMyDay tab → post to films table
     // ─────────────────────────────────────────────────────────────
-    const postAsFilm = async (senderId: string) => {
+    const postAsFilm = async (senderId: string, finalUri: string) => {
         if (!capturedMedia) return;
 
         const isVideoFile = capturedMedia.type === 'video';
@@ -265,7 +268,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                     resolve(false);
                 };
 
-                xhr.send({ uri: capturedMedia.uri, type: mimeType, name: fileName } as any);
+                xhr.send({ uri: finalUri, type: mimeType, name: fileName } as any);
             });
 
             if (!uploadSuccess) {
@@ -315,6 +318,23 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const handleSend = async () => {
         if (!capturedMedia) return;
         setIsSending(true);
+        let finalUri = capturedMedia.uri;
+        
+        // Render text overlay into image pixels for images
+        if (capturedMedia.type === 'image' && mediaCardRef.current && overlayRef.current?.getAllTextItems().length) {
+            try {
+                // Remove borders, ui states etc. by closing text editor
+                setIsEditingText(false);
+                const captureUri = await captureRef(mediaCardRef, {
+                    format: 'jpg',
+                    quality: 1,
+                });
+                finalUri = captureUri;
+            } catch (err) {
+                console.error("View shot error:", err);
+            }
+        }
+        
         try {
             const { data: sessionData } = await supabase.auth.getSession();
             const senderId = sessionData?.session?.user?.id;
@@ -323,9 +343,9 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 return;
             }
             if (isMessageMode) {
-                await sendAsMessage(senderId);
+                await sendAsMessage(senderId, finalUri);
             } else {
-                await postAsFilm(senderId);
+                await postAsFilm(senderId, finalUri);
             }
         } catch (err) {
             console.error('[MediaPreview] handleSend error:', err);
@@ -382,7 +402,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             <StatusBar barStyle="light-content" />
 
             <View style={[styles.cardContainer, { paddingTop: STATUS_BAR_HEIGHT + 10 }]}>
-                <View style={styles.mediaCard}>
+                <View style={styles.mediaCard} ref={mediaCardRef} collapsable={false}>
                     {isVideo ? (
                         <VideoView
                             style={[styles.mediaFill, mirrorStyle]}
