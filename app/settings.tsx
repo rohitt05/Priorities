@@ -8,7 +8,10 @@ import {
     Switch,
     Platform,
     Dimensions,
+    Alert,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as MailComposer from 'expo-mail-composer';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -152,6 +155,35 @@ function SettingsScreenContent() {
     const headerColorHeavy = currentUser ? hexToRgba(currentUser.dominantColor, 0.95) : 'rgba(240, 239, 233, 0.95)';
     const headerColorLight = currentUser ? hexToRgba(currentUser.dominantColor, 0) : 'rgba(240, 239, 233, 0)';
 
+    const handleOpenLink = async (url: string) => {
+        try {
+            await WebBrowser.openBrowserAsync(url);
+        } catch (err) {
+            console.error("Couldn't load page", err);
+            Alert.alert('Error', 'Unable to open browser.');
+        }
+    };
+
+    const handleSupportEmail = async () => {
+        try {
+            const isAvailable = await MailComposer.isAvailableAsync();
+            if (isAvailable) {
+                await MailComposer.composeAsync({
+                    recipients: ['prioritiesmatteryouknow@gmail.com'],
+                    subject: 'hi, folk help with this',
+                });
+            } else {
+                Alert.alert(
+                    'Email unavailable',
+                    'Please contact us directly at prioritiesmatteryouknow@gmail.com'
+                );
+            }
+        } catch (err) {
+            console.error("Couldn't open email composer", err);
+            Alert.alert('Error', 'Unable to open email app.');
+        }
+    };
+
     const HEADER_HEIGHT = 60 + insets.top; // Approximate height
 
     return (
@@ -208,13 +240,24 @@ function SettingsScreenContent() {
                         right="none"
                     />
                 </Section>
-
                 <Section title="support">
-                    <SettingsRow icon="help-circle-outline" label="help" onPress={() => { }} />
+                    <SettingsRow 
+                        icon="help-circle-outline" 
+                        label="help" 
+                        onPress={handleSupportEmail} 
+                    />
                     <View style={styles.divider} />
-                    <SettingsRow icon="document-text-outline" label="terms" onPress={() => { }} />
+                    <SettingsRow 
+                        icon="document-text-outline" 
+                        label="terms" 
+                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/terms')} 
+                    />
                     <View style={styles.divider} />
-                    <SettingsRow icon="shield-checkmark-outline" label="privacy" onPress={() => { }} />
+                    <SettingsRow 
+                        icon="shield-checkmark-outline" 
+                        label="privacy" 
+                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/privacy')} 
+                    />
                 </Section>
 
                 <TouchableOpacity activeOpacity={0.8} style={styles.dangerButton} onPress={async () => {

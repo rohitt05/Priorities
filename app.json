@@ -59,7 +59,9 @@
         }
       ],
       "expo-audio",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-mail-composer"
     ],
     "extra": {
       "eas": {

@@ -197,6 +197,34 @@ const ActiveVideoPlayer = ({ uri, thumbUri }: { uri: string, thumbUri?: string }
     );
 };
 
+const MediaPageItem = ({ item, isFocused, formatHeaderDate }: { item: MediaItem, isFocused: boolean, formatHeaderDate: (isoString?: string) => string }) => {
+    return (
+        <View style={styles.page}>
+            {/* Date / Day Above Card */}
+            <Text style={styles.headerText}>{formatHeaderDate(item.timestamp)}</Text>
+
+            {/* The Big Card */}
+            <View style={styles.card}>
+                {item.type === 'video' || item.type === 'voice' || item.type === 'voice_call' || item.type === 'video_call' ? (
+                    <CardVideoPlayer
+                        uri={item.uri || ''}
+                        thumbUri={item.thumbUri}
+                        isFocused={isFocused}
+                    />
+                ) : (
+                    <Image
+                        source={{ uri: item.uri }}
+                        style={styles.media}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
+                        transition={200}
+                    />
+                )}
+            </View>
+        </View>
+    );
+};
+
 interface ProfileMediaModalProps {
     visible: boolean;
     mediaItems: MediaItem[];
@@ -262,34 +290,15 @@ export default function ProfileMediaModal({ visible, mediaItems, initialIndex, o
                     onViewableItemsChanged={onViewableItemsChanged}
                     viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
                     windowSize={3}
-                    removeClippedSubviews={true}
                     renderItem={({ item, index }: { item: MediaItem, index: number }) => {
                         const isFocused = currentIndex === index;
 
                         return (
-                            <View style={styles.page}>
-                                {/* Date / Day Above Card */}
-                                <Text style={styles.headerText}>{formatHeaderDate(item.timestamp)}</Text>
-
-                                {/* The Big Card */}
-                                <View style={styles.card}>
-                                    {item.type === 'video' ? (
-                                        <CardVideoPlayer
-                                            uri={item.uri || ''}
-                                            thumbUri={item.thumbUri}
-                                            isFocused={isFocused}
-                                        />
-                                    ) : (
-                                        <Image
-                                            source={{ uri: item.uri }}
-                                            style={styles.media}
-                                            contentFit="cover"
-                                            cachePolicy="memory-disk"
-                                            transition={200}
-                                        />
-                                    )}
-                                </View>
-                            </View>
+                            <MediaPageItem
+                                item={item}
+                                isFocused={isFocused}
+                                formatHeaderDate={formatHeaderDate}
+                            />
                         );
                     }}
                 />

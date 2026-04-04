@@ -134,6 +134,7 @@ export type Database = {
                     thumbnail: string | null
                     type: string
                     uri: string
+                    overlay_data: Json | null
                 }
                 Insert: {
                     created_at?: string
@@ -144,6 +145,7 @@ export type Database = {
                     thumbnail?: string | null
                     type: string
                     uri: string
+                    overlay_data?: Json | null
                 }
                 Update: {
                     created_at?: string
@@ -154,6 +156,7 @@ export type Database = {
                     thumbnail?: string | null
                     type?: string
                     uri?: string
+                    overlay_data?: Json | null
                 }
                 Relationships: [
                     {
@@ -224,6 +227,7 @@ export type Database = {
                     type: string
                     uri: string | null
                     reaction: string | null
+                    overlay_data: Json | null
                 }
                 Insert: {
                     disappeared?: boolean
@@ -237,6 +241,7 @@ export type Database = {
                     type: string
                     uri?: string | null
                     reaction?: string | null
+                    overlay_data?: Json | null
                 }
                 Update: {
                     disappeared?: boolean
@@ -250,6 +255,7 @@ export type Database = {
                     type?: string
                     uri?: string | null
                     reaction?: string | null
+                    overlay_data?: Json | null
                 }
                 Relationships: [
                     {

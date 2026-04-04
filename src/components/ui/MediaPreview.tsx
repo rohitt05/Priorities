@@ -18,11 +18,8 @@ import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import * as MediaLibrary from 'expo-media-library';
-import StoryTextOverlay, { StoryTextOverlayRef, TextItemData } from './StoryTextOverlay';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
-import { captureRef } from 'react-native-view-shot';
-import { OverlayData } from './OverlayRenderer';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -50,12 +47,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isVideoReady, setIsVideoReady] = useState(false);
-    const overlayRef = useRef<StoryTextOverlayRef>(null);
     const mediaCardRef = useRef<View>(null);
-    const [isEditingText, setIsEditingText] = useState(false);
-
-    // Track card layout for normalization
-    const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
 
     const isMountedRef = useRef(true);
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -128,36 +120,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     }, [onDiscard]);
 
     const handleCardLayout = (e: LayoutChangeEvent) => {
-        const { width, height } = e.nativeEvent.layout;
-        setCardLayout({ width, height });
-    };
-
-    /**
-     * Build OverlayData from current text items.
-     * x/y are normalized: store as (raw_px / cardDimension).
-     * This makes them resolution-independent for any viewer's screen.
-     */
-    const buildOverlayData = (items: TextItemData[]): OverlayData | null => {
-        if (!items.length || !cardLayout) return null;
-        return {
-            version: 1,
-            cardWidth: cardLayout.width,
-            cardHeight: cardLayout.height,
-            items: items.map((item) => ({
-                id: item.id,
-                text: item.text,
-                alignment: item.alignment,
-                scale: item.scale,
-                rotation: item.rotation,
-                // Normalize: divide raw px by card size so it's 0..1
-                // OverlayRenderer multiplies back: item.x * cardWidth * scaleX
-                x: item.x / cardLayout.width,
-                y: item.y / cardLayout.height,
-                hasBackground: item.hasBackground,
-                color: item.color,
-                isBold: item.isBold,
-            })),
-        };
+        // We keep this for layout if needed, though we removed buildOverlayData
     };
 
     const uploadFileToBucket = async (
@@ -186,14 +149,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         return fileName;
     };
 
-    // ── PATH A: send as private message ──────────────────────────
-    const sendAsMessage = async (
-        senderId: string,
-        finalUri: string,
-        overlayData: OverlayData | null
-    ) => {
+    const sendAsMessage = async (senderId: string, finalUri: string) => {
         if (!capturedMedia || !recipient) return;
-
         let receiverId: string | null = null;
         if (recipientId) {
             receiverId = recipientId;
@@ -228,7 +185,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             uri: signedData.signedUrl,
             duration_sec: isVideoFile ? Math.round(duration) || null : null,
             disappeared: false,
-            overlay_data: overlayData ?? null,   // ✅
+            overlay_data: null,
         });
         if (insertError) { Alert.alert('Error', 'Failed to send message. Please try again.'); return; }
 
@@ -236,12 +193,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         onDiscard();
     };
 
-    // ── PATH B: post as film ──────────────────────────────────────
-    const postAsFilm = async (
-        senderId: string,
-        finalUri: string,
-        overlayData: OverlayData | null
-    ) => {
+    const postAsFilm = async (senderId: string, finalUri: string) => {
         if (!capturedMedia) return;
         const isVideoFile = capturedMedia.type === 'video';
         const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
@@ -278,7 +230,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 creator_id: senderId,
                 type: isVideoFile ? 'video' : 'image',
                 uri: signedData.signedUrl,
-                overlay_data: overlayData ?? null,   // ✅
+                overlay_data: null,
             });
             if (insertError) { Alert.alert('Error', insertError.message); return; }
 
@@ -289,25 +241,10 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         }
     };
 
-    // ── MAIN HANDLER ─────────────────────────────────────────────
     const handleSend = async () => {
         if (!capturedMedia) return;
         setIsSending(true);
-
-        const textItems = overlayRef.current?.getAllTextItems() ?? [];
-        const overlayData = buildOverlayData(textItems);
-
         let finalUri = capturedMedia.uri;
-        // For images with text overlays: burn them in via view-shot
-        if (capturedMedia.type === 'image' && mediaCardRef.current && textItems.length) {
-            try {
-                setIsEditingText(false);
-                const captureUri = await captureRef(mediaCardRef, { format: 'jpg', quality: 1 });
-                finalUri = captureUri;
-            } catch (err) {
-                console.error('View shot error:', err);
-            }
-        }
 
         try {
             const { data: sessionData } = await supabase.auth.getSession();
@@ -315,9 +252,9 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             if (!senderId) { Alert.alert('Error', 'You must be logged in.'); return; }
 
             if (isMessageMode) {
-                await sendAsMessage(senderId, finalUri, overlayData);
+                await sendAsMessage(senderId, finalUri);
             } else {
-                await postAsFilm(senderId, finalUri, overlayData);
+                await postAsFilm(senderId, finalUri);
             }
         } catch (err) {
             console.error('[MediaPreview] handleSend error:', err);
@@ -395,17 +332,9 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                             resizeMode="cover"
                         />
                     )}
-
-                    <StoryTextOverlay
-                        ref={overlayRef}
-                        onOpenEditor={() => setIsEditingText(true)}
-                        onCloseEditor={() => setIsEditingText(false)}
-                        mediaUri={capturedMedia.uri}
-                        mediaType={capturedMedia.type}
-                    />
                 </View>
 
-                {isVideo && isVideoReady && !isEditingText && (
+                {isVideo && isVideoReady && (
                     <View style={styles.videoControlsOverlay} pointerEvents="box-none">
                         <TouchableOpacity
                             style={styles.muteButton}
@@ -427,54 +356,44 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 )}
             </View>
 
-            {!isEditingText && (
-                <View style={styles.bottomControls}>
-                    <View style={styles.buttonsRow}>
-                        <TouchableOpacity style={styles.deleteButton} onPress={onDiscard} activeOpacity={0.7}>
-                            <Feather name="trash-2" size={24} color="#FF4040" />
+            <View style={styles.bottomControls}>
+                <View style={styles.buttonsRow}>
+                    <TouchableOpacity style={styles.deleteButton} onPress={onDiscard} activeOpacity={0.7}>
+                        <Feather name="trash-2" size={24} color="#FF4040" />
+                    </TouchableOpacity>
+
+                    <View style={styles.rightGroup}>
+                        <TouchableOpacity
+                            style={styles.iconButton}
+                            onPress={handleDownload}
+                            activeOpacity={0.7}
+                            disabled={isSaving}
+                        >
+                            {isSaving
+                                ? <ActivityIndicator size="small" color="#FFF" />
+                                : <Ionicons name="download-outline" size={24} color="#FFF" />
+                            }
                         </TouchableOpacity>
 
-                        <View style={styles.rightGroup}>
-                            <TouchableOpacity
-                                style={styles.editButton}
-                                onPress={() => overlayRef.current?.startEditing()}
-                                activeOpacity={0.7}
-                            >
-                                <MaterialCommunityIcons name="format-text" size={24} color="#FFF" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={styles.iconButton}
-                                onPress={handleDownload}
-                                activeOpacity={0.7}
-                                disabled={isSaving}
-                            >
-                                {isSaving
-                                    ? <ActivityIndicator size="small" color="#FFF" />
-                                    : <Ionicons name="download-outline" size={24} color="#FFF" />
-                                }
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[styles.capsuleButton, isSending && { opacity: 0.6 }]}
-                                onPress={handleSend}
-                                activeOpacity={0.7}
-                                disabled={isSending}
-                            >
-                                {isSending
-                                    ? <ActivityIndicator size="small" color="#FFF" />
-                                    : <Text style={styles.capsuleButtonText}>
-                                        {isMessageMode
-                                            ? `Send ${recipient!.split(' ')[0]}`
-                                            : '+ Film of the Day'
-                                        }
-                                    </Text>
-                                }
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                            style={[styles.capsuleButton, isSending && { opacity: 0.6 }]}
+                            onPress={handleSend}
+                            activeOpacity={0.7}
+                            disabled={isSending}
+                        >
+                            {isSending
+                                ? <ActivityIndicator size="small" color="#FFF" />
+                                : <Text style={styles.capsuleButtonText}>
+                                    {isMessageMode
+                                        ? `Send ${recipient!.split(' ')[0]}`
+                                        : '+ Film of the Day'
+                                    }
+                                </Text>
+                            }
+                        </TouchableOpacity>
                     </View>
                 </View>
-            )}
+            </View>
         </View>
     );
 };

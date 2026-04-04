@@ -14,8 +14,8 @@ import {
     Platform,
     TextInput,
     ScrollView,
-    Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    Alert
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
@@ -64,6 +64,7 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [visibleCount, setVisibleCount] = useState(50);
 
     const panY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
     const isScrolling = useRef(false);
@@ -82,7 +83,16 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
     useEffect(() => {
         if (user?.phoneNumber) {
-            setPhoneNumber(user.phoneNumber);
+            // Check if phone number starts with any of our country codes
+            const matchedCountry = COUNTRIES.find(c => user.phoneNumber?.startsWith(c.code));
+
+            if (matchedCountry) {
+                setCountryCode(matchedCountry.code);
+                setCountryFlag(matchedCountry.flag);
+                setPhoneNumber(user.phoneNumber.slice(matchedCountry.code.length));
+            } else {
+                setPhoneNumber(user.phoneNumber);
+            }
         }
     }, [user]);
 
@@ -115,9 +125,10 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         PanResponder.create({
             onStartShouldSetPanResponder: () => false,
             onMoveShouldSetPanResponder: (_, gestureState) => {
+                // Only capture if we're not scrolling and move is significant (downward)
                 return (
                     !isScrolling.current &&
-                    gestureState.dy > 8 &&
+                    gestureState.dy > 20 &&
                     Math.abs(gestureState.dx) < Math.abs(gestureState.dy)
                 );
             },
@@ -149,10 +160,12 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
         if (!syncing) {
             setContacts([]);
+            setVisibleCount(50);
             return;
         }
 
         setIsSyncing(true);
+        setVisibleCount(50);
         try {
             const { status } = await Contacts.requestPermissionsAsync();
             if (status === 'granted') {
@@ -202,15 +215,28 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
     const handleSaveAndDone = async () => {
         if (!user) return;
+
+        // Clean phone number (leave only digits if we want, or keep as is)
+        const cleanedNumber = phoneNumber.replace(/\D/g, '');
+
+        if (cleanedNumber === '' && user.phoneNumber === null) {
+            handleClose();
+            return;
+        }
+
         setIsSaving(true);
         try {
+            // Concatenate country code with the cleaned phone number
+            const fullNumber = cleanedNumber ? `${countryCode}${cleanedNumber}` : null;
+
             await updateProfile(user.id, {
-                phone_number: phoneNumber ? (countryCode + phoneNumber) : null,
+                phone_number: fullNumber,
             });
+
             handleClose();
         } catch (err) {
             console.error('Failed to update phone number:', err);
-            handleClose();
+            Alert.alert('Error', 'Failed to save phone number. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -435,7 +461,7 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                                 onMomentumScrollBegin={() => { isScrolling.current = true; }}
                                                 onMomentumScrollEnd={() => { isScrolling.current = false; }}
                                             >
-                                                {contacts.map((contact, idx) => (
+                                                {contacts.slice(0, visibleCount).map((contact, idx) => (
                                                     <React.Fragment key={(contact as any).id || idx}>
                                                         <View style={styles.contactRow}>
                                                             <View style={styles.contactAvatar}>
@@ -458,11 +484,23 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                                                 <Text style={styles.inviteButtonText}>invite</Text>
                                                             </TouchableOpacity>
                                                         </View>
-                                                        {idx < contacts.length - 1 && (
-                                                            <View style={[styles.divider, { marginLeft: 52 }]} />
+                                                        {idx < Math.min(contacts.length, visibleCount) - 1 && (
+                                                            <View style={[styles.divider, { marginLeft: 64 }]} />
                                                         )}
                                                     </React.Fragment>
                                                 ))}
+
+                                                {/* ── Load More Button ── */}
+                                                {visibleCount < contacts.length && (
+                                                    <TouchableOpacity
+                                                        style={styles.loadMoreButton}
+                                                        onPress={() => setVisibleCount(prev => prev + 50)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={styles.loadMoreText}>load more contacts ({contacts.length - visibleCount} left)</Text>
+                                                        <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
+                                                    </TouchableOpacity>
+                                                )}
                                             </ScrollView>
                                         </View>
                                     ) : !isSyncing ? (
@@ -778,5 +816,20 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.regular,
         color: COLORS.textSecondary,
         textAlign: 'center',
+    },
+    loadMoreButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(0,0,0,0.05)',
+        gap: 8,
+    },
+    loadMoreText: {
+        fontSize: 14,
+        fontFamily: FONTS.bold,
+        color: COLORS.primary,
+        textTransform: 'lowercase',
     },
 });

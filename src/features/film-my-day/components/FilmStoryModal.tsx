@@ -1,14 +1,13 @@
 // src/features/film-my-day/components/FilmStoryModal.tsx
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-    StyleSheet, View, TouchableOpacity,
-    Dimensions, Pressable, Platform, FlatList,
-    ViewToken, BackHandler, Text, Alert, LayoutChangeEvent,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Entypo } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+    StyleSheet, View, TouchableOpacity, Pressable, FlatList,
+    ViewToken, BackHandler, Text, Alert, LayoutChangeEvent, useWindowDimensions
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Entypo } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -18,21 +17,18 @@ import Animated, {
     runOnJS,
     interpolate,
     withSpring,
-} from 'react-native-reanimated';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { Film as UserFilm } from '@/types/domain';
-import { FONTS } from '@/theme/theme';
-import FilmMedia from './FilmMedia';
-import * as Haptics from 'expo-haptics';
-import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system/legacy';
-import { useFilmLike } from '@/hooks/useFilmLike';
-import { supabase } from '@/lib/supabase';
-import OverlayRenderer, { OverlayData } from '@/components/ui/OverlayRenderer';
+} from "react-native-reanimated";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import { Film as UserFilm } from "@/types/domain";
+import { FONTS } from "@/theme/theme";
+import FilmMedia from "./FilmMedia";
+import * as Haptics from "expo-haptics";
+import * as MediaLibrary from "expo-media-library";
+import * as FileSystem from "expo-file-system/legacy";
+import { useFilmLike } from "@/hooks/useFilmLike";
+import { supabase } from "@/lib/supabase";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_DURATION = 5000;
-const SNAP_INTERVAL = SCREEN_WIDTH;
 
 interface FilmStoryModalProps {
     films: UserFilm[];
@@ -67,36 +63,65 @@ const OwnerBottomSheet: React.FC<OwnerSheetProps> = ({
     useEffect(() => {
         if (visible) {
             bgOpacity.value = withTiming(1, { duration: 240 });
-            translateY.value = withTiming(0, { duration: 280, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+            translateY.value = withTiming(0, {
+                duration: 280,
+                easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+            });
         } else {
             bgOpacity.value = withTiming(0, { duration: 200 });
-            translateY.value = withTiming(SHEET_HEIGHT, { duration: 240, easing: Easing.bezier(0.4, 0, 1, 1) });
+            translateY.value = withTiming(SHEET_HEIGHT, {
+                duration: 240,
+                easing: Easing.bezier(0.4, 0, 1, 1),
+            });
         }
     }, [visible]);
 
-    const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
+    const sheetStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: translateY.value }],
+    }));
     const overlayStyle = useAnimatedStyle(() => ({
         opacity: bgOpacity.value,
-        pointerEvents: visible ? 'auto' : 'none',
+        pointerEvents: visible ? "auto" : "none",
     } as any));
 
     if (!film) return null;
     const busy = isSaving || isDeleting;
 
     return (
-        <Animated.View style={[StyleSheet.absoluteFill, styles.sheetOverlay, overlayStyle]}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={busy ? undefined : onClose} />
-            <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 28) }, sheetStyle]}>
+        <Animated.View
+            style={[StyleSheet.absoluteFill, styles.sheetOverlay, overlayStyle]}
+        >
+            <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={busy ? undefined : onClose}
+            />
+            <Animated.View
+                style={[
+                    styles.sheet,
+                    { paddingBottom: Math.max(insets.bottom, 28) },
+                    sheetStyle,
+                ]}
+            >
                 <View style={styles.sheetHandle} />
-                <TouchableOpacity style={[styles.sheetRow, busy && styles.sheetRowDisabled]}
-                    onPress={onSave} disabled={busy} activeOpacity={0.55}>
-                    <Text style={styles.sheetRowText}>{isSaving ? 'Saving…' : 'Save to Camera Roll'}</Text>
+                <TouchableOpacity
+                    style={[styles.sheetRow, busy && styles.sheetRowDisabled]}
+                    onPress={onSave}
+                    disabled={busy}
+                    activeOpacity={0.55}
+                >
+                    <Text style={styles.sheetRowText}>
+                        {isSaving ? "Saving…" : "Save to Camera Roll"}
+                    </Text>
                 </TouchableOpacity>
                 <View style={styles.sheetSep} />
-                <TouchableOpacity style={[styles.sheetRow, busy && styles.sheetRowDisabled]}
-                    onPress={onDelete} disabled={busy} activeOpacity={0.55}>
+                <TouchableOpacity
+                    style={[styles.sheetRow, busy && styles.sheetRowDisabled]}
+                    onPress={onDelete}
+                    disabled={busy}
+                    activeOpacity={0.55}
+                >
                     <Text style={[styles.sheetRowText, styles.sheetRowDanger]}>
-                        {isDeleting ? 'Deleting…' : 'Delete'}
+                        {isDeleting ? "Deleting…" : "Delete"}
                     </Text>
                 </TouchableOpacity>
             </Animated.View>
@@ -113,78 +138,92 @@ const StoryItem = React.memo(({
     handlePressIn, handlePressOut, handleTap,
     onDuration, onReady, onComplete,
     isOwner, onDotsPress,
+    screenWidth, screenHeight
 }: any) => {
     const isActive = index === currentIndex;
     const { isLiked, toggleLike } = useFilmLike(item.id, item.creatorId);
 
-    // Measure card so OverlayRenderer can scale correctly
+    // Track actual rendered card size
     const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
-    const handleCardLayout = (e: LayoutChangeEvent) => {
+    const handleCardLayout = useCallback((e: LayoutChangeEvent) => {
         const { width, height } = e.nativeEvent.layout;
-        setCardLayout({ width, height });
-    };
-
-    const overlayData: OverlayData | null = item.overlay_data ?? null;
+        setCardLayout(prev =>
+            prev?.width === width && prev?.height === height ? prev : { width, height }
+        );
+    }, []);
 
     return (
-        <View style={styles.cardWrapper}>
+        <View style={[styles.cardWrapper, { width: screenWidth, height: screenHeight }]}>
             <Pressable
                 onPressIn={isActive ? handlePressIn : undefined}
                 onPressOut={isActive ? handlePressOut : undefined}
                 onPress={(e) => handleTap(e, index)}
                 style={styles.card}
             >
-                {/* Wrapper captures card dimensions */}
+                {/* absoluteFill wrapper measures the real card size */}
                 <View style={StyleSheet.absoluteFill} onLayout={handleCardLayout}>
                     <FilmMedia
                         uri={item.uri}
-                        type={item.type as 'image' | 'video'}
+                        thumbnail={item.thumbnail}
+                        type={item.type as "image" | "video"}
+                        isActive={isActive}
                         isPlaying={visible && !isPaused && isActive}
+                        isMuted={!visible || isPaused || !isActive}
                         resizeMode="cover"
                         onReady={isActive ? onReady : undefined}
                         onDuration={isActive ? onDuration : undefined}
                         onComplete={isActive ? onComplete : undefined}
                     />
-
-                    {/* ✅ Replay text overlays — works for both image and video */}
-                    {cardLayout && overlayData && (
-                        <OverlayRenderer
-                            overlayData={overlayData}
-                            containerWidth={cardLayout.width}
-                            containerHeight={cardLayout.height}
-                        />
-                    )}
                 </View>
 
                 {isActive && (
                     <>
                         <View style={styles.progressContainer}>
                             <View style={styles.progressBarBackground}>
-                                <Animated.View style={[styles.progressBarForeground, progressStyle]} />
+                                <Animated.View
+                                    style={[styles.progressBarForeground, progressStyle]}
+                                />
                             </View>
                         </View>
 
                         <LinearGradient
-                            colors={['transparent', 'rgba(0,0,0,0.08)', 'rgba(0,0,0,0.22)', 'rgba(0,0,0,0.48)']}
-                            style={[styles.overlayBottom, { paddingBottom: Math.max(insets.bottom, 20) }]}
+                            colors={[
+                                "transparent",
+                                "rgba(0,0,0,0.08)",
+                                "rgba(0,0,0,0.22)",
+                                "rgba(0,0,0,0.48)",
+                            ]}
+                            style={[
+                                styles.overlayBottom,
+                                { paddingBottom: Math.max(insets.bottom, 20) },
+                            ]}
                         >
                             {isOwner ? (
                                 <TouchableOpacity
-                                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onDotsPress(); }}
-                                    style={styles.actionButton} activeOpacity={0.7}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        onDotsPress();
+                                    }}
+                                    style={styles.actionButton}
+                                    activeOpacity={0.7}
                                     hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                                 >
                                     <Entypo name="dots-two-horizontal" size={26} color="#FFF" />
                                 </TouchableOpacity>
                             ) : (
                                 <TouchableOpacity
-                                    onPress={() => { toggleLike(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                                    style={styles.actionButton} activeOpacity={0.7}
+                                    onPress={() => {
+                                        toggleLike();
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    }}
+                                    style={styles.actionButton}
+                                    activeOpacity={0.7}
                                     hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
                                 >
                                     <Ionicons
-                                        name={isLiked ? 'heart' : 'heart-outline'}
-                                        size={26} color={isLiked ? '#FF3B30' : '#FFF'}
+                                        name={isLiked ? "heart" : "heart-outline"}
+                                        size={26}
+                                        color={isLiked ? "#FF3B30" : "#FFF"}
                                     />
                                 </TouchableOpacity>
                             )}
@@ -207,6 +246,7 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     isOwner = false,
     onFilmDeleted,
 }) => {
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const insets = useSafeAreaInsets();
 
     const [films, setFilms] = useState(initialFilms);
@@ -216,6 +256,7 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     const [sheetVisible, setSheetVisible] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [shouldRender, setShouldRender] = useState(visible);
 
     const progress = useSharedValue(0);
     const translateY = useSharedValue(0);
@@ -302,9 +343,11 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             cancelAnimation(progress);
             progress.value = 0;
             setTimeout(() => {
-                flatListRef.current?.scrollToIndex({ index: initialIndex, animated: false });
+                flatListRef.current?.scrollToIndex({
+                    index: initialIndex, animated: false,
+                });
             }, 30);
-            const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+            const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
                 if (sheetVisible) { setSheetVisible(false); return true; }
                 onClose(); return true;
             });
@@ -321,7 +364,14 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
     }, [visible, initialIndex]);
 
     useEffect(() => {
-        modalOpacity.value = withTiming(visible ? 1 : 0, { duration: 300 });
+        if (visible) {
+            setShouldRender(true);
+            modalOpacity.value = withTiming(1, { duration: 300 });
+        } else {
+            modalOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
+                if (finished) runOnJS(setShouldRender)(false);
+            });
+        }
     }, [visible]);
 
     useEffect(() => {
@@ -345,7 +395,8 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         cancelAnimation(progress);
         progress.value = 0;
         progress.value = withTiming(1, {
-            duration: ms, easing: Easing.linear,
+            duration: ms,
+            easing: Easing.linear,
         }, (finished) => {
             if (finished) runOnJS(nextStory)();
         });
@@ -353,11 +404,16 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
 
     const onComplete = useCallback(() => nextStory(), [nextStory]);
 
-    const handlePressIn = useCallback(() => { cancelAnimation(progress); setIsPaused(true); }, []);
+    const handlePressIn = useCallback(() => {
+        cancelAnimation(progress);
+        setIsPaused(true);
+    }, []);
     const handlePressOut = useCallback(() => { setIsPaused(false); }, []);
 
     const panGesture = Gesture.Pan()
-        .onUpdate((e) => { if (e.translationY > 0) translateY.value = e.translationY; })
+        .onUpdate((e) => {
+            if (e.translationY > 0) translateY.value = e.translationY;
+        })
         .onEnd((e) => {
             if (e.translationY > 150 || e.velocityY > 1000) runOnJS(onClose)();
             else translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
@@ -370,12 +426,14 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
             flatListRef.current?.scrollToIndex({ index, animated: true });
             return;
         }
-        if (x < SCREEN_WIDTH * 0.35) prevStory();
-        else if (x > SCREEN_WIDTH * 0.65) nextStory();
+        if (x < screenWidth * 0.35) prevStory();
+        else if (x > screenWidth * 0.65) nextStory();
         else isPausedRef.current ? handlePressOut() : handlePressIn();
-    }, [sheetVisible, nextStory, prevStory, handlePressIn, handlePressOut]);
+    }, [sheetVisible, nextStory, prevStory, handlePressIn, handlePressOut, screenWidth]);
 
-    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const onViewableItemsChanged = useRef(({
+        viewableItems,
+    }: { viewableItems: ViewToken[] }) => {
         if (!viewableItems.length) return;
         const first = viewableItems[0];
         if (first.index !== null && first.index !== currentIdxRef.current) {
@@ -393,52 +451,95 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         setIsSaving(true);
         try {
             const { status } = await MediaLibrary.requestPermissionsAsync();
-            if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access in Settings.'); return; }
-            const ext = film.type === 'video' ? 'mp4' : 'jpg';
+            if (status !== "granted") {
+                Alert.alert("Permission needed", "Allow photo library access in Settings.");
+                return;
+            }
+            const ext = film.type === "video" ? "mp4" : "jpg";
             const localUri = `${FileSystem.cacheDirectory}film_${Date.now()}.${ext}`;
             const dl = await FileSystem.downloadAsync(film.uri, localUri);
             await MediaLibrary.saveToLibraryAsync(dl.uri);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setSheetVisible(false);
-            Alert.alert('Saved', `${film.type === 'video' ? 'Video' : 'Photo'} saved to your camera roll.`);
-        } catch { Alert.alert('Error', 'Could not save. Please try again.'); }
-        finally { setIsSaving(false); }
+            Alert.alert(
+                "Saved",
+                `${film.type === "video" ? "Video" : "Photo"} saved to your camera roll.`
+            );
+        } catch {
+            Alert.alert("Error", "Could not save. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
     }, []);
 
     const handleDelete = useCallback(() => {
         const film = filmsRef.current[currentIdxRef.current];
         if (!film) return;
-        Alert.alert('Delete this film?', 'This will permanently remove it.', [
-            { text: 'Cancel', style: 'cancel' },
+        Alert.alert("Delete this film?", "This will permanently remove it.", [
+            { text: "Cancel", style: "cancel" },
             {
-                text: 'Delete', style: 'destructive', onPress: async () => {
+                text: "Delete",
+                style: "destructive",
+                onPress: async () => {
                     setIsDeleting(true);
                     try {
-                        const m = film.uri.match(/\/storage\/v1\/object\/sign\/films\/(.+?)(\?|$)/);
-                        if (m) await supabase.storage.from('films').remove([decodeURIComponent(m[1])]);
-                        if (film.thumbnail) {
-                            const t = film.thumbnail.match(/\/storage\/v1\/object\/sign\/films\/(.+?)(\?|$)/);
-                            if (t) await supabase.storage.from('films').remove([decodeURIComponent(t[1])]);
+                        const m = film.uri.match(
+                            /\/storage\/v1\/object\/sign\/films\/(.+?)(\?|$)/
+                        );
+                        if (m) {
+                            await supabase.storage
+                                .from("films")
+                                .remove([decodeURIComponent(m[1])]);
                         }
-                        const { error } = await supabase.from('films').delete().eq('id', film.id);
+                        if (film.thumbnail) {
+                            const t = film.thumbnail.match(
+                                /\/storage\/v1\/object\/sign\/films\/(.+?)(\?|$)/
+                            );
+                            if (t) {
+                                await supabase.storage
+                                    .from("films")
+                                    .remove([decodeURIComponent(t[1])]);
+                            }
+                        }
+                        const { error } = await supabase
+                            .from("films")
+                            .delete()
+                            .eq("id", film.id);
                         if (error) throw error;
-                        const newFilms = filmsRef.current.filter(f => f.id !== film.id);
+
+                        const newFilms = filmsRef.current.filter((f) => f.id !== film.id);
                         setFilms(newFilms);
                         onFilmDeletedRef.current?.(film.id);
                         setSheetVisible(false);
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
                         if (newFilms.length === 0) {
                             onCloseRef.current();
                         } else {
-                            const nextIdx = Math.min(currentIdxRef.current, newFilms.length - 1);
+                            const nextIdx = Math.min(
+                                currentIdxRef.current,
+                                newFilms.length - 1
+                            );
                             cancelAnimation(progress);
-                            progress.value = 0; durationRef.current = IMAGE_DURATION;
-                            setIsMediaReady(false); setCurrentIndex(nextIdx);
-                            setTimeout(() => flatListRef.current?.scrollToIndex({ index: nextIdx, animated: false }), 50);
+                            progress.value = 0;
+                            durationRef.current = IMAGE_DURATION;
+                            setIsMediaReady(false);
+                            setCurrentIndex(nextIdx);
+                            setTimeout(
+                                () =>
+                                    flatListRef.current?.scrollToIndex({
+                                        index: nextIdx,
+                                        animated: false,
+                                    }),
+                                50
+                            );
                         }
-                    } catch { Alert.alert('Error', 'Could not delete. Please try again.'); }
-                    finally { setIsDeleting(false); }
-                }
+                    } catch {
+                        Alert.alert("Error", "Could not delete. Please try again.");
+                    } finally {
+                        setIsDeleting(false);
+                    }
+                },
             },
         ]);
     }, []);
@@ -455,32 +556,43 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
         ],
     }));
 
-    const renderItem = useCallback(({ item, index }: { item: UserFilm; index: number }) => (
-        <StoryItem
-            item={item}
-            index={index}
-            currentIndex={currentIndex}
-            visible={visible}
-            isPaused={isPaused}
-            progressStyle={progressStyle}
-            insets={insets}
-            handlePressIn={handlePressIn}
-            handlePressOut={handlePressOut}
-            handleTap={handleTap}
-            onReady={onReady}
-            onDuration={onDuration}
-            onComplete={onComplete}
-            isOwner={isOwner}
-            onDotsPress={() => setSheetVisible(true)}
-        />
-    ), [currentIndex, visible, isPaused, progressStyle]);
+    const renderItem = useCallback(
+        ({ item, index }: { item: UserFilm; index: number }) => (
+            <StoryItem
+                item={item}
+                index={index}
+                currentIndex={currentIndex}
+                visible={visible}
+                isPaused={isPaused}
+                progressStyle={progressStyle}
+                insets={insets}
+                handlePressIn={handlePressIn}
+                handlePressOut={handlePressOut}
+                handleTap={handleTap}
+                onReady={onReady}
+                onDuration={onDuration}
+                onComplete={onComplete}
+                isOwner={isOwner}
+                onDotsPress={() => setSheetVisible(true)}
+                screenWidth={screenWidth}
+                screenHeight={screenHeight}
+            />
+        ),
+        [currentIndex, visible, isPaused, progressStyle, screenWidth, screenHeight]
+    );
 
     const currentFilm = films[currentIndex];
-    if (!currentFilm) return null;
+    if (!currentFilm || !shouldRender) return null;
 
     return (
         <GestureDetector gesture={panGesture}>
-            <Animated.View style={[styles.modalOverlay, animatedModalStyle, { pointerEvents: visible ? 'auto' : 'none' } as any]}>
+            <Animated.View
+                style={[
+                    styles.modalOverlay,
+                    animatedModalStyle,
+                    { pointerEvents: visible ? "auto" : "none" } as any,
+                ]}
+            >
                 <View style={styles.container}>
                     <FlatList
                         ref={flatListRef}
@@ -488,17 +600,24 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
                         renderItem={renderItem}
                         keyExtractor={(item) => item.id}
                         horizontal
+                        pagingEnabled
                         showsHorizontalScrollIndicator={false}
-                        snapToInterval={SNAP_INTERVAL}
                         decelerationRate="fast"
                         onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={{ itemVisiblePercentThreshold: 60, minimumViewTime: 50 }}
+                        viewabilityConfig={{
+                            itemVisiblePercentThreshold: 60,
+                            minimumViewTime: 50,
+                        }}
                         initialScrollIndex={initialIndex}
-                        getItemLayout={(_, i) => ({ length: SNAP_INTERVAL, offset: SNAP_INTERVAL * i, index: i })}
+                        getItemLayout={(_, i) => ({
+                            length: screenWidth,
+                            offset: screenWidth * i,
+                            index: i,
+                        })}
                         initialNumToRender={3}
                         windowSize={5}
                         maxToRenderPerBatch={3}
-                        removeClippedSubviews={Platform.OS === 'android'}
+                        removeClippedSubviews={false}
                     />
                 </View>
 
@@ -519,41 +638,87 @@ const FilmStoryModal: React.FC<FilmStoryModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-    modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000', zIndex: 1000 },
-    container: { flex: 1, backgroundColor: '#000' },
-    cardWrapper: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000' },
+    modalOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "#000",
+        zIndex: 1000,
+    },
+    container: { flex: 1, backgroundColor: "#000" },
+    cardWrapper: {
+        backgroundColor: "#000",
+    },
     card: { flex: 1 },
     progressContainer: {
-        position: 'absolute', top: 60, left: 20, right: 20,
-        height: 3, zIndex: 10,
+        position: "absolute",
+        top: 60,
+        left: 20,
+        right: 20,
+        height: 3,
+        zIndex: 10,
     },
     progressBarBackground: {
-        flex: 1, backgroundColor: 'rgba(255,255,255,0.25)',
-        borderRadius: 2, overflow: 'hidden',
+        flex: 1,
+        backgroundColor: "rgba(255,255,255,0.25)",
+        borderRadius: 2,
+        overflow: "hidden",
     },
-    progressBarForeground: { height: '100%', backgroundColor: '#FFF' },
+    progressBarForeground: { height: "100%", backgroundColor: "#FFF" },
     overlayBottom: {
-        position: 'absolute', bottom: 0, left: 0, right: 0,
-        flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end',
-        paddingHorizontal: 20, paddingTop: 80,
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: "row",
+        alignItems: "flex-end",
+        justifyContent: "flex-end",
+        paddingHorizontal: 20,
+        paddingTop: 80,
     },
-    actionButton: { marginBottom: 10, padding: 10, justifyContent: 'center', alignItems: 'center' },
-    sheetOverlay: { zIndex: 2000, justifyContent: 'flex-end' },
+    actionButton: {
+        marginBottom: 10,
+        padding: 10,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    sheetOverlay: { zIndex: 2000, justifyContent: "flex-end" },
     sheet: {
-        backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-        paddingTop: 10, overflow: 'hidden',
-        shadowColor: '#000', shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.08, shadowRadius: 12, elevation: 16,
+        backgroundColor: "#FFFFFF",
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingTop: 10,
+        overflow: "hidden",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        elevation: 16,
     },
     sheetHandle: {
-        width: 36, height: 4, borderRadius: 2,
-        backgroundColor: 'rgba(0,0,0,0.15)', alignSelf: 'center', marginBottom: 6,
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: "rgba(0,0,0,0.15)",
+        alignSelf: "center",
+        marginBottom: 6,
     },
-    sheetRow: { paddingVertical: 18, paddingHorizontal: 24, justifyContent: 'center' },
+    sheetRow: {
+        paddingVertical: 18,
+        paddingHorizontal: 24,
+        justifyContent: "center",
+    },
     sheetRowDisabled: { opacity: 0.4 },
-    sheetRowText: { fontFamily: FONTS.regular, fontSize: 17, color: '#1C1C1E', textAlign: 'center', letterSpacing: -0.2 },
-    sheetRowDanger: { color: '#FF3B30', fontFamily: FONTS.bold },
-    sheetSep: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,0,0,0.12)' },
+    sheetRowText: {
+        fontFamily: FONTS.regular,
+        fontSize: 17,
+        color: "#1C1C1E",
+        textAlign: "center",
+        letterSpacing: -0.2,
+    },
+    sheetRowDanger: { color: "#FF3B30", fontFamily: FONTS.bold },
+    sheetSep: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: "rgba(0,0,0,0.12)",
+    },
 });
 
 export default FilmStoryModal;

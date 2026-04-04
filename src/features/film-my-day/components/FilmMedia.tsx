@@ -1,14 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import FilmVideoPlayer from './FilmVideoPlayer';
 
 interface FilmMediaProps {
     uri: string;
+    thumbnail?: string;
     type: 'image' | 'video';
     style?: any;
     resizeMode?: 'cover' | 'contain';
+    isActive?: boolean;
     isPlaying?: boolean;
+    isMuted?: boolean;
     onReady?: () => void;
     onDuration?: (durationMs: number) => void;
     onComplete?: () => void;
@@ -16,102 +19,70 @@ interface FilmMediaProps {
 
 const FilmMedia: React.FC<FilmMediaProps> = ({
     uri,
+    thumbnail,
     type,
     style,
     resizeMode = 'cover',
+    isActive = false,
     isPlaying = false,
+    isMuted = false,
     onReady,
     onDuration,
     onComplete,
 }) => {
-    // Always keep latest callbacks in refs — never stale, never cause re-renders
     const onReadyRef = useRef(onReady);
-    const onDurationRef = useRef(onDuration);
-    const onCompleteRef = useRef(onComplete);
     onReadyRef.current = onReady;
-    onDurationRef.current = onDuration;
-    onCompleteRef.current = onComplete;
-
-    const firedRef = useRef({ ready: false, duration: false });
-
-    const player = useVideoPlayer(uri, (p) => {
-        p.loop = false;
-        p.muted = false;
-        p.staysActiveInBackground = false;
-    });
-
-    // Reset fired flags every time URI changes
-    useEffect(() => {
-        firedRef.current = { ready: false, duration: false };
-    }, [uri]);
 
     // Images: fire onReady immediately
     useEffect(() => {
-        if (type !== 'image') return;
-        onReadyRef.current?.();
+        if (type === 'image') {
+            onReadyRef.current?.();
+        }
     }, [uri, type]);
 
-    // Videos: listen to statusChange for ready + duration
-    useEffect(() => {
-        if (type !== 'video') return;
-
-        const statusSub = player.addListener('statusChange', ({ status }: { status: string }) => {
-            if (status === 'readyToPlay' && !firedRef.current.ready) {
-                firedRef.current.ready = true;
-                onReadyRef.current?.();
-
-                // Small delay to let player.duration settle
-                setTimeout(() => {
-                    const dur = player.duration;
-                    if (dur > 0 && !firedRef.current.duration) {
-                        firedRef.current.duration = true;
-                        onDurationRef.current?.(dur * 1000);
-                    }
-                }, 50);
-            }
-        });
-
-        const endSub = player.addListener('playToEnd', () => {
-            onCompleteRef.current?.();
-        });
-
-        return () => {
-            statusSub.remove();
-            endSub.remove();
-        };
-    }, [player, type]);
-
-    // Play / pause control
-    useEffect(() => {
-        if (type !== 'video') return;
-        try {
-            if (isPlaying) player.play();
-            else player.pause();
-        } catch (_) { }
-    }, [isPlaying, player, type]);
-
     if (type === 'video') {
+        // If it's a video but not active, render a lightweight thumbnail
+        if (!isActive) {
+             return (
+                <View style={[styles.container, style]}>
+                    {thumbnail ? (
+                        <Image
+                            source={{ uri: thumbnail }}
+                            style={StyleSheet.absoluteFill}
+                            contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
+                            transition={300}
+                        />
+                    ) : (
+                        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1C1C1E' }]} />
+                    )}
+                </View>
+             );
+        }
+
+        // Only mount the native video player when truly active
         return (
-            <View style={[styles.container, style]}>
-                <VideoView
-                    style={StyleSheet.absoluteFill}
-                    player={player}
-                    contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
-                    nativeControls={false}
-                    allowsFullscreen={false}
-                    allowsPictureInPicture={false}
-                />
-            </View>
+            <FilmVideoPlayer
+                uri={uri}
+                style={style}
+                resizeMode={resizeMode}
+                isPlaying={isPlaying}
+                isMuted={isMuted}
+                onReady={onReady}
+                onDuration={onDuration}
+                onComplete={onComplete}
+            />
         );
     }
 
     return (
-        <Image
-            source={{ uri }}
-            style={[styles.container, style]}
-            contentFit={resizeMode}
-            transition={300}
-        />
+        <View style={[styles.container, style]}>
+            <Image
+                source={{ uri }}
+                style={StyleSheet.absoluteFill}
+                contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
+                transition={300}
+            />
+        </View>
     );
 };
 

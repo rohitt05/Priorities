@@ -9,6 +9,7 @@ export interface MediaItem {
     title?: string;
     timestamp?: string;
     sender?: 'me' | 'them';
+    overlay_data?: any;
 }
 
 export interface BaseMediaProps {

@@ -15,6 +15,7 @@ import Reanimated, {
     useSharedValue,
     useAnimatedStyle,
     useAnimatedScrollHandler,
+    useAnimatedProps,
     interpolate,
     Extrapolation,
     FadeIn,
@@ -87,7 +88,13 @@ function ProfileScreenContent() {
 
     const prioritiesFadeStyle = useAnimatedStyle(() => ({
         opacity: interpolate(scrollY.value, [40, 120], [1, 0], Extrapolation.CLAMP),
+        zIndex: scrollY.value > 80 ? -1 : 100,
     }));
+
+    const prioritiesPointerProps = useAnimatedProps(() => ({
+        pointerEvents: scrollY.value > 80 ? 'none' : 'auto',
+    } as any));
+
 
     const filmsSlideUpStyle = useAnimatedStyle(() => ({
         transform: [{ translateY: interpolate(scrollY.value, [40, 140], [0, -130], Extrapolation.CLAMP) }],
@@ -343,7 +350,7 @@ function ProfileScreenContent() {
                     </Reanimated.View>
                 )}
 
-                <Reanimated.View style={[prioritiesFadeStyle, { zIndex: 100 }]}>
+                <Reanimated.View style={prioritiesFadeStyle} animatedProps={prioritiesPointerProps}>
                     <YourPriorities
                         user={currentUser}
                         onUnauthorizedAccess={() => {

@@ -52,6 +52,7 @@ export interface Film {
     createdAt: string;
     caption?: string;
     likesCount?: number;
+    overlay_data?: any;
 }
 
 /**
@@ -70,6 +71,7 @@ export interface Message {
     seenAt?: string | null; // Used for "seen badge"
     disappeared?: boolean; // Snapchat-style logic
     reaction?: string | null; // Emoji reaction
+    overlay_data?: any;
 }
 
 /**

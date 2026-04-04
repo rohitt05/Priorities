@@ -73,7 +73,7 @@ export const filmService = {
 
         const { data, error } = await supabase
             .from('films')
-            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at, overlay_data')
             .eq('creator_id', myId)
             .gte('created_at', cutoff)
             .order('created_at', { ascending: true });
@@ -116,7 +116,7 @@ export const filmService = {
 
         const { data, error } = await supabase
             .from('films')
-            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at, overlay_data')
             .eq('creator_id', userId)
             .gte('created_at', cutoff)
             .order('created_at', { ascending: true });
@@ -157,7 +157,7 @@ export const filmService = {
     getAllFilmsByUserId: async (userUUID: string): Promise<FilmWithMeta[]> => {
         const { data, error } = await supabase
             .from('films')
-            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
+            .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at, overlay_data')
             .eq('creator_id', userUUID)
             .order('created_at', { ascending: false });
 

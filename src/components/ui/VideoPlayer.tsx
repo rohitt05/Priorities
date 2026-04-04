@@ -15,8 +15,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
 import { BaseMediaProps, formatTime } from '@/types/mediaTypes';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-// Assuming the player is mounted in a card that is 90% of screen width.
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
 const PROGRESS_BAR_WIDTH = CARD_WIDTH - 40;
 
@@ -48,6 +47,12 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
     const [duration, setDuration] = useState(0);
     const [showControls, setShowControls] = useState(true); // Start visible
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
+
+    const handleCardLayout = (e: any) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCardLayout({ width, height });
+    };
 
     // Animation & Timers
     const controlsOpacity = useRef(new Animated.Value(1)).current;
@@ -210,7 +215,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         : 0;
 
     return (
-        <View style={styles.container}>
+        <View style={styles.container} onLayout={handleCardLayout}>
             <VideoView
                 player={player}
                 style={styles.video}
@@ -231,10 +236,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                     ]}
                     pointerEvents={showControls ? 'auto' : 'none'}
                 >
-                    {/* Only show Play/Pause button if we want that center interaction. 
-                        Usually iPhone hides the big center button while playing and just uses the screen tap.
-                        But for clarity, let's keep the button visible when 'showControls' is true. 
-                    */}
                     <TouchableOpacity
                         onPress={handlePlayPause}
                         style={[styles.playButton, { backgroundColor: themeColor + '20', borderColor: themeColor }]}

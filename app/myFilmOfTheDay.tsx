@@ -180,9 +180,10 @@ const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: V
 ViewerOverlay.displayName = 'ViewerOverlay';
 
 // ── FilmBubble ─────────────────────────────────────────────────
-const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, onLongPressEnd }: {
+const FilmBubble = React.memo(({ film, x, y, r, isActive, isModalOpen, onPress, onLongPress, onLongPressEnd }: {
     film: FilmWithMeta; x: number; y: number; r: number;
     isActive: boolean;
+    isModalOpen: boolean;
     onPress: () => void; onLongPress: () => void; onLongPressEnd: () => void;
 }) => {
     const size = r * 2;
@@ -221,7 +222,8 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, onPress, onLongPress, 
                     <FilmMedia
                         uri={film.uri}
                         type={isVideo ? 'video' : 'image'}
-                        isPlaying={isActive && isVideo}
+                        isPlaying={isVideo && !isModalOpen}
+                        isMuted={true}
                         resizeMode="cover"
                     />
                     <LinearGradient
@@ -452,6 +454,7 @@ export default function MyFilmOfTheDay() {
                                 film={film}
                                 x={p.x} y={p.y} r={r}
                                 isActive={i === activeIdx}
+                                isModalOpen={modalVisible}
                                 onPress={() => {
                                     setIdx(i);
                                     updateBg(i);
