@@ -62,3 +62,17 @@ export function onAuthStateChange(
 ) {
     return supabase.auth.onAuthStateChange(callback);
 }
+
+// ─── VERIFY CURRENT PASSWORD ───────────────────────────────
+// Re-authenticates with current credentials to confirm identity before password change
+export async function verifyCurrentPassword(email: string, password: string): Promise<void> {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error('Current password is incorrect.');
+}
+
+// ─── CHANGE PASSWORD ───────────────────────────────────────
+// Updates the authenticated user's password — user must already be logged in
+export async function changePassword(newPassword: string): Promise<void> {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+}

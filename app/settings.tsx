@@ -120,6 +120,7 @@ function SettingsScreenContent() {
                     partnerId: dbUser.partner_id || undefined,
                     relationship: dbUser.relationship || undefined,
                     phoneNumber: dbUser.phone_number || '',
+                    email: sessionUser.email,
                     priorities: [],
                 });
             }

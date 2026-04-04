@@ -25,6 +25,7 @@ import * as SMS from 'expo-sms';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '@/types/userTypes';
 import { updateProfile } from '@/services/profileService';
+import { verifyCurrentPassword, changePassword } from '@/services/authService';
 
 
 const { height } = Dimensions.get('window');
@@ -51,19 +52,34 @@ interface SecurityBottomSheetProps {
     user: User | null;
 }
 
+// Password change step type
+type PasswordStep = 'idle' | 'current' | 'new' | 'confirm';
+
 
 const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetProps) => {
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
+    // ── Phone state ──
     const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber || '');
     const [countryCode, setCountryCode] = useState('+91');
     const [countryFlag, setCountryFlag] = useState('🇮🇳');
     const [showCountryPicker, setShowCountryPicker] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    // ── Password change state ──
+    const [passwordStep, setPasswordStep] = useState<PasswordStep>('idle');
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showCurrentPw, setShowCurrentPw] = useState(false);
+    const [showNewPw, setShowNewPw] = useState(false);
+    const [showConfirmPw, setShowConfirmPw] = useState(false);
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
+
+    // ── Privacy state ──
     const [contactSync, setContactSync] = useState(false);
     const [hiddenMode, setHiddenMode] = useState(false);
     const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
     const [visibleCount, setVisibleCount] = useState(50);
 
     const panY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
@@ -83,9 +99,7 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
     useEffect(() => {
         if (user?.phoneNumber) {
-            // Check if phone number starts with any of our country codes
             const matchedCountry = COUNTRIES.find(c => user.phoneNumber?.startsWith(c.code));
-
             if (matchedCountry) {
                 setCountryCode(matchedCountry.code);
                 setCountryFlag(matchedCountry.flag);
@@ -108,6 +122,13 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         }
     }, [isVisible]);
 
+    // Reset password flow state when sheet closes
+    useEffect(() => {
+        if (!isVisible) {
+            resetPasswordFlow();
+        }
+    }, [isVisible]);
+
 
     const handleClose = () => {
         Animated.timing(panY, {
@@ -125,7 +146,6 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         PanResponder.create({
             onStartShouldSetPanResponder: () => false,
             onMoveShouldSetPanResponder: (_, gestureState) => {
-                // Only capture if we're not scrolling and move is significant (downward)
                 return (
                     !isScrolling.current &&
                     gestureState.dy > 20 &&
@@ -153,6 +173,152 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
         })
     ).current;
 
+
+    // ── Password flow helpers ────────────────────────────────────────────────
+
+    const resetPasswordFlow = () => {
+        setPasswordStep('idle');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowCurrentPw(false);
+        setShowNewPw(false);
+        setShowConfirmPw(false);
+        setPasswordError('');
+    };
+
+    const handlePasswordStepNext = async () => {
+        setPasswordError('');
+
+        if (passwordStep === 'idle') {
+            setPasswordStep('current');
+            return;
+        }
+
+        if (passwordStep === 'current') {
+            if (!currentPassword) {
+                setPasswordError('please enter your current password.');
+                return;
+            }
+            if (!user?.email) {
+                setPasswordError('unable to verify identity. please try again.');
+                return;
+            }
+            setIsChangingPassword(true);
+            try {
+                await verifyCurrentPassword(user.email, currentPassword);
+                setPasswordStep('new');
+            } catch {
+                setPasswordError('current password is incorrect.');
+            } finally {
+                setIsChangingPassword(false);
+            }
+            return;
+        }
+
+        if (passwordStep === 'new') {
+            if (newPassword.length < 6) {
+                setPasswordError('new password must be at least 6 characters.');
+                return;
+            }
+            setPasswordStep('confirm');
+            return;
+        }
+
+        if (passwordStep === 'confirm') {
+            if (confirmPassword !== newPassword) {
+                setPasswordError('passwords do not match. try again.');
+                setConfirmPassword('');
+                return;
+            }
+            setIsChangingPassword(true);
+            try {
+                await changePassword(newPassword);
+                resetPasswordFlow();
+                Alert.alert('password updated', 'your password has been changed successfully.');
+            } catch (err: any) {
+                setPasswordError(err.message || 'failed to update password. try again.');
+            } finally {
+                setIsChangingPassword(false);
+            }
+        }
+    };
+
+    const getPasswordStepLabel = (): string => {
+        switch (passwordStep) {
+            case 'idle': return 'change your password';
+            case 'current': return 'current password';
+            case 'new': return 'new password';
+            case 'confirm': return 'confirm new password';
+        }
+    };
+
+    const getPasswordStepPlaceholder = (): string => {
+        switch (passwordStep) {
+            case 'idle': return 'tap to change';
+            case 'current': return 'enter current password';
+            case 'new': return 'at least 6 characters';
+            case 'confirm': return 'repeat new password';
+        }
+    };
+
+    const getCurrentPasswordValue = (): string => {
+        switch (passwordStep) {
+            case 'current': return currentPassword;
+            case 'new': return newPassword;
+            case 'confirm': return confirmPassword;
+            default: return '';
+        }
+    };
+
+    const getCurrentPasswordSetter = () => {
+        switch (passwordStep) {
+            case 'current': return setCurrentPassword;
+            case 'new': return setNewPassword;
+            case 'confirm': return setConfirmPassword;
+            default: return (_: string) => { };
+        }
+    };
+
+    const getCurrentShowPw = (): boolean => {
+        switch (passwordStep) {
+            case 'current': return showCurrentPw;
+            case 'new': return showNewPw;
+            case 'confirm': return showConfirmPw;
+            default: return false;
+        }
+    };
+
+    const toggleShowPw = () => {
+        switch (passwordStep) {
+            case 'current': setShowCurrentPw(v => !v); break;
+            case 'new': setShowNewPw(v => !v); break;
+            case 'confirm': setShowConfirmPw(v => !v); break;
+        }
+    };
+
+    // ── Step indicator dots ──────────────────────────────────────────────────
+    const PasswordStepDots = () => {
+        const steps: PasswordStep[] = ['current', 'new', 'confirm'];
+        const currentIndex = steps.indexOf(passwordStep);
+        if (passwordStep === 'idle') return null;
+        return (
+            <View style={styles.stepDotsContainer}>
+                {steps.map((s, i) => (
+                    <View
+                        key={s}
+                        style={[
+                            styles.stepDot,
+                            i <= currentIndex && styles.stepDotActive
+                        ]}
+                    />
+                ))}
+            </View>
+        );
+    };
+
+
+    // ── Contact helpers ──────────────────────────────────────────────────────
 
     const handleSyncContacts = async (syncing: boolean) => {
         setContactSync(syncing);
@@ -216,7 +382,6 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     const handleSaveAndDone = async () => {
         if (!user) return;
 
-        // Clean phone number (leave only digits if we want, or keep as is)
         const cleanedNumber = phoneNumber.replace(/\D/g, '');
 
         if (cleanedNumber === '' && user.phoneNumber === null) {
@@ -226,13 +391,10 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
 
         setIsSaving(true);
         try {
-            // Concatenate country code with the cleaned phone number
             const fullNumber = cleanedNumber ? `${countryCode}${cleanedNumber}` : null;
-
             await updateProfile(user.id, {
                 phone_number: fullNumber,
             });
-
             handleClose();
         } catch (err) {
             console.error('Failed to update phone number:', err);
@@ -326,30 +488,93 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                         <View style={styles.section}>
                             <Text style={styles.sectionHeader}>account</Text>
                             <View style={styles.card}>
-                                <View style={styles.inputRow}>
+
+                                {/* ── Password change row ── */}
+                                <TouchableOpacity
+                                    style={styles.inputRow}
+                                    onPress={() => passwordStep === 'idle' && setPasswordStep('current')}
+                                    activeOpacity={passwordStep === 'idle' ? 0.6 : 1}
+                                >
                                     <View style={styles.iconContainer}>
                                         <Ionicons name="key-outline" size={20} color={COLORS.primary} />
                                     </View>
-                                    <TextInput
-                                        style={styles.input}
-                                        value={password}
-                                        onChangeText={setPassword}
-                                        placeholder="change your passcode"
-                                        placeholderTextColor="#8E8E93"
-                                        secureTextEntry={!showPassword}
-                                    />
-                                    <TouchableOpacity
-                                        onPress={() => setShowPassword(!showPassword)}
-                                        style={styles.visibilityButton}
-                                    >
-                                        <Ionicons
-                                            name={showPassword ? "eye-off-outline" : "eye-outline"}
-                                            size={20}
-                                            color={COLORS.textSecondary}
-                                        />
-                                    </TouchableOpacity>
-                                </View>
+
+                                    {passwordStep === 'idle' ? (
+                                        // ── Idle state: just a tappable row ──
+                                        <View style={styles.passwordIdleRow}>
+                                            <Text style={styles.passwordIdleLabel}>change your password</Text>
+                                            <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+                                        </View>
+                                    ) : (
+                                        // ── Active state: input + step indicator ──
+                                        <View style={styles.passwordActiveContainer}>
+                                            <View style={styles.passwordInputWrapper}>
+                                                <View style={styles.passwordStepLabelRow}>
+                                                    <Text style={styles.passwordStepLabel}>
+                                                        {getPasswordStepLabel()}
+                                                    </Text>
+                                                    <PasswordStepDots />
+                                                </View>
+                                                <View style={styles.passwordInputRow}>
+                                                    <TextInput
+                                                        style={styles.input}
+                                                        value={getCurrentPasswordValue()}
+                                                        onChangeText={getCurrentPasswordSetter()}
+                                                        placeholder={getPasswordStepPlaceholder()}
+                                                        placeholderTextColor="#8E8E93"
+                                                        secureTextEntry={!getCurrentShowPw()}
+                                                        autoFocus
+                                                        autoCapitalize="none"
+                                                        autoCorrect={false}
+                                                    />
+                                                    <TouchableOpacity
+                                                        onPress={toggleShowPw}
+                                                        style={styles.visibilityButton}
+                                                    >
+                                                        <Ionicons
+                                                            name={getCurrentShowPw() ? 'eye-off-outline' : 'eye-outline'}
+                                                            size={18}
+                                                            color={COLORS.textSecondary}
+                                                        />
+                                                    </TouchableOpacity>
+                                                </View>
+                                                {passwordError ? (
+                                                    <Text style={styles.passwordErrorText}>{passwordError}</Text>
+                                                ) : null}
+                                            </View>
+
+                                            <View style={styles.passwordActions}>
+                                                <TouchableOpacity
+                                                    onPress={resetPasswordFlow}
+                                                    style={styles.passwordCancelButton}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Text style={styles.passwordCancelText}>cancel</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={handlePasswordStepNext}
+                                                    style={[
+                                                        styles.passwordNextButton,
+                                                        isChangingPassword && { opacity: 0.6 }
+                                                    ]}
+                                                    disabled={isChangingPassword}
+                                                >
+                                                    {isChangingPassword ? (
+                                                        <ActivityIndicator size="small" color="#FFF" />
+                                                    ) : (
+                                                        <Text style={styles.passwordNextText}>
+                                                            {passwordStep === 'confirm' ? 'update' : 'next'}
+                                                        </Text>
+                                                    )}
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+
                                 <View style={styles.divider} />
+
+                                {/* ── Phone number row ── */}
                                 <View style={styles.inputRow}>
                                     <View style={styles.iconContainer}>
                                         <Ionicons name="call-outline" size={20} color={COLORS.primary} />
@@ -490,14 +715,15 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                                     </React.Fragment>
                                                 ))}
 
-                                                {/* ── Load More Button ── */}
                                                 {visibleCount < contacts.length && (
                                                     <TouchableOpacity
                                                         style={styles.loadMoreButton}
                                                         onPress={() => setVisibleCount(prev => prev + 50)}
                                                         activeOpacity={0.7}
                                                     >
-                                                        <Text style={styles.loadMoreText}>load more contacts ({contacts.length - visibleCount} left)</Text>
+                                                        <Text style={styles.loadMoreText}>
+                                                            load more contacts ({contacts.length - visibleCount} left)
+                                                        </Text>
                                                         <Ionicons name="chevron-down" size={16} color={COLORS.primary} />
                                                     </TouchableOpacity>
                                                 )}
@@ -702,6 +928,103 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.bold,
         color: COLORS.text,
     },
+
+    // ── Password flow styles ──
+    passwordIdleRow: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    passwordIdleLabel: {
+        fontSize: 16,
+        fontFamily: FONTS.medium,
+        color: COLORS.text,
+        textTransform: 'lowercase',
+    },
+    passwordActiveContainer: {
+        flex: 1,
+        paddingVertical: 4,
+    },
+    passwordInputWrapper: {
+        marginBottom: 10,
+    },
+    passwordStepLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    passwordStepLabel: {
+        fontSize: 12,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+        textTransform: 'lowercase',
+        letterSpacing: 0.3,
+    },
+    stepDotsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    stepDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(0,0,0,0.12)',
+    },
+    stepDotActive: {
+        backgroundColor: COLORS.primary,
+    },
+    passwordInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(0,0,0,0.1)',
+        paddingBottom: 6,
+    },
+    passwordErrorText: {
+        fontSize: 12,
+        fontFamily: FONTS.regular,
+        color: '#D94F4F',
+        marginTop: 6,
+        textTransform: 'lowercase',
+    },
+    passwordActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 8,
+        marginTop: 4,
+    },
+    passwordCancelButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    passwordCancelText: {
+        fontSize: 13,
+        fontFamily: FONTS.bold,
+        color: COLORS.textSecondary,
+        textTransform: 'lowercase',
+    },
+    passwordNextButton: {
+        paddingHorizontal: 18,
+        paddingVertical: 7,
+        borderRadius: 12,
+        backgroundColor: COLORS.primary,
+        minWidth: 60,
+        alignItems: 'center',
+    },
+    passwordNextText: {
+        fontSize: 13,
+        fontFamily: FONTS.bold,
+        color: '#FFF',
+        textTransform: 'lowercase',
+    },
+
+    // ── Info / helper text ──
     infoGroup: {
         marginTop: 12,
         paddingHorizontal: 4,
@@ -724,6 +1047,8 @@ const styles = StyleSheet.create({
         textTransform: 'lowercase',
         opacity: 0.8,
     },
+
+    // ── Contacts ──
     contactListSection: {
         marginTop: 24,
         marginBottom: 32,
