@@ -1,20 +1,30 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard, Easing } from 'react-native';
+import {
+    View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
+    ActivityIndicator, KeyboardAvoidingView, Platform, Animated,
+    Keyboard, Easing, Modal, FlatList
+} from 'react-native';
 import { signUp } from '@/services/authService';
-import { updateProfile, uploadProfilePicture, isHandleAvailable } from '@/services/profileService';
+import { isHandleAvailable } from '@/services/profileService';
 import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
-import { Ionicons, Feather } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import DatePicker from 'react-native-date-picker';
+import VerifyEmailScreen from './VerifyEmailScreen';
 
 
 const PALETTE = Object.values(COLORS.PALETTE);
 
+const GENDER_OPTIONS = [
+    { label: 'Male', value: 'male' },
+    { label: 'Female', value: 'female' },
+    { label: 'Non-binary', value: 'non-binary' },
+    { label: 'Prefer not to say', value: 'prefer_not_to_say' },
+];
 
 const STEPS = [
     { key: 'name', label: 'What should we call you?' },
@@ -22,41 +32,46 @@ const STEPS = [
     { key: 'email', label: 'Your email address' },
     { key: 'password', label: 'Create a password' },
     { key: 'birthday', label: 'When is your birthday?' },
-    { key: 'picture', label: 'Add a beautiful photo' },
+    { key: 'gender', label: 'How do you identify?' },
 ];
 
 
 export default function SignUpScreen() {
     const [stepIndex, setStepIndex] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [done, setDone] = useState(false); // ← shows verify screen after signup
 
     const [name, setName] = useState('');
     const [handle, setHandle] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [birthday, setBirthday] = useState('');
-    const [imageUri, setImageUri] = useState<string | null>(null);
+
+    const [birthdayDate, setBirthdayDate] = useState<Date | null>(null);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    const [gender, setGender] = useState('');
+    const [showGenderDropdown, setShowGenderDropdown] = useState(false);
 
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
     const currentStepObj = STEPS[stepIndex];
 
-
-    const pickImage = async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            setImageUri(result.assets[0].uri);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
+    const formatDateForDB = (date: Date): string => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
     };
+
+    const formatDateForDisplay = (date: Date): string => {
+        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+    };
+
+    const maxBirthdayDate = new Date();
+    maxBirthdayDate.setFullYear(maxBirthdayDate.getFullYear() - 13);
+
+    const selectedGenderLabel = GENDER_OPTIONS.find(g => g.value === gender)?.label || '';
 
 
     const animateTransition = (direction: 'next' | 'prev', callback: () => void) => {
@@ -94,8 +109,20 @@ export default function SignUpScreen() {
                 return Alert.alert('Taken', 'This handle is already in use');
             }
         }
-        if (currentStepObj.key === 'email' && (!email || !email.includes('@'))) return Alert.alert('Invalid', 'Valid email required');
-        if (currentStepObj.key === 'password' && password.length < 6) return Alert.alert('Short', 'Password must be at least 6 characters');
+        if (currentStepObj.key === 'email' && (!email || !email.includes('@'))) {
+            return Alert.alert('Invalid', 'Valid email required');
+        }
+        if (currentStepObj.key === 'password' && password.length < 6) {
+            return Alert.alert('Short', 'Password must be at least 6 characters');
+        }
+        if (currentStepObj.key === 'birthday' && !birthdayDate) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            return Alert.alert('Required', 'Please select your birthday');
+        }
+        if (currentStepObj.key === 'gender' && !gender) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            return Alert.alert('Required', 'Please select how you identify');
+        }
 
         if (stepIndex < STEPS.length - 1) {
             animateTransition('next', () => setStepIndex(stepIndex + 1));
@@ -119,8 +146,9 @@ export default function SignUpScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setLoading(true);
         try {
-            // Pick every next 3rd color by counting rows
-            const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            const { count } = await supabase
+                .from('profiles')
+                .select('*', { count: 'exact', head: true });
             const totalUsers = count || 0;
             const skipCount = 3;
             const colorIndex = (totalUsers * skipCount) % PALETTE.length;
@@ -128,45 +156,38 @@ export default function SignUpScreen() {
 
             const signupData = await signUp(email, password, name, handle, deterministicColor);
             const user = signupData.user;
+            const session = signupData.session;
 
             if (user) {
-                // Set unique_user_id directly — excluded from updateProfile's Pick type by design
+                if (session) {
+                    await supabase.auth.setSession({
+                        access_token: session.access_token,
+                        refresh_token: session.refresh_token,
+                    });
+                }
+
                 const { error: handleError } = await supabase
                     .from('profiles')
                     .update({ unique_user_id: handle })
                     .eq('id', user.id);
                 if (handleError) throw handleError;
 
-                // Update allowed profile fields
-                await updateProfile(user.id, {
+                const profileUpdates: Record<string, any> = {
                     name,
                     dominant_color: deterministicColor,
-                    ...(birthday ? { birthday } : {}),
-                });
+                };
+                if (birthdayDate) profileUpdates.birthday = formatDateForDB(birthdayDate);
+                if (gender) profileUpdates.gender = gender;
 
-                // Upload picture with retry
-                if (imageUri) {
-                    let attempts = 0;
-                    let uploadError: any = null;
-                    while (attempts < 3) {
-                        try {
-                            await uploadProfilePicture(user.id, imageUri);
-                            uploadError = null;
-                            break;
-                        } catch (e) {
-                            uploadError = e;
-                            attempts++;
-                            await new Promise(res => setTimeout(res, 600 * attempts));
-                        }
-                    }
-                    if (uploadError) {
-                        console.warn('Profile picture upload failed:', uploadError.message);
-                    }
-                }
+                const { error: updateError } = await supabase
+                    .from('profiles')
+                    .update(profileUpdates)
+                    .eq('id', user.id);
+                if (updateError) console.warn('Profile update failed:', updateError.message);
             }
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            // Will navigate to tabs or login based on layout state
+            setDone(true); // ← show verify email screen
         } catch (error: any) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             Alert.alert('Sign Up failed', error.message);
@@ -174,6 +195,18 @@ export default function SignUpScreen() {
             setLoading(false);
         }
     };
+
+
+    // ─── VERIFY EMAIL SCREEN ──────────────────────────────────────────────────
+    if (done) {
+        return (
+            <VerifyEmailScreen 
+                email={email}
+                onSignInPress={() => router.replace('/auth/signin')}
+            />
+        );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
 
     const renderInput = () => {
@@ -226,28 +259,107 @@ export default function SignUpScreen() {
                         autoFocus
                     />
                 );
+
             case 'birthday':
                 return (
-                    <TextInput
-                        style={styles.input}
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor="rgba(44,39,32,0.4)"
-                        value={birthday}
-                        onChangeText={setBirthday}
-                        autoFocus
-                    />
-                );
-            case 'picture':
-                return (
-                    <View style={styles.imagePickerOuter}>
-                        <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
-                            {imageUri ? (
-                                <Image source={imageUri} style={styles.image} contentFit="cover" transition={300} />
-                            ) : (
-                                <Feather name="camera" size={36} color={COLORS.textSecondary} />
-                            )}
+                    <View style={styles.pickerContainer}>
+                        <TouchableOpacity
+                            style={styles.dropdownButton}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setShowDatePicker(true);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[styles.dropdownButtonText, !birthdayDate && styles.dropdownPlaceholder]}>
+                                {birthdayDate ? formatDateForDisplay(birthdayDate) : 'Select your birthday'}
+                            </Text>
+                            <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
                         </TouchableOpacity>
-                        <Text style={styles.imageSubtext}>{imageUri ? 'Looking good!' : 'Tap to select'}</Text>
+
+                        <DatePicker
+                            modal
+                            open={showDatePicker}
+                            date={birthdayDate ?? maxBirthdayDate}
+                            mode="date"
+                            maximumDate={maxBirthdayDate}
+                            minimumDate={new Date(1900, 0, 1)}
+                            title="Select your birthday"
+                            confirmText="Confirm"
+                            cancelText="Cancel"
+                            onConfirm={(date) => {
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                setBirthdayDate(date);
+                                setShowDatePicker(false);
+                            }}
+                            onCancel={() => setShowDatePicker(false)}
+                        />
+                    </View>
+                );
+
+            case 'gender':
+                return (
+                    <View style={styles.pickerContainer}>
+                        <TouchableOpacity
+                            style={styles.dropdownButton}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setShowGenderDropdown(true);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[styles.dropdownButtonText, !gender && styles.dropdownPlaceholder]}>
+                                {selectedGenderLabel || 'Select gender'}
+                            </Text>
+                            <Ionicons name="chevron-down" size={20} color={COLORS.primary} />
+                        </TouchableOpacity>
+
+                        <Modal
+                            visible={showGenderDropdown}
+                            transparent
+                            animationType="fade"
+                            onRequestClose={() => setShowGenderDropdown(false)}
+                        >
+                            <TouchableOpacity
+                                style={styles.modalOverlay}
+                                activeOpacity={1}
+                                onPress={() => setShowGenderDropdown(false)}
+                            >
+                                <View style={styles.dropdownModal}>
+                                    <Text style={styles.dropdownModalTitle}>Select gender</Text>
+                                    <FlatList
+                                        data={GENDER_OPTIONS}
+                                        keyExtractor={item => item.value}
+                                        scrollEnabled={false}
+                                        renderItem={({ item }) => (
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.dropdownItem,
+                                                    gender === item.value && styles.dropdownItemSelected,
+                                                ]}
+                                                onPress={() => {
+                                                    Haptics.selectionAsync();
+                                                    setGender(item.value);
+                                                    setShowGenderDropdown(false);
+                                                }}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={[
+                                                    styles.dropdownItemText,
+                                                    gender === item.value && styles.dropdownItemTextSelected,
+                                                ]}>
+                                                    {item.label}
+                                                </Text>
+                                                {gender === item.value && (
+                                                    <Ionicons name="checkmark" size={18} color={COLORS.surface} />
+                                                )}
+                                            </TouchableOpacity>
+                                        )}
+                                        ItemSeparatorComponent={() => <View style={styles.dropdownSeparator} />}
+                                    />
+                                </View>
+                            </TouchableOpacity>
+                        </Modal>
                     </View>
                 );
         }
@@ -289,12 +401,6 @@ export default function SignUpScreen() {
                             </Text>
                         )}
                     </TouchableOpacity>
-
-                    {stepIndex === STEPS.length - 1 && !loading && (
-                        <TouchableOpacity style={styles.skipButton} onPress={finalizeSignUp}>
-                            <Text style={styles.skipText}>Skip for now</Text>
-                        </TouchableOpacity>
-                    )}
                 </Animated.View>
             </View>
         </KeyboardAvoidingView>
@@ -304,6 +410,8 @@ export default function SignUpScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+
+    // ── Header ──
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -328,6 +436,8 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.primary,
         borderRadius: 3,
     },
+
+    // ── Card ──
     content: {
         flex: 1,
         paddingHorizontal: SPACING.xl,
@@ -366,6 +476,82 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         textAlign: 'center',
     },
+
+    // ── Picker / Dropdown ──
+    pickerContainer: { marginTop: SPACING.sm },
+    dropdownButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderWidth: 1.5,
+        borderColor: 'rgba(44,39,32,0.15)',
+        borderRadius: 14,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
+        backgroundColor: 'rgba(255,255,255,0.6)',
+    },
+    dropdownButtonText: {
+        fontSize: FONT_SIZES.md,
+        fontFamily: FONTS.semibold,
+        color: COLORS.primary,
+    },
+    dropdownPlaceholder: {
+        color: 'rgba(44,39,32,0.4)',
+        fontFamily: FONTS.regular,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: SPACING.xl,
+    },
+    dropdownModal: {
+        width: '100%',
+        borderRadius: 20,
+        overflow: 'hidden',
+        backgroundColor: '#FDFCF0',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+        elevation: 12,
+    },
+    dropdownModalTitle: {
+        fontSize: FONT_SIZES.md,
+        fontFamily: FONTS.bold,
+        color: COLORS.primary,
+        textAlign: 'center',
+        paddingVertical: SPACING.lg,
+        backgroundColor: '#FDFCF0',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(44,39,32,0.08)',
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACING.xl,
+        paddingVertical: 18,
+        backgroundColor: '#FDFCF0',
+    },
+    dropdownItemSelected: { backgroundColor: COLORS.primary },
+    dropdownItemText: {
+        fontSize: FONT_SIZES.md,
+        fontFamily: FONTS.medium,
+        color: COLORS.primary,
+    },
+    dropdownItemTextSelected: {
+        color: COLORS.surface,
+        fontFamily: FONTS.bold,
+    },
+    dropdownSeparator: {
+        height: 1,
+        backgroundColor: 'rgba(44,39,32,0.06)',
+        marginHorizontal: SPACING.lg,
+    },
+
+    // ── Button ──
     button: {
         backgroundColor: COLORS.primary,
         paddingVertical: 18,
@@ -382,45 +568,5 @@ const styles = StyleSheet.create({
         fontFamily: FONTS.bold,
         fontSize: FONT_SIZES.md,
         letterSpacing: 1,
-    },
-    skipButton: {
-        alignItems: 'center',
-        marginTop: SPACING.lg,
-        padding: SPACING.md,
-    },
-    skipText: {
-        color: COLORS.textSecondary,
-        fontFamily: FONTS.medium,
-        fontSize: FONT_SIZES.sm,
-    },
-    imagePickerOuter: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginVertical: SPACING.lg,
-    },
-    imagePicker: {
-        width: 140,
-        height: 140,
-        borderRadius: 70,
-        backgroundColor: 'rgba(255,255,255,0.7)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: COLORS.primary,
-        overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-    },
-    image: {
-        width: '100%',
-        height: '100%',
-    },
-    imageSubtext: {
-        marginTop: SPACING.md,
-        fontSize: FONT_SIZES.sm,
-        fontFamily: FONTS.medium,
-        color: COLORS.textSecondary,
     },
 });
