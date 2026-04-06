@@ -14,12 +14,14 @@ import {
     LayoutChangeEvent,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import * as MediaLibrary from 'expo-media-library';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { COLORS, FONTS } from '@/theme/theme';
+import PostSuccessFlash from '@/components/ui/PostSuccessFlash';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -40,8 +42,10 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     recipient,
     recipientId,
 }) => {
+    const router = useRouter();
     const [isSaving, setIsSaving] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [showSuccessFlash, setShowSuccessFlash] = useState(false);
     const [permissionResponse, requestPermission] = MediaLibrary.usePermissions();
     const [isMuted, setIsMuted] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -119,9 +123,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         return () => backHandler.remove();
     }, [onDiscard]);
 
-    const handleCardLayout = (e: LayoutChangeEvent) => {
-        // We keep this for layout if needed, though we removed buildOverlayData
-    };
+    const handleCardLayout = (e: LayoutChangeEvent) => {};
 
     const uploadFileToBucket = async (
         bucket: string,
@@ -134,11 +136,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         const ext = isVideoFile ? 'mp4' : 'jpg';
         const fileName = `${senderId}/media/${Date.now()}.${ext}`;
         const formData = new FormData();
-        formData.append('file', {
-            uri: finalMediaUri,
-            type: mimeType,
-            name: fileName,
-        } as any);
+        formData.append('file', { uri: finalMediaUri, type: mimeType, name: fileName } as any);
         const { error: uploadError } = await supabase.storage
             .from(bucket)
             .upload(fileName, formData, { contentType: mimeType, upsert: false });
@@ -189,8 +187,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         });
         if (insertError) { Alert.alert('Error', 'Failed to send message. Please try again.'); return; }
 
-        Alert.alert('Sent!', `Your ${isVideoFile ? 'video' : 'photo'} was sent to ${recipient.split(' ')[0]}.`);
-        onDiscard();
+        // Show flash then go home
+        setShowSuccessFlash(true);
     };
 
     const postAsFilm = async (senderId: string, finalUri: string) => {
@@ -234,8 +232,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             });
             if (insertError) { Alert.alert('Error', insertError.message); return; }
 
-            Alert.alert('Posted!', 'Your film has been added to your day.');
-            onDiscard();
+            // Show flash then go home
+            setShowSuccessFlash(true);
         } catch (err: any) {
             Alert.alert('Error', err?.message || 'Something went wrong.');
         }
@@ -289,6 +287,13 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         } finally {
             setIsSaving(false);
         }
+    };
+
+    // Called when the flash animation finishes — go home
+    const handleFlashDismiss = () => {
+        onDiscard(); // clean up captured media state
+        // navigate to root tabs home
+        router.replace('/(tabs)');
     };
 
     const toggleMute = () => setIsMuted(prev => !prev);
@@ -394,6 +399,15 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                     </View>
                 </View>
             </View>
+
+            {/* Post success flash — rendered on top of everything */}
+            {showSuccessFlash && (
+                <PostSuccessFlash
+                    isFilm={!isMessageMode}
+                    recipientName={recipient?.split(' ')[0]}
+                    onDismiss={handleFlashDismiss}
+                />
+            )}
         </View>
     );
 };
@@ -440,7 +454,6 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,64,64,0.3)', alignItems: 'center', justifyContent: 'center',
     },
     iconButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#333' },
-    editButton: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: '#333' },
     capsuleButton: {
         height: 56, paddingHorizontal: 24, borderRadius: 28,
         borderWidth: 1.5, borderColor: '#FFF', backgroundColor: 'transparent',
