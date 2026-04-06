@@ -19,8 +19,6 @@ import { COLORS, FONTS } from '@/theme/theme';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-
-
 interface TimelineBottomSheetProps {
     visible: boolean;
     onClose: () => void;
@@ -68,8 +66,8 @@ export default function TimelineBottomSheet({ visible, onClose, user }: Timeline
         }
     }, [visible]);
 
-    if (!user) return null;
-
+    // NOTE: null guard moved INSIDE Modal so exit animation always plays
+    // even when `user` becomes null during the close transition.
     return (
         <Modal
             transparent
@@ -89,89 +87,94 @@ export default function TimelineBottomSheet({ visible, onClose, user }: Timeline
                         { transform: [{ translateY: slideAnim }] },
                     ]}
                 >
-                    {/* Background Layer - MATCHING HEADER EXACTLY */}
-                    <View style={StyleSheet.absoluteFill}>
-                        {/* 1. White Base */}
-                        <View style={{ flex: 1, backgroundColor: '#ffffff' }} />
+                    {/* Guard content here so sheet frame still animates out */}
+                    {user && (
+                        <>
+                            {/* Background Layer - MATCHING HEADER EXACTLY */}
+                            <View style={StyleSheet.absoluteFill}>
+                                {/* 1. White Base */}
+                                <View style={{ flex: 1, backgroundColor: '#ffffff' }} />
 
-                        {/* 2. Color Overlay (Opacity 0.25 to match Header) */}
-                        <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.25 }]} />
+                                {/* 2. Color Overlay (Opacity 0.25 to match Header) */}
+                                <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.25 }]} />
 
-                        {/* 3. Blur (Intensity 80 to match Header) */}
-                        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-                    </View>
+                                {/* 3. Blur (Intensity 80 to match Header) */}
+                                <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+                            </View>
 
-                    <View style={{ paddingBottom: Math.max(insets.bottom, 24) }}>
+                            <View style={{ paddingBottom: Math.max(insets.bottom, 24) }}>
 
-                        <View style={styles.indicatorWrapper}>
-                            <View style={styles.indicator} />
-                        </View>
-
-                        <View style={styles.gridContainer}>
-                            <TouchableOpacity 
-                                style={styles.gridItem}
-                                activeOpacity={0.7}
-                                onPress={() => {
-                                    onClose();
-                                    setTimeout(() => {
-                                        router.push({
-                                            pathname: '/FilmMyDay',
-                                            params: { recipient: user.name, uniqueUserId: user.uniqueUserId }
-                                        });
-                                    }, 100);
-                                }}
-                            >
-                                <View style={styles.iconContainer}>
-                                    <Entypo name="camera" size={24} color="#000" />
+                                <View style={styles.indicatorWrapper}>
+                                    <View style={styles.indicator} />
                                 </View>
-                                <Text style={styles.gridLabel}>Share</Text>
-                            </TouchableOpacity>
 
-                            <TouchableOpacity 
-                                style={styles.gridItem}
-                                activeOpacity={0.7}
-                                onPress={() => {
-                                    onClose();
-                                    setTimeout(() => {
-                                        router.push(`/profile?userId=${user.uniqueUserId}`);
-                                    }, 100);
-                                }}
-                            >
-                                <View style={styles.iconContainer}>
-                                    <Feather name="user" size={26} color="#000" />
+                                <View style={styles.gridContainer}>
+                                    <TouchableOpacity
+                                        style={styles.gridItem}
+                                        activeOpacity={0.7}
+                                        onPress={() => {
+                                            onClose();
+                                            // 300ms matches the 250ms slide-out + small buffer
+                                            setTimeout(() => {
+                                                router.push({
+                                                    pathname: '/FilmMyDay',
+                                                    params: { recipient: user.name, uniqueUserId: user.uniqueUserId }
+                                                });
+                                            }, 300);
+                                        }}
+                                    >
+                                        <View style={styles.iconContainer}>
+                                            <Entypo name="camera" size={24} color="#000" />
+                                        </View>
+                                        <Text style={styles.gridLabel}>Share</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.gridItem}
+                                        activeOpacity={0.7}
+                                        onPress={() => {
+                                            onClose();
+                                            // 300ms matches the 250ms slide-out + small buffer
+                                            setTimeout(() => {
+                                                router.push(`/profile?userId=${user.uniqueUserId}`);
+                                            }, 300);
+                                        }}
+                                    >
+                                        <View style={styles.iconContainer}>
+                                            <Feather name="user" size={26} color="#000" />
+                                        </View>
+                                        <Text style={styles.gridLabel}>Profile</Text>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.gridItem}
+                                        activeOpacity={0.7}
+                                        onPress={() => {
+                                            console.log('Delete entire timeline', user.uniqueUserId);
+                                            onClose();
+                                        }}
+                                    >
+                                        <View style={[styles.iconContainer, { borderColor: '#FF3B30', borderWidth: 1 }]}>
+                                            <MaterialCommunityIcons name="trash-can-outline" size={26} color="#FF3B30" />
+                                        </View>
+                                        <Text style={[styles.gridLabel, { color: '#FF3B30' }]}>Delete</Text>
+                                    </TouchableOpacity>
                                 </View>
-                                <Text style={styles.gridLabel}>Profile</Text>
-                            </TouchableOpacity>
+                            </View>
 
-                            <TouchableOpacity 
-                                style={styles.gridItem}
-                                activeOpacity={0.7}
-                                onPress={() => {
-                                    console.log('Delete entire timeline', user.uniqueUserId);
-                                    onClose();
-                                }}
-                            >
-                                <View style={[styles.iconContainer, { borderColor: '#FF3B30', borderWidth: 1 }]}>
-                                    <MaterialCommunityIcons name="trash-can-outline" size={26} color="#FF3B30" />
-                                </View>
-                                <Text style={[styles.gridLabel, { color: '#FF3B30' }]}>Delete</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {/* Filler for safe area */}
-                    <View style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: 500 }}>
-                        <View style={{ flex: 1, backgroundColor: '#fff' }} />
-                        <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.25 }]} />
-                        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-                    </View>
-
+                            {/* Filler for safe area */}
+                            <View style={{ position: 'absolute', top: '100%', left: 0, right: 0, height: 500 }}>
+                                <View style={{ flex: 1, backgroundColor: '#fff' }} />
+                                <View style={[StyleSheet.absoluteFill, { backgroundColor: activeColor, opacity: 0.25 }]} />
+                                <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+                            </View>
+                        </>
+                    )}
                 </Animated.View>
             </View>
         </Modal>
     );
 }
-
 
 const styles = StyleSheet.create({
     overlayWrapper: {
