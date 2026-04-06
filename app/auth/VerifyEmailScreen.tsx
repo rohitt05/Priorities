@@ -8,11 +8,11 @@ import {
     Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
+import AuthBackground from '@/features/auth/components/AuthBackground';
 
 interface VerifyEmailScreenProps {
     email: string;
@@ -38,10 +38,9 @@ const VerifyEmailScreen: React.FC<VerifyEmailScreenProps> = ({ email, onSignInPr
 
     return (
         <View style={styles.verifyContainer}>
-            <LinearGradient colors={['#FDFCF0', '#F7F4E9', '#E9DFB4']} style={StyleSheet.absoluteFillObject} />
-
-            <Animated.View style={styles.verifyCard}>
-                <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+            <AuthBackground>
+                <Animated.View style={styles.verifyCard}>
+                    <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
 
                 {/* Icon */}
                 <View style={styles.verifyIconRing}>
@@ -73,6 +72,7 @@ const VerifyEmailScreen: React.FC<VerifyEmailScreenProps> = ({ email, onSignInPr
                     <Text style={styles.resendText}>Resend email</Text>
                 </TouchableOpacity>
             </Animated.View>
+            </AuthBackground>
         </View>
     );
 };
@@ -86,23 +86,24 @@ const styles = StyleSheet.create({
     },
     verifyCard: {
         width: '100%',
-        borderRadius: 28,
+        borderRadius: 32,
         overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.6)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.8)',
         padding: SPACING.xxl,
         backgroundColor: 'rgba(255,255,255,0.4)',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.05,
-        shadowRadius: 20,
+        shadowColor: COLORS.PALETTE.pineGlade,
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.15,
+        shadowRadius: 32,
+        elevation: 8,
     },
     verifyIconRing: {
         width: 88,
         height: 88,
         borderRadius: 44,
-        backgroundColor: 'rgba(255,255,255,0.7)',
+        backgroundColor: 'rgba(255,255,255,0.8)',
         borderWidth: 2,
         borderColor: COLORS.primary,
         alignItems: 'center',
@@ -143,31 +144,33 @@ const styles = StyleSheet.create({
     button: {
         backgroundColor: COLORS.primary,
         paddingVertical: 18,
-        borderRadius: 16,
+        borderRadius: 20,
         alignItems: 'center',
         width: '100%',
         shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 12,
-        elevation: 6,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.25,
+        shadowRadius: 18,
+        elevation: 10,
     },
     buttonText: {
         color: COLORS.surface,
         fontFamily: FONTS.bold,
         fontSize: FONT_SIZES.md,
-        letterSpacing: 1,
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
     },
     resendButton: {
-        marginTop: SPACING.lg,
+        marginTop: SPACING.xl,
         padding: SPACING.md,
         alignItems: 'center',
     },
     resendText: {
         fontSize: FONT_SIZES.sm,
-        fontFamily: FONTS.medium,
-        color: COLORS.textSecondary,
+        fontFamily: FONTS.bold,
+        color: COLORS.primary,
         textDecorationLine: 'underline',
+        letterSpacing: 0.5,
     },
 });
 

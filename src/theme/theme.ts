@@ -86,6 +86,7 @@ export const FONT_SIZES = {
     lg: 20,
     xl: 28,
     xxl: 40,
+    xxxl: 54,   // ← add this
     title: 54,
 };
 

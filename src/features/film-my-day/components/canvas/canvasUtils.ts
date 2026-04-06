@@ -66,43 +66,56 @@ export function buildCardLayout(
     return placed.map(p => ({ x: p.x, y: p.y }));
 }
 
-// ── Scatter deco rectangles ────────────────────────────────────
+// ── buildDecoRectLayout → now outputs circles of varied sizes ──
+// Replaces the old rect layout entirely — all shapes are circles
 export function buildDecoRectLayout(
     count = 35,
-    wMin = 40, wMax = 130,
-    hMin = 55, hMax = 180,
     seed = 55,
 ): DecoItem[] {
     const rand = seededRand(seed);
     const placed: DecoItem[] = [];
 
+    // Three size bands: small (12–28), medium (35–70), large (80–140)
+    const bands = [
+        { rMin: 12, rMax: 28, weight: 0.50 },   // 50% small
+        { rMin: 35, rMax: 70, weight: 0.35 },   // 35% medium
+        { rMin: 80, rMax: 140, weight: 0.15 },  // 15% large
+    ];
+
     for (let i = 0; i < count; i++) {
-        const w = wMin + rand() * (wMax - wMin);
-        const h = hMin + rand() * (hMax - hMin);
+        // Pick band by weight
+        const roll = rand();
+        const band = roll < 0.50
+            ? bands[0]
+            : roll < 0.85
+                ? bands[1]
+                : bands[2];
+
+        const r = band.rMin + rand() * (band.rMax - band.rMin);
         const color = PALETTE_COLORS[Math.floor(rand() * PALETTE_COLORS.length)];
-        const radius = 8 + rand() * 16;
+
         let attempts = 0;
         let x = 0, y = 0;
         while (attempts < 80) {
             x = -CANVAS_HALF_W + rand() * CANVAS_HALF_W * 2;
             y = -CANVAS_HALF_H + rand() * CANVAS_HALF_H * 2;
             const tooClose = placed.some(p => {
-                const dx = Math.abs(p.x - x);
-                const dy = Math.abs(p.y - y);
-                return dx < (p.w + w) * 0.7 && dy < (p.h + h) * 0.7;
+                const dx = p.x - x, dy = p.y - y;
+                return Math.sqrt(dx * dx + dy * dy) < (p.w / 2 + r) * 1.1;
             });
             if (!tooClose) break;
             attempts++;
         }
-        placed.push({ x, y, w, h, color, radius });
+        placed.push({ x, y, w: r * 2, h: r * 2, color, radius: r, circle: true });
     }
     return placed;
 }
 
-// ── Scatter deco circles ───────────────────────────────────────
+// ── Scatter deco circles (smaller accent dots) ─────────────────
 export function buildDecoCircleLayout(
     count = 40,
-    rMin = 15, rMax = 40,
+    rMin = 8,
+    rMax = 32,
     seed = 99,
 ): DecoItem[] {
     const rand = seededRand(seed);
