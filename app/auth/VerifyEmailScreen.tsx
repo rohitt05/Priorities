@@ -4,23 +4,35 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    Animated,
-    Alert
+    Platform,
+    Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
-import AuthBackground from '@/features/auth/components/AuthBackground';
+import AuthCanvas from '@/features/film-my-day/components/canvas/AuthCanvas';
+import {
+    buildDecoRectLayout,
+    buildDecoCircleLayout,
+} from '@/features/film-my-day/components/canvas/canvasUtils';
+
+
+const decoRects = buildDecoRectLayout();
+const decoCircles = buildDecoCircleLayout();
+const ALL_DECO = [...decoRects, ...decoCircles];
+const BG_COLORS: [string, string, string] = ['#FDFCF0', '#F7F4E9', '#E9DFB4'];
+
 
 interface VerifyEmailScreenProps {
     email: string;
     onSignInPress: () => void;
 }
 
+
 const VerifyEmailScreen: React.FC<VerifyEmailScreenProps> = ({ email, onSignInPress }) => {
-    
+
     const handleResend = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         try {
@@ -37,141 +49,177 @@ const VerifyEmailScreen: React.FC<VerifyEmailScreenProps> = ({ email, onSignInPr
     };
 
     return (
-        <View style={styles.verifyContainer}>
-            <AuthBackground>
-                <Animated.View style={styles.verifyCard}>
-                    <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={{ flex: 1, backgroundColor: '#E9DFB4' }}>
+            <AuthCanvas bgColors={BG_COLORS} decoItems={ALL_DECO}>
 
-                {/* Icon */}
-                <View style={styles.verifyIconRing}>
-                    <Ionicons name="mail-unread-outline" size={40} color={COLORS.primary} />
+                {/* Top gradient fade */}
+                <LinearGradient
+                    colors={['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.0)']}
+                    locations={[0, 1]}
+                    style={styles.topGradient}
+                    pointerEvents="none"
+                />
+
+                {/* Content */}
+                <View style={styles.container}>
+
+                    {/* Icon */}
+                    <View style={styles.iconRing}>
+                        <Ionicons name="mail-unread-outline" size={36} color={COLORS.primary} />
+                    </View>
+
+                    {/* Heading */}
+                    <Text style={styles.title}>{'check your\ninbox.'}</Text>
+
+                    {/* Subtext */}
+                    <Text style={styles.subtitle}>
+                        we've sent a verification link to
+                    </Text>
+                    <Text style={styles.emailText}>{email}</Text>
+
+                    <Text style={styles.body}>
+                        open the email and tap the link to complete your sign up. come back here once you're verified.
+                    </Text>
+
                 </View>
 
-                <Text style={styles.verifyTitle}>Check your inbox</Text>
-                <Text style={styles.verifySubtitle}>
-                    We've sent a verification link to
-                </Text>
-                <Text style={styles.verifyEmail}>{email}</Text>
-                <Text style={styles.verifyBody}>
-                    Open the email and tap the link to complete your sign up. Come back here once you're verified.
-                </Text>
+                {/* Bottom actions */}
+                <View style={styles.bottomBlock}>
 
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={onSignInPress}
-                    activeOpacity={0.8}
-                >
-                    <Text style={styles.buttonText}>Go to Sign In</Text>
-                </TouchableOpacity>
+                    {/* Resend link — sits above the button */}
+                    <TouchableOpacity
+                        style={styles.resendLink}
+                        onPress={handleResend}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.resendText}>
+                            Didn't get it?{'  '}
+                            <Text style={styles.resendTextBold}>Resend email →</Text>
+                        </Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={styles.resendButton}
-                    onPress={handleResend}
-                    activeOpacity={0.7}
-                >
-                    <Text style={styles.resendText}>Resend email</Text>
-                </TouchableOpacity>
-            </Animated.View>
-            </AuthBackground>
+                    {/* Primary CTA */}
+                    <TouchableOpacity
+                        style={styles.button}
+                        onPress={onSignInPress}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.buttonText}>GO TO SIGN IN</Text>
+                    </TouchableOpacity>
+
+                </View>
+
+            </AuthCanvas>
         </View>
     );
 };
 
+
 const styles = StyleSheet.create({
-    verifyContainer: {
+
+    topGradient: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: Platform.OS === 'ios' ? 160 : 140,
+        zIndex: 1,
+    },
+
+    container: {
         flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
         paddingHorizontal: SPACING.xl,
+        paddingTop: Platform.OS === 'ios' ? 120 : 100,
+        zIndex: 2,
     },
-    verifyCard: {
-        width: '100%',
-        borderRadius: 32,
-        overflow: 'hidden',
+
+    iconRing: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: 'rgba(255,255,255,0.7)',
         borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.8)',
-        padding: SPACING.xxl,
-        backgroundColor: 'rgba(255,255,255,0.4)',
-        alignItems: 'center',
-        shadowColor: COLORS.PALETTE.pineGlade,
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.15,
-        shadowRadius: 32,
-        elevation: 8,
-    },
-    verifyIconRing: {
-        width: 88,
-        height: 88,
-        borderRadius: 44,
-        backgroundColor: 'rgba(255,255,255,0.8)',
-        borderWidth: 2,
-        borderColor: COLORS.primary,
+        borderColor: 'rgba(44,39,32,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: SPACING.xl,
     },
-    verifyTitle: {
-        fontSize: FONT_SIZES.xl,
+
+    title: {
+        fontSize: FONT_SIZES.xxl,
         fontFamily: FONTS.bold,
         color: COLORS.primary,
-        letterSpacing: -0.5,
-        marginBottom: SPACING.sm,
-        textAlign: 'center',
+        letterSpacing: -1,
+        lineHeight: 46,
+        marginBottom: SPACING.xxl,
+        textAlign: 'left',
     },
-    verifySubtitle: {
+
+    subtitle: {
         fontSize: FONT_SIZES.sm,
         fontFamily: FONTS.regular,
-        color: COLORS.textSecondary,
-        textAlign: 'center',
+        color: 'rgba(44,39,32,0.5)',
+        textAlign: 'left',
+        marginBottom: SPACING.xs,
     },
-    verifyEmail: {
+
+    emailText: {
         fontSize: FONT_SIZES.md,
         fontFamily: FONTS.bold,
         color: COLORS.primary,
-        textAlign: 'center',
-        marginTop: SPACING.xs,
+        textAlign: 'left',
         marginBottom: SPACING.lg,
     },
-    verifyBody: {
+
+    body: {
         fontSize: FONT_SIZES.sm,
         fontFamily: FONTS.regular,
-        color: COLORS.textSecondary,
-        textAlign: 'center',
+        color: 'rgba(44,39,32,0.5)',
+        textAlign: 'left',
         lineHeight: 22,
-        marginBottom: SPACING.xxl,
-        paddingHorizontal: SPACING.sm,
     },
+
+    // ── Bottom block ──
+    bottomBlock: {
+        paddingHorizontal: SPACING.xl,
+        paddingBottom: Platform.OS === 'ios' ? SPACING.xxl : SPACING.xl,
+        gap: SPACING.md,
+        zIndex: 2,
+    },
+
+    // Resend — flows above button in normal layout
+    resendLink: {
+        alignItems: 'center',
+        paddingVertical: SPACING.sm,
+    },
+    resendText: {
+        fontSize: FONT_SIZES.sm,
+        fontFamily: FONTS.regular,
+        color: 'rgba(44,39,32,0.5)',
+    },
+    resendTextBold: {
+        fontFamily: FONTS.semibold,
+        color: COLORS.primary,
+    },
+
     button: {
         backgroundColor: COLORS.primary,
         paddingVertical: 18,
-        borderRadius: 20,
+        borderRadius: 999,
         alignItems: 'center',
-        width: '100%',
         shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.25,
-        shadowRadius: 18,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        elevation: 6,
     },
     buttonText: {
         color: COLORS.surface,
         fontFamily: FONTS.bold,
         fontSize: FONT_SIZES.md,
-        letterSpacing: 1.2,
-        textTransform: 'uppercase',
-    },
-    resendButton: {
-        marginTop: SPACING.xl,
-        padding: SPACING.md,
-        alignItems: 'center',
-    },
-    resendText: {
-        fontSize: FONT_SIZES.sm,
-        fontFamily: FONTS.bold,
-        color: COLORS.primary,
-        textDecorationLine: 'underline',
-        letterSpacing: 0.5,
+        letterSpacing: 1.5,
     },
 });
+
 
 export default VerifyEmailScreen;

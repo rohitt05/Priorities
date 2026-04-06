@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
     ActivityIndicator, KeyboardAvoidingView, Platform, Animated,
@@ -21,14 +21,11 @@ import {
     buildDecoCircleLayout,
 } from '@/features/film-my-day/components/canvas/canvasUtils';
 
-
 const { width: SW, height: SH } = Dimensions.get('window');
-
 const decoRects = buildDecoRectLayout();
 const decoCircles = buildDecoCircleLayout();
 const ALL_DECO = [...decoRects, ...decoCircles];
 const BG_COLORS: [string, string, string] = ['#FDFCF0', '#F7F4E9', '#E9DFB4'];
-
 const PALETTE = Object.values(COLORS.PALETTE);
 
 const GENDER_OPTIONS = [
@@ -49,7 +46,7 @@ const STEPS = [
 
 const TEXT_INPUT_STEPS = ['name', 'handle', 'email', 'password'];
 
-// ── Wave config ────────────────────────────────────────────────────────────
+// ── Wave config ──────────────────────────────────────────────────────────
 const WAVE_H = 24;
 const WAVE_AMP = 6;
 const WAVE_PERIOD = 22;
@@ -69,11 +66,7 @@ function buildWavePath(totalWidth: number): string {
     return d;
 }
 
-// ── WavyProgressBar ────────────────────────────────────────────────────────
-// Strategy: render two identical SVGs stacked absolutely on top of each other.
-// The background SVG is full width (faint color).
-// The foreground SVG is also full width but its *container* View is animated
-// from 0 → target width with overflow:hidden — this clips the colored wave.
+// ── WavyProgressBar ──────────────────────────────────────────────────────
 interface WavyProgressProps {
     stepIndex: number;
     totalSteps: number;
@@ -92,19 +85,13 @@ function WavyProgressBar({ stepIndex, totalSteps, totalWidth }: WavyProgressProp
             toValue: target,
             duration: 420,
             easing: Easing.out(Easing.cubic),
-            useNativeDriver: false, // width animation cannot use native driver
+            useNativeDriver: false,
         }).start();
     }, [stepIndex, totalWidth, totalSteps]);
 
     return (
         <View style={{ width: totalWidth, height: WAVE_H }}>
-
-            {/* Background wave — full width, faint */}
-            <Svg
-                width={totalWidth}
-                height={WAVE_H}
-                style={StyleSheet.absoluteFill}
-            >
+            <Svg width={totalWidth} height={WAVE_H} style={StyleSheet.absoluteFill}>
                 <Path
                     d={wavePath}
                     stroke="rgba(44,39,32,0.13)"
@@ -113,16 +100,13 @@ function WavyProgressBar({ stepIndex, totalSteps, totalWidth }: WavyProgressProp
                     strokeLinecap="round"
                 />
             </Svg>
-
-            {/* Foreground wave — same SVG but its View is clipped by animated width */}
             <Animated.View
                 style={{
                     position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: animWidth,   // ← this is what animates
+                    top: 0, left: 0,
+                    width: animWidth,
                     height: WAVE_H,
-                    overflow: 'hidden', // ← this clips the SVG naturally
+                    overflow: 'hidden',
                 }}
             >
                 <Svg width={totalWidth} height={WAVE_H}>
@@ -135,11 +119,60 @@ function WavyProgressBar({ stepIndex, totalSteps, totalWidth }: WavyProgressProp
                     />
                 </Svg>
             </Animated.View>
-
         </View>
     );
 }
-// ──────────────────────────────────────────────────────────────────────────
+
+// ── Password requirement row ─────────────────────────────────────────────
+interface PasswordHintProps {
+    met: boolean;
+    label: string;
+}
+function PasswordHint({ met, label }: PasswordHintProps) {
+    return (
+        <View style={hintStyles.row}>
+            <View style={[hintStyles.dot, met && hintStyles.dotMet]} />
+            <Text style={[hintStyles.label, met && hintStyles.labelMet]}>{label}</Text>
+        </View>
+    );
+}
+const hintStyles = StyleSheet.create({
+    row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dot: {
+        width: 6, height: 6, borderRadius: 3,
+        backgroundColor: 'rgba(44,39,32,0.22)',
+    },
+    dotMet: { backgroundColor: '#4CAF50' },
+    label: {
+        fontSize: 12,
+        fontFamily: FONTS.regular,
+        color: 'rgba(44,39,32,0.45)',
+    },
+    labelMet: { color: '#4CAF50' },
+});
+
+// ── Handle availability status ───────────────────────────────────────────
+type AvailStatus = 'idle' | 'checking' | 'available' | 'taken';
+
+// ── Username suggestion generator ────────────────────────────────────────
+function generateHandleSuggestions(name: string): string[] {
+    const base = name.trim().toLowerCase().replace(/\s+/g, '');
+    if (!base) return [];
+    const specials = ['_', '.'];
+    const suggestions: string[] = [];
+    const rand = () => Math.floor(Math.random() * 900) + 100; // 3-digit number
+    const sp = () => specials[Math.floor(Math.random() * specials.length)];
+
+    suggestions.push(`${base}${rand()}`);
+    suggestions.push(`${base}${sp()}${rand()}`);
+    const parts = name.trim().toLowerCase().split(/\s+/);
+    if (parts.length >= 2) {
+        suggestions.push(`${parts[0]}${sp()}${parts[parts.length - 1]}${rand()}`);
+    } else {
+        suggestions.push(`${base}${sp()}${rand()}`);
+    }
+    return [...new Set(suggestions)].slice(0, 3);
+}
 
 
 export default function SignUpScreen() {
@@ -161,19 +194,75 @@ export default function SignUpScreen() {
     const [gender, setGender] = useState('');
     const [showGenderDropdown, setShowGenderDropdown] = useState(false);
 
+    // ── Handle availability ────────────────────────────────────────────
+    const [handleStatus, setHandleStatus] = useState<AvailStatus>('idle');
+    const handleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── Suggestion toggle ──────────────────────────────────────────────
+    const [suggestOn, setSuggestOn] = useState(false);
+    const [suggestions, setSuggestions] = useState<string[]>([]);
+
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const inputRef = useRef<TextInput>(null);
 
     const currentStepObj = STEPS[stepIndex];
 
-    // ── Keyboard listener ─────────────────────────────────────────────────
+    // ── Keyboard listener ──────────────────────────────────────────────
     useEffect(() => {
         const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
         const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
         return () => { show.remove(); hide.remove(); };
     }, []);
-    // ─────────────────────────────────────────────────────────────────────
+
+    // ── Debounced handle availability check ───────────────────────────
+    const checkHandleAvailability = useCallback((value: string) => {
+        if (handleDebounceRef.current) clearTimeout(handleDebounceRef.current);
+        if (!value.trim()) { setHandleStatus('idle'); return; }
+        setHandleStatus('checking');
+        handleDebounceRef.current = setTimeout(async () => {
+            try {
+                const available = await isHandleAvailable(value);
+                setHandleStatus(available ? 'available' : 'taken');
+            } catch {
+                setHandleStatus('idle');
+            }
+        }, 500);
+    }, []);
+
+    const onHandleChange = (val: string) => {
+        // Enforce lowercase + only alphanumeric/underscore/dot
+        const sanitized = val.toLowerCase().replace(/[^a-z0-9_.]/g, '');
+        setHandle(sanitized);
+        setHandleStatus('idle');
+        checkHandleAvailability(sanitized);
+    };
+
+    // ── Toggle suggestions ─────────────────────────────────────────────
+    const toggleSuggest = () => {
+        const next = !suggestOn;
+        setSuggestOn(next);
+        if (next) {
+            const s = generateHandleSuggestions(name);
+            setSuggestions(s);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        } else {
+            setSuggestions([]);
+        }
+    };
+
+    const pickSuggestion = (s: string) => {
+        setHandle(s);
+        Haptics.selectionAsync();
+        checkHandleAvailability(s);
+    };
+
+    // ── Password rules ─────────────────────────────────────────────────
+    const pwRules = {
+        length: password.length >= 6,
+        number: /\d/.test(password),
+        special: /[^a-zA-Z0-9]/.test(password),
+    };
 
     const formatDateForDB = (date: Date): string => {
         const y = date.getFullYear();
@@ -221,19 +310,29 @@ export default function SignUpScreen() {
         }
         if (currentStepObj.key === 'handle') {
             if (!handle.trim()) return Alert.alert('Required', 'Handle is required');
-            setLoading(true);
-            const available = await isHandleAvailable(handle).catch(() => false);
-            setLoading(false);
-            if (!available) {
+            if (handleStatus === 'taken') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 return Alert.alert('Taken', 'This handle is already in use');
+            }
+            // If still checking or idle, do a final live check
+            if (handleStatus !== 'available') {
+                setLoading(true);
+                const available = await isHandleAvailable(handle).catch(() => false);
+                setLoading(false);
+                if (!available) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    return Alert.alert('Taken', 'This handle is already in use');
+                }
             }
         }
         if (currentStepObj.key === 'email' && (!email || !email.includes('@'))) {
             return Alert.alert('Invalid', 'Valid email required');
         }
-        if (currentStepObj.key === 'password' && password.length < 6) {
-            return Alert.alert('Short', 'Password must be at least 6 characters');
+        if (currentStepObj.key === 'password') {
+            if (!pwRules.length || !pwRules.number || !pwRules.special) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                return Alert.alert('Weak password', 'Please meet all password requirements');
+            }
         }
         if (currentStepObj.key === 'birthday' && !birthdayDate) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -284,11 +383,18 @@ export default function SignUpScreen() {
                     });
                 }
 
+                // Save handle — DB UNIQUE constraint on unique_user_id is the final safety net
                 const { error: handleError } = await supabase
                     .from('profiles')
-                    .update({ unique_user_id: handle })
+                    .update({ unique_user_id: handle.trim().toLowerCase() })
                     .eq('id', user.id);
-                if (handleError) throw handleError;
+                if (handleError) {
+                    // Postgres unique violation
+                    if (handleError.code === '23505') {
+                        throw new Error('This handle was just taken. Please go back and choose another.');
+                    }
+                    throw handleError;
+                }
 
                 const profileUpdates: Record<string, any> = {
                     name,
@@ -323,6 +429,22 @@ export default function SignUpScreen() {
         );
     }
 
+    // ── Handle availability icon ───────────────────────────────────────
+    const renderHandleStatus = () => {
+        if (handleStatus === 'idle' || !handle.trim()) return null;
+        if (handleStatus === 'checking') {
+            return <ActivityIndicator size="small" color={COLORS.primary} style={{ marginLeft: 8 }} />;
+        }
+        return (
+            <Ionicons
+                name={handleStatus === 'available' ? 'checkmark-circle' : 'close-circle'}
+                size={20}
+                color={handleStatus === 'available' ? '#4CAF50' : '#E53935'}
+                style={{ marginLeft: 8 }}
+            />
+        );
+    };
+
     const renderInput = () => {
         switch (currentStepObj.key) {
             case 'name':
@@ -337,19 +459,66 @@ export default function SignUpScreen() {
                         autoFocus
                     />
                 );
+
             case 'handle':
                 return (
-                    <TextInput
-                        ref={inputRef}
-                        style={styles.input}
-                        placeholder="johndoe"
-                        placeholderTextColor="rgba(44,39,32,0.4)"
-                        value={handle}
-                        onChangeText={setHandle}
-                        autoCapitalize="none"
-                        autoFocus
-                    />
+                    <View>
+                        {/* Input row with live availability icon */}
+                        <View style={styles.handleRow}>
+                            <TextInput
+                                ref={inputRef}
+                                style={[styles.input, { flex: 1, borderBottomWidth: 0 }]}
+                                placeholder="johndoe"
+                                placeholderTextColor="rgba(44,39,32,0.4)"
+                                value={handle}
+                                onChangeText={onHandleChange}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                autoFocus
+                            />
+                            {renderHandleStatus()}
+                        </View>
+                        {/* Shared underline for the row */}
+                        <View style={styles.handleUnderline} />
+
+                        {/* Suggest toggle pill */}
+                        <TouchableOpacity
+                            style={styles.suggestToggle}
+                            onPress={toggleSuggest}
+                            activeOpacity={0.75}
+                        >
+                            <View style={[styles.suggestToggleTrack, suggestOn && styles.suggestToggleTrackOn]}>
+                                <View style={[styles.suggestToggleThumb, suggestOn && styles.suggestToggleThumbOn]} />
+                            </View>
+                            <Text style={styles.suggestToggleLabel}>Suggest a handle</Text>
+                        </TouchableOpacity>
+
+                        {/* Suggestion chips — rendered below toggle when ON */}
+                        {suggestOn && suggestions.length > 0 && (
+                            <View style={styles.suggestChipsRow}>
+                                {suggestions.map((s) => (
+                                    <TouchableOpacity
+                                        key={s}
+                                        style={[
+                                            styles.suggestChip,
+                                            handle === s && styles.suggestChipActive,
+                                        ]}
+                                        onPress={() => pickSuggestion(s)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[
+                                            styles.suggestChipText,
+                                            handle === s && styles.suggestChipTextActive,
+                                        ]}>
+                                            {s}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        )}
+                    </View>
                 );
+
             case 'email':
                 return (
                     <TextInput
@@ -364,35 +533,46 @@ export default function SignUpScreen() {
                         autoFocus
                     />
                 );
+
             case 'password':
                 return (
-                    <View style={styles.passwordRow}>
-                        <TextInput
-                            ref={inputRef}
-                            style={[styles.input, { flex: 1, borderBottomWidth: 0 }]}
-                            placeholder="••••••••"
-                            placeholderTextColor="rgba(44,39,32,0.4)"
-                            value={password}
-                            onChangeText={setPassword}
-                            secureTextEntry={!showPassword}
-                            autoFocus
-                        />
-                        <TouchableOpacity
-                            onPress={() => {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                setShowPassword(p => !p);
-                            }}
-                            style={styles.eyeButton}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons
-                                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                                size={22}
-                                color={`${COLORS.primary}99`}
+                    <View>
+                        <View style={styles.passwordRow}>
+                            <TextInput
+                                ref={inputRef}
+                                style={[styles.input, { flex: 1, borderBottomWidth: 0 }]}
+                                placeholder="••••••••"
+                                placeholderTextColor="rgba(44,39,32,0.4)"
+                                value={password}
+                                onChangeText={setPassword}
+                                secureTextEntry={!showPassword}
+                                autoFocus
                             />
-                        </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setShowPassword(p => !p);
+                                }}
+                                style={styles.eyeButton}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons
+                                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                    size={22}
+                                    color={`${COLORS.primary}99`}
+                                />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Password requirement hints below underline */}
+                        <View style={styles.pwHintsContainer}>
+                            <PasswordHint met={pwRules.length} label="at least 6 characters" />
+                            <PasswordHint met={pwRules.number} label="one number" />
+                            <PasswordHint met={pwRules.special} label="one special character" />
+                        </View>
                     </View>
                 );
+
             case 'birthday':
                 return (
                     <View style={styles.pickerContainer}>
@@ -428,6 +608,7 @@ export default function SignUpScreen() {
                         />
                     </View>
                 );
+
             case 'gender':
                 return (
                     <View style={styles.pickerContainer}>
@@ -495,7 +676,6 @@ export default function SignUpScreen() {
         }
     };
 
-    // ── Keyboard-aware bottom block ───────────────────────────────────────
     const renderBottomBlock = () => {
         if (keyboardVisible) {
             return (
@@ -547,7 +727,6 @@ export default function SignUpScreen() {
             </View>
         );
     };
-    // ─────────────────────────────────────────────────────────────────────
 
     return (
         <View style={{ flex: 1, backgroundColor: '#E9DFB4' }}>
@@ -572,7 +751,6 @@ export default function SignUpScreen() {
                             <Ionicons name="chevron-back" size={28} color={COLORS.primary} />
                         </TouchableOpacity>
 
-                        {/* ── Wavy progress bar ── */}
                         <View
                             style={styles.progressContainer}
                             onLayout={e => setProgressBarWidth(e.nativeEvent.layout.width)}
@@ -600,12 +778,9 @@ export default function SignUpScreen() {
                     </Animated.View>
 
                     <View style={{ flex: 1 }} />
-
                     {renderBottomBlock()}
-
                 </KeyboardAvoidingView>
 
-                {/* ── Sign-in link pinned to the very bottom ── */}
                 {!keyboardVisible && (
                     <TouchableOpacity
                         style={styles.signinLink}
@@ -618,7 +793,6 @@ export default function SignUpScreen() {
                         </Text>
                     </TouchableOpacity>
                 )}
-
             </AuthCanvas>
         </View>
     );
@@ -627,16 +801,12 @@ export default function SignUpScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-
     topGradient: {
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
+        top: 0, left: 0, right: 0,
         height: Platform.OS === 'ios' ? 160 : 140,
         zIndex: 1,
     },
-
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -645,10 +815,7 @@ const styles = StyleSheet.create({
         paddingBottom: SPACING.md,
         zIndex: 2,
     },
-    backButton: {
-        width: 44, height: 44, justifyContent: 'center',
-    },
-
+    backButton: { width: 44, height: 44, justifyContent: 'center' },
     progressContainer: {
         flex: 1,
         height: WAVE_H,
@@ -656,7 +823,6 @@ const styles = StyleSheet.create({
         marginLeft: SPACING.md,
         marginRight: SPACING.xl,
     },
-
     formBlock: {
         paddingHorizontal: SPACING.xl,
         paddingTop: SPACING.xl,
@@ -671,12 +837,10 @@ const styles = StyleSheet.create({
         lineHeight: 46,
         textAlign: 'left',
     },
-    inputContainer: {
-        marginBottom: SPACING.md,
-    },
+    inputContainer: { marginBottom: SPACING.md },
     input: {
         borderBottomWidth: 1.5,
-        borderColor: 'rgba(44,39,32,0.55)',  // was 0.15
+        borderColor: 'rgba(44,39,32,0.55)',
         paddingVertical: SPACING.md,
         fontSize: 22,
         fontFamily: FONTS.semibold,
@@ -684,17 +848,94 @@ const styles = StyleSheet.create({
         textAlign: 'left',
     },
 
+    // ── Handle ──────────────────────────────────────────────────────────
+    handleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    handleUnderline: {
+        height: 1.5,
+        backgroundColor: 'rgba(44,39,32,0.55)',
+        marginTop: 0,
+    },
+    suggestToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 14,
+        alignSelf: 'flex-start',
+    },
+    suggestToggleTrack: {
+        width: 32,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: 'rgba(44,39,32,0.18)',
+        justifyContent: 'center',
+        paddingHorizontal: 2,
+    },
+    suggestToggleTrackOn: {
+        backgroundColor: COLORS.primary,
+    },
+    suggestToggleThumb: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: '#fff',
+        alignSelf: 'flex-start',
+    },
+    suggestToggleThumbOn: {
+        alignSelf: 'flex-end',
+    },
+    suggestToggleLabel: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: 'rgba(44,39,32,0.55)',
+    },
+    suggestChipsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 12,
+    },
+    suggestChip: {
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 999,
+        borderWidth: 1.5,
+        borderColor: 'rgba(44,39,32,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.55)',
+    },
+    suggestChipActive: {
+        borderColor: COLORS.primary,
+        backgroundColor: `${COLORS.primary}15`,
+    },
+    suggestChipText: {
+        fontSize: 13,
+        fontFamily: FONTS.medium,
+        color: 'rgba(44,39,32,0.65)',
+    },
+    suggestChipTextActive: {
+        color: COLORS.primary,
+        fontFamily: FONTS.semibold,
+    },
+
+    // ── Password ────────────────────────────────────────────────────────
     passwordRow: {
         flexDirection: 'row',
         alignItems: 'center',
         borderBottomWidth: 1.5,
-        borderColor: 'rgba(44,39,32,0.55)',  // was 0.15
+        borderColor: 'rgba(44,39,32,0.55)',
     },
     eyeButton: {
         paddingHorizontal: SPACING.sm,
         paddingVertical: SPACING.md,
     },
+    pwHintsContainer: {
+        marginTop: 12,
+        gap: 6,
+    },
 
+    // ── Pickers ─────────────────────────────────────────────────────────
     pickerContainer: { marginTop: SPACING.sm },
     dropdownButton: {
         flexDirection: 'row',
@@ -768,13 +1009,13 @@ const styles = StyleSheet.create({
         marginHorizontal: SPACING.lg,
     },
 
+    // ── Bottom ──────────────────────────────────────────────────────────
     bottomBlock: {
         paddingHorizontal: SPACING.xl,
         paddingBottom: Platform.OS === 'ios' ? SPACING.xxl : SPACING.xl,
         gap: SPACING.md,
         zIndex: 2,
     },
-
     button: {
         backgroundColor: COLORS.primary,
         paddingVertical: 18,
@@ -792,7 +1033,6 @@ const styles = StyleSheet.create({
         fontSize: FONT_SIZES.md,
         letterSpacing: 1.5,
     },
-
     keyboardButtonRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -815,8 +1055,7 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
     },
     arrowButton: {
-        width: 56,
-        height: 56,
+        width: 56, height: 56,
         borderRadius: 999,
         backgroundColor: COLORS.primary,
         alignItems: 'center',
@@ -827,12 +1066,10 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
         elevation: 5,
     },
-
     signinLink: {
         position: 'absolute',
         bottom: Platform.OS === 'ios' ? 25 : 40,
-        left: 0,
-        right: 0,
+        left: 0, right: 0,
         alignItems: 'center',
         paddingVertical: SPACING.sm,
         zIndex: 10,

@@ -62,14 +62,18 @@ export async function updateProfile(
 }
 
 // ─── CHECK IF @HANDLE IS AVAILABLE ────────────────────────
+// Queries the unique_user_id column (which has a UNIQUE constraint in DB).
+// Returns true if the handle is free, false if already taken.
+// ✅ Switch from a direct table query → RPC call
+// ─── CHECK IF @HANDLE IS AVAILABLE ────────────────────────
 export async function isHandleAvailable(handle: string): Promise<boolean> {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('unique_user_id', handle)
-        .maybeSingle();
-    if (error) throw error;
-    return data === null;
+    const { data, error } = await (supabase as any)
+        .rpc('is_handle_available', { handle: handle.trim() });
+    if (error) {
+        console.warn('Handle check error:', error.message);
+        return false;
+    }
+    return data === true;
 }
 
 // ─── SEARCH USERS BY NAME OR HANDLE ───────────────────────
