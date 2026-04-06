@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -77,7 +77,6 @@ export default function UserTimelineView({
     const [mediaViewerVisible, setMediaViewerVisible] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
 
-    // ⭐ Pull live events from context (replaces mock filmService calls)
     const { liveTimelineEvents, timelineLoading } = useUserTimeline();
     const { timelineEvents: inboxTimelineEvents } = useMediaInbox();
 
@@ -94,16 +93,18 @@ export default function UserTimelineView({
         return () => backHandler.remove();
     }, [user, mediaViewerVisible, onClose]);
 
-    // ⭐ Merge live Supabase events + inbox events (real-time new messages)
-    const allUserMedia = useMemo(() => {
+    // ─── Single merge: compute once, derive both consumers from it ───────────
+    // Previously this filter/dedup/sort was duplicated in two separate useMemos.
+    // Now we merge once and derive `allUserMedia` + `rawEventsForCalendar` from
+    // the same result, avoiding double iteration on every render.
+    const mergedEvents = useMemo((): TimelineEvent[] => {
         if (!user) return [];
 
         const liveEvents: TimelineEvent[] = liveTimelineEvents[user.uniqueUserId] ?? [];
         const dynamicEvents: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
 
-        // Merge, deduplicate by id, filter to photo/video only, sort newest first
         const seen = new Set<string>();
-        const combined = [...dynamicEvents, ...liveEvents]
+        return [...dynamicEvents, ...liveEvents]
             .filter((e): e is TimelineEvent => {
                 const ev = e as any;
                 if (seen.has(ev.id)) return false;
@@ -111,10 +112,13 @@ export default function UserTimelineView({
                 return ev.type === 'video' || ev.type === 'photo' || ev.type === 'image';
             })
             .sort((a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
             );
+    }, [user, liveTimelineEvents, inboxTimelineEvents]);
 
-        return combined.map((event) => {
+    // Mapped to MediaItem shape for MediaViewer
+    const allUserMedia = useMemo((): MediaItem[] => {
+        return mergedEvents.map((event) => {
             const ev = event as any;
             return {
                 id: ev.id,
@@ -128,7 +132,10 @@ export default function UserTimelineView({
                 sender: ev.sender,
             } as MediaItem;
         });
-    }, [user, liveTimelineEvents, inboxTimelineEvents]);
+    }, [mergedEvents]);
+
+    // Raw events (with original timestamps) for TimelineCalendar
+    const rawEventsForCalendar = mergedEvents;
 
     const handleMediaPress = (event: TimelineEvent) => {
         const ev = event as any;
@@ -189,24 +196,6 @@ export default function UserTimelineView({
         opacity: interpolate(expandAnim.value, [0, 1], [0.25, 0]),
     }));
 
-    // ⭐ Raw events (with original timestamps) for TimelineCalendar
-    const rawEventsForCalendar: TimelineEvent[] = useMemo(() => {
-        if (!user) return [];
-        const liveEvents = liveTimelineEvents[user.uniqueUserId] ?? [];
-        const dynamicEvents: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
-        const seen = new Set<string>();
-        return [...dynamicEvents, ...liveEvents]
-            .filter(e => {
-                const ev = e as any;
-                if (seen.has(ev.id)) return false;
-                seen.add(ev.id);
-                return ev.type === 'video' || ev.type === 'photo' || ev.type === 'image';
-            })
-            .sort((a, b) =>
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-            );
-    }, [user, liveTimelineEvents, inboxTimelineEvents]);
-
     return (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
             <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -215,7 +204,6 @@ export default function UserTimelineView({
                     contentAnimatedStyle,
                     { top: CLIPPING_START_Y, backgroundColor: COLORS.background }
                 ]}>
-                    {/* ⭐ Show spinner while fetching */}
                     {timelineLoading ? (
                         <View style={styles.loadingContainer}>
                             <ActivityIndicator size="large" color="#000" />
