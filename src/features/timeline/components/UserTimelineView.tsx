@@ -1,8 +1,8 @@
 // src/features/timeline/components/UserTimelineView.tsx
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View, Text, StyleSheet, Image, TouchableOpacity,
-    Pressable, LayoutRectangle, BackHandler, ActivityIndicator,
+    LayoutRectangle, BackHandler, ActivityIndicator,
 } from 'react-native';
 import Animated, {
     useAnimatedStyle, interpolate, SharedValue,
@@ -41,15 +41,11 @@ export default function UserTimelineView({
     const { bgColor, prevBgColor } = useBackground();
     const [mediaViewerVisible, setMediaViewerVisible] = useState(false);
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
-
-    // Delay rendering the calendar until animation finishes
-    // This is the KEY fix — don't render heavy content during the open animation
     const [animationDone, setAnimationDone] = useState(false);
 
     const { liveTimelineEvents, timelineLoading } = useUserTimeline();
     const { timelineEvents: inboxTimelineEvents } = useMediaInbox();
 
-    // Let the 400ms open animation finish before rendering the timeline
     useEffect(() => {
         if (!user) return;
         setAnimationDone(false);
@@ -69,23 +65,79 @@ export default function UserTimelineView({
 
     const mergedEvents = useMemo((): TimelineEvent[] => {
         if (!user) return [];
+
         const liveEvents: TimelineEvent[] = liveTimelineEvents[user.uniqueUserId] ?? [];
-        const dynamicEvents: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
-        const seen = new Set<string>();
-        return [...dynamicEvents, ...liveEvents]
-            .filter((e): e is TimelineEvent => {
-                const ev = e as any;
-                if (seen.has(ev.id)) return false;
-                seen.add(ev.id);
-                return ev.type === 'video' || ev.type === 'photo' || ev.type === 'image';
-            })
-            .sort((a, b) =>
-                new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
-            );
+
+        // ─── FIX: inbox events are keyed by sender's AUTH UUID, not uniqueUserId ───
+        // Try both the uniqueUserId key AND the user.id (auth uuid) key
+        const inboxByUniqueId: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
+        const inboxByAuthId: TimelineEvent[] = (user as any).id
+            ? (inboxTimelineEvents[(user as any).id] ?? [])
+            : [];
+
+        // Merge all three sources
+        const allRaw = [...inboxByUniqueId, ...inboxByAuthId, ...liveEvents];
+
+        console.log('[Timeline] mergedEvents build:', {
+            userId: user.uniqueUserId,
+            userAuthId: (user as any).id,
+            liveCount: liveEvents.length,
+            inboxByUniqueIdCount: inboxByUniqueId.length,
+            inboxByAuthIdCount: inboxByAuthId.length,
+            totalRaw: allRaw.length,
+        });
+
+        // ─── FIX: dedup by URI, not just id ───────────────────────────────────────
+        // Same media can arrive with different IDs (message id vs film id).
+        // Primary dedup: by id. Secondary dedup: by uri (catches same media, diff id).
+        const seenIds = new Set<string>();
+        const seenUris = new Set<string>();
+
+        const deduped = allRaw.filter((e): e is TimelineEvent => {
+            const ev = e as any;
+            const type = ev.type;
+
+            if (type !== 'video' && type !== 'photo' && type !== 'image') return false;
+
+            // Dedup by id first
+            if (ev.id) {
+                if (seenIds.has(ev.id)) {
+                    console.log('[Timeline] Dropped duplicate by id:', ev.id);
+                    return false;
+                }
+                seenIds.add(ev.id);
+            }
+
+            // Dedup by uri (catches message vs film same media)
+            const uriKey = ev.uri || ev.thumbUri;
+            if (uriKey) {
+                // Strip query params (signed URL tokens differ but path is same)
+                const uriPath = uriKey.split('?')[0];
+                if (seenUris.has(uriPath)) {
+                    console.log('[Timeline] Dropped duplicate by uri path:', uriPath);
+                    return false;
+                }
+                seenUris.add(uriPath);
+            }
+
+            return true;
+        });
+
+        const sorted = deduped.sort((a, b) =>
+            new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
+        );
+
+        console.log('[Timeline] Final deduplicated events:', sorted.length, sorted.map((e: any) => ({
+            id: e.id,
+            type: e.type,
+            uri: e.uri?.split('?')[0]?.split('/').pop(), // just filename, no token
+        })));
+
+        return sorted;
     }, [user, liveTimelineEvents, inboxTimelineEvents]);
 
     const allUserMedia = useMemo((): MediaItem[] => {
-        return mergedEvents.map((event) => {
+        const media = mergedEvents.map((event) => {
             const ev = event as any;
             return {
                 id: ev.id,
@@ -99,19 +151,41 @@ export default function UserTimelineView({
                 sender: ev.sender,
             } as MediaItem;
         });
+
+        console.log('[Timeline] allUserMedia built:', media.length, 'items');
+        return media;
     }, [mergedEvents]);
 
     const handleMediaPress = (event: TimelineEvent) => {
         const ev = event as any;
+
+        console.log('[Timeline] handleMediaPress called:', {
+            id: ev.id,
+            type: ev.type,
+            uri: ev.uri?.split('?')[0]?.split('/').pop(),
+            hasUri: !!ev.uri,
+        });
+
         const mediaItem = allUserMedia.find(item => item.id === ev.id);
+
+        console.log('[Timeline] mediaItem lookup:', {
+            found: !!mediaItem,
+            searchId: ev.id,
+            allIds: allUserMedia.map(m => m.id),
+        });
+
         if (mediaItem) {
+            console.log('[Timeline] Opening MediaViewer with:', mediaItem.id, mediaItem.type);
             setSelectedMedia(mediaItem);
             setMediaViewerVisible(true);
         } else {
+            // Fallback: build inline if lookup missed
+            console.log('[Timeline] mediaItem not found in allUserMedia, using fallback');
             setSelectedMedia({
                 id: ev.id,
                 type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : 'video',
                 uri: ev.uri,
+                thumbUri: ev.thumbUri || ev.uri,
                 text: ev.textContent || ev.text,
                 sender: ev.sender,
                 timestamp: formatTimestamp(ev.timestamp),
@@ -158,13 +232,8 @@ export default function UserTimelineView({
         opacity: interpolate(expandAnim.value, [0, 1], [0.25, 0]),
     }));
 
-    // What to show in the content area
     const renderContent = () => {
-        // Still animating open — show nothing heavy, let animation run clean
-        if (!animationDone) {
-            return <View style={styles.loadingContainer} />;
-        }
-        // Animation done, now fetch is in progress
+        if (!animationDone) return <View style={styles.loadingContainer} />;
         if (timelineLoading) {
             return (
                 <View style={styles.loadingContainer}>
@@ -172,7 +241,6 @@ export default function UserTimelineView({
                 </View>
             );
         }
-        // Data ready
         if (mergedEvents.length > 0) {
             return (
                 <TimelineCalendar
@@ -193,11 +261,15 @@ export default function UserTimelineView({
     return (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
             <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                <Animated.View style={[
-                    styles.clippingContainer,
-                    contentAnimatedStyle,
-                    { top: CLIPPING_START_Y, backgroundColor: COLORS.background }
-                ]}>
+
+                <Animated.View
+                    style={[
+                        styles.clippingContainer,
+                        contentAnimatedStyle,
+                        { top: CLIPPING_START_Y, backgroundColor: COLORS.background }
+                    ]}
+                    pointerEvents="box-none"
+                >
                     {renderContent()}
 
                     <View style={styles.floatingCloseContainer}>
@@ -213,20 +285,47 @@ export default function UserTimelineView({
                     </View>
                 </Animated.View>
 
-                <Animated.View style={[
-                    imageAnimatedStyle,
-                    { position: 'absolute', backgroundColor: user!.dominantColor, overflow: 'hidden', zIndex: 100, elevation: 10 }
-                ]}>
-                    <Pressable onPress={onClose} style={{ flex: 1 }}>
-                        <Image source={{ uri: user!.profilePicture }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                    </Pressable>
+                {/* Avatar — touch-transparent, no pressable */}
+                <Animated.View
+                    style={[
+                        imageAnimatedStyle,
+                        {
+                            position: 'absolute',
+                            backgroundColor: user!.dominantColor,
+                            overflow: 'hidden',
+                            zIndex: 100,
+                            elevation: 10,
+                        }
+                    ]}
+                    pointerEvents="none"
+                >
+                    <Image
+                        source={{ uri: user!.profilePicture }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode="cover"
+                    />
                 </Animated.View>
 
-                <Animated.View style={[
-                    headerTextAnimatedStyle,
-                    { position: 'absolute', top: TARGET_TOP, left: TARGET_LEFT + TARGET_SIZE + 15, right: 60, height: TARGET_SIZE, justifyContent: 'center', zIndex: 100 }
-                ]}>
-                    <Text style={{ fontSize: 28, fontFamily: 'DancingScript-Bold', color: '#000' }} numberOfLines={1}>
+                {/* Header name — touch-transparent */}
+                <Animated.View
+                    style={[
+                        headerTextAnimatedStyle,
+                        {
+                            position: 'absolute',
+                            top: TARGET_TOP,
+                            left: TARGET_LEFT + TARGET_SIZE + 15,
+                            right: 60,
+                            height: TARGET_SIZE,
+                            justifyContent: 'center',
+                            zIndex: 100,
+                        }
+                    ]}
+                    pointerEvents="none"
+                >
+                    <Text
+                        style={{ fontSize: 28, fontFamily: 'DancingScript-Bold', color: '#000' }}
+                        numberOfLines={1}
+                    >
                         {user!.name}
                     </Text>
                 </Animated.View>

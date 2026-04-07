@@ -5,20 +5,38 @@ import { TimelineEvent } from '@/types/domain';
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 const refreshSignedUrl = async (
-    uri: string | null | undefined
+    uri: string | null | undefined,
+    bucket = 'films'
 ): Promise<string | undefined> => {
     if (!uri) return undefined;
-    if (!uri.includes('/storage/v1/object/sign/')) return uri ?? undefined;
 
-    const match = uri.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
-    if (!match) return uri;
+    // Already a full signed URL → extract path and re-sign (handles expired tokens)
+    if (uri.includes('/storage/v1/object/sign/')) {
+        const match = uri.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
+        if (!match) return uri;
+        const [, b, path] = match;
+        const { data, error } = await supabase.storage
+            .from(b)
+            .createSignedUrl(path, 60 * 60);
+        if (error || !data?.signedUrl) {
+            console.warn('[timelineService] Failed to re-sign URL:', error?.message);
+            return uri;
+        }
+        return data.signedUrl;
+    }
 
-    const [, bucket, path] = match;
+    // Already a full public HTTPS URL → return as-is
+    if (uri.startsWith('https://')) return uri;
+
+    // Raw storage path (e.g. "films/USER_ID/media/filename.mp4") → sign it
     const { data, error } = await supabase.storage
         .from(bucket)
-        .createSignedUrl(path, 60 * 60);
+        .createSignedUrl(uri, 60 * 60);
 
-    if (error || !data?.signedUrl) return uri;
+    if (error || !data?.signedUrl) {
+        console.warn('[timelineService] Failed to sign raw path:', uri, error?.message);
+        return undefined;
+    }
     return data.signedUrl;
 };
 
@@ -68,22 +86,21 @@ export const timelineService = {
         const films = filmsResult.data ?? [];
         const messages = messagesResult.data ?? [];
 
-        // ── Re-sign ALL URLs in parallel (not sequential) ────────────────────
-        // Previously: for loop with await = N sequential API calls
-        // Now: Promise.all = all calls fire simultaneously
+        // ── Re-sign ALL URLs in parallel ─────────────────────────────────────
         const [signedFilms, signedMessages] = await Promise.all([
             Promise.all(
                 films.map(async (film) => {
+                    // Films bucket: "films", messages bucket: "messages"
                     const [freshUri, freshThumb] = await Promise.all([
-                        refreshSignedUrl(film.uri),
-                        refreshSignedUrl(film.thumbnail),
+                        refreshSignedUrl(film.uri, 'films'),
+                        refreshSignedUrl(film.thumbnail, 'films'),
                     ]);
                     return { film, freshUri, freshThumb };
                 })
             ),
             Promise.all(
                 messages.map(async (msg) => {
-                    const freshUri = await refreshSignedUrl(msg.uri);
+                    const freshUri = await refreshSignedUrl(msg.uri, 'messages');
                     return { msg, freshUri };
                 })
             ),
@@ -93,11 +110,17 @@ export const timelineService = {
         const events: TimelineEvent[] = [];
 
         for (const { film, freshUri, freshThumb } of signedFilms) {
+            // Skip films where we couldn't get a valid URI
+            if (!freshUri) {
+                console.warn('[timelineService] Skipping film with no valid URI:', film.id);
+                continue;
+            }
             events.push({
                 id: film.id,
                 senderId: film.creator_id,
                 receiverId: film.creator_id === myId ? theirId : myId,
-                type: film.type === 'video' ? 'video' : 'photo',
+                // Normalize: DB stores "image" for photos, app uses "photo"
+                type: (film.type === 'video') ? 'video' : 'photo',
                 uri: freshUri,
                 sentAt: film.created_at,
                 disappeared: false,
@@ -109,6 +132,10 @@ export const timelineService = {
         }
 
         for (const { msg, freshUri } of signedMessages) {
+            if (!freshUri && (msg.type === 'photo' || msg.type === 'video')) {
+                console.warn('[timelineService] Skipping message with no valid URI:', msg.id);
+                continue;
+            }
             events.push({
                 id: msg.id,
                 senderId: msg.sender_id,
@@ -128,7 +155,7 @@ export const timelineService = {
 
         // ── Sort newest-first ─────────────────────────────────────────────────
         events.sort(
-            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            (a, b) => new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
         );
 
         return events;

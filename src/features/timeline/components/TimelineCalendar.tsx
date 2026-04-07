@@ -1,18 +1,12 @@
+// src/features/timeline/components/TimelineCalendar.tsx
 import React, { useMemo, useCallback } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    Image,
-    FlatList,
-    Dimensions,
-    TouchableOpacity,
+    View, Text, StyleSheet, Image,
+    FlatList, Dimensions, TouchableOpacity,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    TimelineRow,
-    processTimelineData,
-    filterEventsForUser,
+    TimelineRow, processTimelineData, filterEventsForUser,
 } from '@/features/timeline/utils/timelineCalendarLogic';
 import { TimelineEvent } from '@/types/domain';
 import SmartVideoTile from '@/components/ui/SmartVideoTile';
@@ -27,13 +21,9 @@ interface TimelineCalendarProps {
 }
 
 export default function TimelineCalendar({
-    userUniqueId,
-    timelineEvents,
-    contentPaddingTop,
-    onMediaPress,
+    userUniqueId, timelineEvents, contentPaddingTop, onMediaPress,
 }: TimelineCalendarProps) {
 
-    // Memoized — never re-runs on scroll
     const userEvents = useMemo(
         () => filterEventsForUser(timelineEvents, userUniqueId),
         [timelineEvents, userUniqueId]
@@ -44,29 +34,46 @@ export default function TimelineCalendar({
         [userEvents]
     );
 
-    // O(1) event lookup by id — fixes video tap not working
     const eventById = useMemo(() => {
         const map = new Map<string, TimelineEvent>();
-        userEvents.forEach(e => map.set((e as any).id, e));
+        userEvents.forEach(e => {
+            const ev = e as any;
+            if (ev.id) map.set(ev.id, e);
+        });
+        console.log('[TimelineCalendar] eventById map built, size:', map.size, 'keys:', [...map.keys()]);
         return map;
     }, [userEvents]);
 
     const renderGridItem = useCallback((item: any, itemIndex: number) => {
         const itemSize = (SCREEN_WIDTH * 0.70) / 3 - 6;
-
-        // Direct id lookup — always resolves to the correct original event
         const originalEvent = item.id ? eventById.get(item.id) : undefined;
 
         const handlePress = () => {
-            if (originalEvent && onMediaPress) {
-                onMediaPress(originalEvent);
+            console.log('[TimelineCalendar] Tile pressed:', {
+                itemId: item.id,
+                itemType: item.type,
+                foundInMap: !!originalEvent,
+                hasOnMediaPress: !!onMediaPress,
+            });
+
+            if (!item.id) {
+                console.warn('[TimelineCalendar] ❌ item.id is missing! Grid item:', item);
+                return;
             }
+            if (!originalEvent) {
+                console.warn('[TimelineCalendar] ❌ originalEvent not found for id:', item.id, '— map keys:', [...eventById.keys()]);
+                return;
+            }
+            if (!onMediaPress) {
+                console.warn('[TimelineCalendar] ❌ onMediaPress prop is undefined');
+                return;
+            }
+
+            console.log('[TimelineCalendar] ✅ Calling onMediaPress for:', item.id);
+            onMediaPress(originalEvent);
         };
 
         const isVideo = item.type === 'video';
-
-        // Only the first tile (index 0) in a row autoplays its video preview.
-        // All other video tiles show a thumbnail still — no extra players running.
         const shouldAutoplay = isVideo && itemIndex === 0;
 
         return (
@@ -110,9 +117,7 @@ export default function TimelineCalendar({
             return (
                 <View style={styles.monthHeaderRow}>
                     <View style={styles.leftCol} />
-                    <View style={styles.railColumn}>
-                        <View style={styles.railLine} />
-                    </View>
+                    <View style={styles.railColumn}><View style={styles.railLine} /></View>
                     <View style={styles.rightCol}>
                         <Text style={styles.monthText}>{item.label}</Text>
                     </View>
@@ -132,9 +137,7 @@ export default function TimelineCalendar({
                 </View>
                 <View style={styles.rightCol}>
                     <View style={styles.gridContainer}>
-                        {item.items.map((gridItem, idx) =>
-                            renderGridItem(gridItem, idx)
-                        )}
+                        {item.items.map((gridItem, idx) => renderGridItem(gridItem, idx))}
                     </View>
                 </View>
             </View>

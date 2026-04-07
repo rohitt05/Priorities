@@ -26,9 +26,27 @@ interface VideoPlayerProps extends BaseMediaProps {
     themeColor?: string;
 }
 
+// ── Checks if a URI is actually playable by expo-video ───────────────────────
+const isPlayableUri = (uri: string | undefined | null): boolean => {
+    if (!uri) return false;
+    return uri.startsWith('https://') || uri.startsWith('http://') || uri.startsWith('file://');
+};
+
 export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, themeColor = '#000' }: VideoPlayerProps) {
+
+    // Guard: if URI isn't a valid playable URL, show error state immediately
+    if (!isPlayableUri(mediaItem?.uri)) {
+        console.warn('[VideoPlayer] Invalid or missing URI:', mediaItem?.uri, 'for item:', mediaItem?.id);
+        return (
+            <View style={[styles.container, styles.errorContainer]}>
+                <Ionicons name="alert-circle-outline" size={40} color="rgba(255,255,255,0.6)" />
+                <Text style={styles.errorText}>Video unavailable</Text>
+            </View>
+        );
+    }
+
     // 1. Initialize Player
-    const player = useVideoPlayer(mediaItem.uri || '', player => {
+    const player = useVideoPlayer(mediaItem.uri!, player => {
         player.loop = true;
         player.timeUpdateEventInterval = 0.1;
         if (autoPlay) player.play();
@@ -45,7 +63,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
     // UI State
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
-    const [showControls, setShowControls] = useState(true); // Start visible
+    const [showControls, setShowControls] = useState(true);
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
 
@@ -58,8 +76,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
     const controlsOpacity = useRef(new Animated.Value(1)).current;
     const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
-    // --- Control Visibility Logic ---
-
     const clearTimer = () => {
         if (hideControlsTimer.current) {
             clearTimeout(hideControlsTimer.current);
@@ -69,11 +85,10 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
 
     const startHideTimer = useCallback(() => {
         clearTimer();
-        // Only auto-hide if playing
         if (player.playing) {
             hideControlsTimer.current = setTimeout(() => {
                 fadeOutControls();
-            }, 3000); // 3 seconds delay
+            }, 3000);
         }
     }, [player.playing]);
 
@@ -91,7 +106,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
     const fadeOutControls = () => {
         Animated.timing(controlsOpacity, {
             toValue: 0,
-            duration: 500, // Slow fade like iPhone
+            duration: 500,
             useNativeDriver: true
         }).start(() => {
             setShowControls(false);
@@ -106,9 +121,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         }
     };
 
-    // --- Effects ---
-
-    // 2. Listeners
+    // Listeners
     useEffect(() => {
         const subscription = player.addListener('timeUpdate', (event) => {
             if (!isScrubbing) {
@@ -124,17 +137,13 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         };
     }, [player, isScrubbing, duration]);
 
-    // 3. Focus Handling
+    // Focus Handling
     useEffect(() => {
         if (!isFocused) {
-            // Pause if swiped away
             player.pause();
-            // Reset controls to visible when coming back? Or keep state.
-            // Let's reset to visible so user sees the play button
             setShowControls(true);
             controlsOpacity.setValue(1);
         } else {
-            // When focused, auto-play only if prop is set
             if (autoPlay) {
                 player.play();
             }
@@ -142,34 +151,28 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         }
     }, [isFocused, player, autoPlay]);
 
-    // Monitor playing state to manage timer
     useEffect(() => {
         if (isPlaying) {
             startHideTimer();
         } else {
             clearTimer();
-            // If paused, keep controls visible
             if (!showControls) {
                 fadeInControls();
             }
         }
     }, [isPlaying]);
 
-    // 4. Interaction Handlers
-
     const handlePlayPause = () => {
         if (isPlaying) {
             player.pause();
-            // Timer cleared by effect
         } else {
             player.play();
-            // Timer started by effect
         }
     };
 
     const handleScrubStart = () => {
         setIsScrubbing(true);
-        clearTimer(); // Keep controls visible while dragging
+        clearTimer();
     };
 
     const handleScrubEnd = () => {
@@ -177,7 +180,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         if (isPlaying) startHideTimer();
     };
 
-    // 5. PanResponder for Scrubbing
     const panResponder = useRef(
         PanResponder.create({
             onStartShouldSetPanResponder: () => true,
@@ -208,8 +210,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         })
     ).current;
 
-    if (!mediaItem?.uri) return null;
-
     const progressPercent = (duration > 0 && currentTime > 0)
         ? (currentTime / duration) * 100
         : 0;
@@ -223,12 +223,10 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                 nativeControls={false}
             />
 
-            {/* Tap Background to Toggle Controls */}
             <Pressable
                 style={StyleSheet.absoluteFill}
                 onPress={toggleControls}
             >
-                {/* Center Play Button (Fade with controls) */}
                 <Animated.View
                     style={[
                         styles.centerOverlay,
@@ -251,7 +249,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                 </Animated.View>
             </Pressable>
 
-            {/* Bottom Controls Bar */}
             <Animated.View
                 style={[
                     styles.controlsBottom,
@@ -295,11 +292,19 @@ const styles = StyleSheet.create({
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#000', // Solid background establishes a hardware layer
+        backgroundColor: '#000',
         borderRadius: 32,
         overflow: 'hidden',
-        borderWidth: 1, // Another trick to force hardware bounds
+        borderWidth: 1,
         borderColor: 'transparent',
+    },
+    errorContainer: {
+        gap: 12,
+    },
+    errorText: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 14,
+        fontWeight: '500',
     },
     video: {
         width: '100%',
