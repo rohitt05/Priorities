@@ -10,8 +10,20 @@ import {
 } from '@/features/timeline/utils/timelineCalendarLogic';
 import { TimelineEvent } from '@/types/domain';
 import SmartVideoTile from '@/components/ui/SmartVideoTile';
+import { useBackground } from '@/contexts/BackgroundContext'; // ← ADD THIS
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Helper: is bgColor dark or light?
+function isColorDark(hex: string): boolean {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substring(0, 2), 16);
+    const g = parseInt(c.substring(2, 4), 16);
+    const b = parseInt(c.substring(4, 6), 16);
+    // Perceived brightness formula
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5;
+}
 
 interface TimelineCalendarProps {
     userUniqueId: string;
@@ -23,6 +35,13 @@ interface TimelineCalendarProps {
 export default function TimelineCalendar({
     userUniqueId, timelineEvents, contentPaddingTop, onMediaPress,
 }: TimelineCalendarProps) {
+
+    // ── Pull bg color from context ───────────────────────────────────────────
+    const { bgColor } = useBackground();
+    const dark = isColorDark(bgColor);
+    const textColor = dark ? '#ffffff' : '#000000';
+    const textMuted = dark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)';
+    const railColor = dark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)';
 
     const userEvents = useMemo(
         () => filterEventsForUser(timelineEvents, userUniqueId),
@@ -40,7 +59,6 @@ export default function TimelineCalendar({
             const ev = e as any;
             if (ev.id) map.set(ev.id, e);
         });
-        console.log('[TimelineCalendar] eventById map built, size:', map.size, 'keys:', [...map.keys()]);
         return map;
     }, [userEvents]);
 
@@ -49,27 +67,7 @@ export default function TimelineCalendar({
         const originalEvent = item.id ? eventById.get(item.id) : undefined;
 
         const handlePress = () => {
-            console.log('[TimelineCalendar] Tile pressed:', {
-                itemId: item.id,
-                itemType: item.type,
-                foundInMap: !!originalEvent,
-                hasOnMediaPress: !!onMediaPress,
-            });
-
-            if (!item.id) {
-                console.warn('[TimelineCalendar] ❌ item.id is missing! Grid item:', item);
-                return;
-            }
-            if (!originalEvent) {
-                console.warn('[TimelineCalendar] ❌ originalEvent not found for id:', item.id, '— map keys:', [...eventById.keys()]);
-                return;
-            }
-            if (!onMediaPress) {
-                console.warn('[TimelineCalendar] ❌ onMediaPress prop is undefined');
-                return;
-            }
-
-            console.log('[TimelineCalendar] ✅ Calling onMediaPress for:', item.id);
+            if (!item.id || !originalEvent || !onMediaPress) return;
             onMediaPress(originalEvent);
         };
 
@@ -86,7 +84,7 @@ export default function TimelineCalendar({
                     {
                         width: itemSize,
                         height: itemSize,
-                        backgroundColor: item.bg || '#eee',
+                        backgroundColor: item.bg || (dark ? '#222' : '#ddd'),
                         borderRadius: 8,
                         overflow: 'hidden',
                     },
@@ -106,20 +104,22 @@ export default function TimelineCalendar({
                         resizeMode="cover"
                     />
                 ) : (
-                    <View style={{ flex: 1, backgroundColor: item.bg || '#eee' }} />
+                    <View style={{ flex: 1, backgroundColor: item.bg || (dark ? '#222' : '#ddd') }} />
                 )}
             </TouchableOpacity>
         );
-    }, [eventById, onMediaPress]);
+    }, [eventById, onMediaPress, dark]);
 
     const renderTimelineRow = useCallback(({ item }: { item: TimelineRow }) => {
         if (item.type === 'month_header') {
             return (
                 <View style={styles.monthHeaderRow}>
                     <View style={styles.leftCol} />
-                    <View style={styles.railColumn}><View style={styles.railLine} /></View>
+                    <View style={styles.railColumn}>
+                        <View style={[styles.railLine, { backgroundColor: railColor }]} />
+                    </View>
                     <View style={styles.rightCol}>
-                        <Text style={styles.monthText}>{item.label}</Text>
+                        <Text style={[styles.monthText, { color: textColor }]}>{item.label}</Text>
                     </View>
                 </View>
             );
@@ -128,12 +128,12 @@ export default function TimelineCalendar({
         return (
             <View style={styles.timelineRow}>
                 <View style={styles.leftCol}>
-                    <Text style={styles.weekdayText}>{item.weekday}</Text>
-                    <Text style={styles.dayText}>{item.day}</Text>
+                    <Text style={[styles.weekdayText, { color: textMuted }]}>{item.weekday}</Text>
+                    <Text style={[styles.dayText, { color: textColor }]}>{item.day}</Text>
                     <LinearGradient colors={item.moodColor} style={styles.moodDot} />
                 </View>
                 <View style={styles.railColumn}>
-                    <View style={styles.railLine} />
+                    <View style={[styles.railLine, { backgroundColor: railColor }]} />
                 </View>
                 <View style={styles.rightCol}>
                     <View style={styles.gridContainer}>
@@ -142,7 +142,7 @@ export default function TimelineCalendar({
                 </View>
             </View>
         );
-    }, [renderGridItem]);
+    }, [renderGridItem, textColor, textMuted, railColor]);
 
     return (
         <FlatList
@@ -162,14 +162,14 @@ export default function TimelineCalendar({
 const styles = StyleSheet.create({
     timelineRow: { flexDirection: 'row', paddingBottom: 20, paddingRight: 20 },
     monthHeaderRow: { flexDirection: 'row', alignItems: 'center', paddingBottom: 20, paddingTop: 10 },
-    monthText: { fontSize: 36, fontWeight: '300', letterSpacing: 1, color: '#000', marginLeft: 6 },
+    monthText: { fontSize: 36, fontWeight: '300', letterSpacing: 1, marginLeft: 6 },
     leftCol: { width: '18%', alignItems: 'center', paddingTop: 0 },
     railColumn: { width: 10, alignItems: 'center', height: '100%' },
     rightCol: { flex: 1, justifyContent: 'center' },
-    weekdayText: { fontSize: 10, fontWeight: '700', color: '#000', textTransform: 'uppercase', marginBottom: 2 },
-    dayText: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 8 },
+    weekdayText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 },
+    dayText: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
     moodDot: { width: 12, height: 12, borderRadius: 6 },
-    railLine: { width: 3, backgroundColor: '#000', flex: 1, height: '100%' },
+    railLine: { width: 3, flex: 1, height: '100%' },
     gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     gridItem: { justifyContent: 'center', alignItems: 'center' },
 });

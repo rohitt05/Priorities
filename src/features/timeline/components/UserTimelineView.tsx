@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBackground } from '@/contexts/BackgroundContext';
 import { COLORS, SPACING } from '@/theme/theme';
@@ -19,6 +20,7 @@ import { User, TimelineEvent } from '@/types/domain';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
 
+
 const formatTimestamp = (isoTs: string): string => {
     const date = new Date(isoTs);
     return date.toLocaleDateString(undefined, {
@@ -27,12 +29,14 @@ const formatTimestamp = (isoTs: string): string => {
     });
 };
 
+
 interface UserTimelineViewProps {
     user: User | null;
     originLayout: LayoutRectangle | null;
     expandAnim: SharedValue<number>;
     onClose: () => void;
 }
+
 
 export default function UserTimelineView({
     user, originLayout, expandAnim, onClose,
@@ -43,8 +47,10 @@ export default function UserTimelineView({
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
     const [animationDone, setAnimationDone] = useState(false);
 
+
     const { liveTimelineEvents, timelineLoading } = useUserTimeline();
     const { timelineEvents: inboxTimelineEvents } = useMediaInbox();
+
 
     useEffect(() => {
         if (!user) return;
@@ -52,6 +58,7 @@ export default function UserTimelineView({
         const timer = setTimeout(() => setAnimationDone(true), 420);
         return () => clearTimeout(timer);
     }, [user?.uniqueUserId]);
+
 
     useEffect(() => {
         if (!user) return;
@@ -63,10 +70,13 @@ export default function UserTimelineView({
         return () => backHandler.remove();
     }, [user, mediaViewerVisible, onClose]);
 
+
     const mergedEvents = useMemo((): TimelineEvent[] => {
         if (!user) return [];
 
+
         const liveEvents: TimelineEvent[] = liveTimelineEvents[user.uniqueUserId] ?? [];
+
 
         // ─── FIX: inbox events are keyed by sender's AUTH UUID, not uniqueUserId ───
         // Try both the uniqueUserId key AND the user.id (auth uuid) key
@@ -75,8 +85,10 @@ export default function UserTimelineView({
             ? (inboxTimelineEvents[(user as any).id] ?? [])
             : [];
 
+
         // Merge all three sources
         const allRaw = [...inboxByUniqueId, ...inboxByAuthId, ...liveEvents];
+
 
         console.log('[Timeline] mergedEvents build:', {
             userId: user.uniqueUserId,
@@ -87,17 +99,21 @@ export default function UserTimelineView({
             totalRaw: allRaw.length,
         });
 
+
         // ─── FIX: dedup by URI, not just id ───────────────────────────────────────
         // Same media can arrive with different IDs (message id vs film id).
         // Primary dedup: by id. Secondary dedup: by uri (catches same media, diff id).
         const seenIds = new Set<string>();
         const seenUris = new Set<string>();
 
+
         const deduped = allRaw.filter((e): e is TimelineEvent => {
             const ev = e as any;
             const type = ev.type;
 
+
             if (type !== 'video' && type !== 'photo' && type !== 'image') return false;
+
 
             // Dedup by id first
             if (ev.id) {
@@ -107,6 +123,7 @@ export default function UserTimelineView({
                 }
                 seenIds.add(ev.id);
             }
+
 
             // Dedup by uri (catches message vs film same media)
             const uriKey = ev.uri || ev.thumbUri;
@@ -120,21 +137,26 @@ export default function UserTimelineView({
                 seenUris.add(uriPath);
             }
 
+
             return true;
         });
+
 
         const sorted = deduped.sort((a, b) =>
             new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
         );
 
+
         console.log('[Timeline] Final deduplicated events:', sorted.length, sorted.map((e: any) => ({
             id: e.id,
             type: e.type,
-            uri: e.uri?.split('?')[0]?.split('/').pop(), // just filename, no token
+            uri: e.uri?.split('?')[0]?.split('/').pop(),
         })));
+
 
         return sorted;
     }, [user, liveTimelineEvents, inboxTimelineEvents]);
+
 
     const allUserMedia = useMemo((): MediaItem[] => {
         const media = mergedEvents.map((event) => {
@@ -152,12 +174,15 @@ export default function UserTimelineView({
             } as MediaItem;
         });
 
+
         console.log('[Timeline] allUserMedia built:', media.length, 'items');
         return media;
     }, [mergedEvents]);
 
+
     const handleMediaPress = (event: TimelineEvent) => {
         const ev = event as any;
+
 
         console.log('[Timeline] handleMediaPress called:', {
             id: ev.id,
@@ -166,13 +191,16 @@ export default function UserTimelineView({
             hasUri: !!ev.uri,
         });
 
+
         const mediaItem = allUserMedia.find(item => item.id === ev.id);
+
 
         console.log('[Timeline] mediaItem lookup:', {
             found: !!mediaItem,
             searchId: ev.id,
             allIds: allUserMedia.map(m => m.id),
         });
+
 
         if (mediaItem) {
             console.log('[Timeline] Opening MediaViewer with:', mediaItem.id, mediaItem.type);
@@ -194,12 +222,15 @@ export default function UserTimelineView({
         }
     };
 
+
     const handleCloseMediaViewer = () => {
         setMediaViewerVisible(false);
         setTimeout(() => setSelectedMedia(null), 300);
     };
 
+
     if (!user || !originLayout) return null;
+
 
     const HEADER_HEIGHT = Math.max(topInset, SPACING.xl) + 40 + SPACING.xl;
     const TARGET_TOP = HEADER_HEIGHT + 10;
@@ -207,11 +238,13 @@ export default function UserTimelineView({
     const TARGET_LEFT = 20;
     const TARGET_SIZE = 50;
 
+
     const contentAnimatedStyle = useAnimatedStyle(() => {
         const opacity = interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]);
         const translateY = interpolate(expandAnim.value, [0, 1], [50, 0]);
         return { opacity, transform: [{ translateY }] };
     });
+
 
     const imageAnimatedStyle = useAnimatedStyle(() => ({
         top: interpolate(expandAnim.value, [0, 1], [originLayout.y, TARGET_TOP]),
@@ -224,13 +257,16 @@ export default function UserTimelineView({
         ),
     }));
 
+
     const headerTextAnimatedStyle = useAnimatedStyle(() => ({
         opacity: interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]),
     }));
 
+
     const closeBtnBgAnimatedStyle = useAnimatedStyle(() => ({
         opacity: interpolate(expandAnim.value, [0, 1], [0.25, 0]),
     }));
+
 
     const renderContent = () => {
         if (!animationDone) return <View style={styles.loadingContainer} />;
@@ -258,9 +294,11 @@ export default function UserTimelineView({
         );
     };
 
+
     return (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]} pointerEvents="box-none">
             <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+
 
                 <Animated.View
                     style={[
@@ -271,6 +309,7 @@ export default function UserTimelineView({
                     pointerEvents="box-none"
                 >
                     {renderContent()}
+
 
                     <View style={styles.floatingCloseContainer}>
                         <View style={styles.closeBtnShadowWrapper}>
@@ -284,6 +323,31 @@ export default function UserTimelineView({
                         </View>
                     </View>
                 </Animated.View>
+
+
+                {/* Dominant color gradient banner — fades behind avatar and name */}
+                <Animated.View
+                    style={[
+                        headerTextAnimatedStyle,
+                        {
+                            position: 'absolute',
+                            top: TARGET_TOP - 14,
+                            left: 0,
+                            right: 0,
+                            height: TARGET_SIZE + 28,
+                            zIndex: 99,
+                        }
+                    ]}
+                    pointerEvents="none"
+                >
+                    <LinearGradient
+                        colors={[user!.dominantColor, 'transparent']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                        style={StyleSheet.absoluteFill}
+                    />
+                </Animated.View>
+
 
                 {/* Avatar — touch-transparent, no pressable */}
                 <Animated.View
@@ -305,6 +369,7 @@ export default function UserTimelineView({
                         resizeMode="cover"
                     />
                 </Animated.View>
+
 
                 {/* Header name — touch-transparent */}
                 <Animated.View
@@ -331,6 +396,7 @@ export default function UserTimelineView({
                 </Animated.View>
             </View>
 
+
             <MediaViewer
                 visible={mediaViewerVisible}
                 initialMediaItem={selectedMedia}
@@ -341,7 +407,9 @@ export default function UserTimelineView({
     );
 }
 
+
 const BUTTON_SIZE = 56;
+
 
 const styles = StyleSheet.create({
     clippingContainer: {

@@ -1,76 +1,91 @@
 import React, { useEffect } from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';          // ← expo-image, not react-native
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { useEvent } from 'expo';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '@/theme/theme';
 
 interface SmartVideoTileProps {
-    uri: string;
-    thumbUri?: string;
+    uri?: string;       // actual video .mp4 URL
+    thumbUri?: string;  // may be same as uri (mp4) — expo-image handles both
     isVisible: boolean;
     style?: any;
 }
 
 export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: SmartVideoTileProps) {
-    const player = useVideoPlayer(uri, p => {
+
+    // Use thumbUri if it looks like an image, otherwise use the video uri directly.
+    // expo-image can extract a poster frame from a video URL natively.
+    const posterUri = thumbUri || uri;
+
+    // Player only created with a real source when this tile is active
+    const player = useVideoPlayer(isVisible && uri ? uri : null, p => {
         p.loop = true;
         p.muted = true;
     });
 
-    const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
-
     useEffect(() => {
         if (isVisible) {
-            player.play();
+            player?.play();
         } else {
-            player.pause();
+            player?.pause();
         }
     }, [isVisible, player]);
 
     return (
-        <View style={[styles.container, style]}>
-            {/* Thumbnail shows until video starts playing */}
-            {thumbUri && !isPlaying && (
+        <View style={[styles.container, style]} pointerEvents="none">
+
+            {/* LAYER 1: expo-image as base — renders poster frame from video URL */}
+            {posterUri ? (
                 <Image
-                    source={{ uri: thumbUri }}
+                    source={{ uri: posterUri }}
                     style={StyleSheet.absoluteFill}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    transition={200}
+                    cachePolicy="memory-disk"
+                />
+            ) : (
+                <View style={[StyleSheet.absoluteFill, styles.placeholder]} />
+            )}
+
+            {/* LAYER 2: VideoView — ONLY when this tile is the active one */}
+            {isVisible && uri && player && (
+                <VideoView
+                    player={player}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                    nativeControls={false}
+                    pointerEvents="none"
                 />
             )}
 
-            {/* ✅ pointerEvents="none" — VideoView is fully touch-transparent.
-                All taps fall through to the TouchableOpacity in the parent. */}
-            <VideoView
-                player={player}
-                style={StyleSheet.absoluteFill}
-                contentFit="cover"
-                nativeControls={false}
-                pointerEvents="none"
-            />
+            {/* LAYER 3: Play badge on inactive tiles */}
+            {!isVisible && (
+                <View style={styles.badge} pointerEvents="none">
+                    <Ionicons name="play" size={10} color="#fff" />
+                </View>
+            )}
 
-            {/* Play badge — also touch-transparent so it doesn't block taps */}
-            <View pointerEvents="none" style={styles.badge}>
-                <Ionicons name="play" size={10} color="#fff" />
-            </View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: '#000',
+        backgroundColor: '#111',
         overflow: 'hidden',
+    },
+    placeholder: {
+        backgroundColor: '#1e1e1e',
     },
     badge: {
         position: 'absolute',
         top: 4,
         right: 4,
-        width: 16,
-        height: 16,
-        borderRadius: 8,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        width: 18,
+        height: 18,
+        borderRadius: 9,
         justifyContent: 'center',
         alignItems: 'center',
+        // backgroundColor removed ✓
     },
 });

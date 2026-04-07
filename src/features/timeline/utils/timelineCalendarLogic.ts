@@ -5,9 +5,9 @@ export interface TimelineGridItem {
     id: string;
     type: 'photo' | 'video';
     bg: string;
-    uri?: string;        // always image-renderable (thumb for video, full for photo)
-    videoUri?: string;   // actual .mp4 URI — only set for videos
-    thumbUri?: string;   // thumbnail URI for videos
+    uri?: string;
+    videoUri?: string;
+    thumbUri?: string;
     text?: string;
 }
 
@@ -27,10 +27,6 @@ export interface TimelineMonthHeader {
 }
 
 export type TimelineRow = TimelineDayRow | TimelineMonthHeader;
-
-// ==========================================
-// DATE UTILITIES
-// ==========================================
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
 
@@ -58,9 +54,10 @@ export const getYearMonth = (dateKey: string): string => {
     return dateKey.slice(0, 7);
 };
 
-// ==========================================
-// EVENT TRANSFORMATION
-// ==========================================
+const isValidUrl = (uri: string | undefined | null): boolean => {
+    if (!uri) return false;
+    return uri.startsWith('https://') || uri.startsWith('http://') || uri.startsWith('file://');
+};
 
 export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem => {
     const ev = event as any;
@@ -75,16 +72,15 @@ export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem
         case 'image':
             type = 'photo';
             bg = '#eee';
-            uri = ev.uri;
+            uri = isValidUrl(ev.uri) ? ev.uri : undefined;
             break;
         case 'video':
             type = 'video';
             bg = '#111';
-            // uri = thumbnail for still display in tile
-            // videoUri = actual video file for the player
-            thumbUri = ev.thumbUri;
-            videoUri = ev.uri;
-            uri = ev.thumbUri || undefined; // <Image> only gets the thumb
+            // Only pass videoUri if it's a real playable URL
+            videoUri = isValidUrl(ev.uri) ? ev.uri : undefined;
+            thumbUri = isValidUrl(ev.thumbUri) ? ev.thumbUri : (isValidUrl(ev.uri) ? ev.uri : undefined);
+            uri = thumbUri; // Image tile shows thumb only
             break;
     }
 
@@ -100,17 +96,10 @@ export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem
 };
 
 export const calculateMoodColor = (items: TimelineGridItem[]): [string, string] => {
-    const hasPhotos = items.some(item => item.type === 'photo' || item.type === 'video');
-    if (hasPhotos) {
-        return ['#a18cd1', '#fbc2eb'];
-    } else {
-        return ['#FF9A9E', '#FECFEF'];
-    }
+    const hasMedia = items.some(item => item.type === 'photo' || item.type === 'video');
+    if (hasMedia) return ['#a18cd1', '#fbc2eb'];
+    return ['#FF9A9E', '#FECFEF'];
 };
-
-// ==========================================
-// DATA GROUPING
-// ==========================================
 
 export const groupEventsByDate = (events: TimelineEvent[]): Map<string, TimelineEvent[]> => {
     const grouped = new Map<string, TimelineEvent[]>();
@@ -127,10 +116,6 @@ export const sortEventsByDate = (events: TimelineEvent[]): TimelineEvent[] => {
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 };
-
-// ==========================================
-// TIMELINE PROCESSING
-// ==========================================
 
 export const processTimelineData = (events: TimelineEvent[]): TimelineRow[] => {
     const sortedEvents = sortEventsByDate(events);
@@ -168,10 +153,6 @@ export const processTimelineData = (events: TimelineEvent[]): TimelineRow[] => {
     return rows;
 };
 
-// ==========================================
-// FILTERING
-// ==========================================
-
 export const filterEventsForUser = (
     events: TimelineEvent[],
     userUniqueId: string
@@ -197,18 +178,11 @@ export const filterEventsByType = (
     return events.filter(event => types.includes(event.type));
 };
 
-// ==========================================
-// STATISTICS
-// ==========================================
-
 export interface TimelineStats {
     totalEvents: number;
     photoCount: number;
     videoCount: number;
-    dateRange: {
-        oldest: string;
-        newest: string;
-    } | null;
+    dateRange: { oldest: string; newest: string; } | null;
 }
 
 export const calculateTimelineStats = (events: TimelineEvent[]): TimelineStats => {
@@ -223,11 +197,8 @@ export const calculateTimelineStats = (events: TimelineEvent[]): TimelineStats =
 
     events.forEach(event => {
         const ev = event as any;
-        if (ev.type === 'photo' || ev.type === 'image') {
-            stats.photoCount++;
-        } else if (ev.type === 'video') {
-            stats.videoCount++;
-        }
+        if (ev.type === 'photo' || ev.type === 'image') stats.photoCount++;
+        else if (ev.type === 'video') stats.videoCount++;
     });
 
     const sortedEvents = sortEventsByDate(events);

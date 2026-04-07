@@ -5,16 +5,15 @@ import {
     StyleSheet,
     Modal,
     TouchableOpacity,
+    TouchableWithoutFeedback,
     Animated,
     StatusBar,
     FlatList,
     Dimensions,
     Platform,
-    ListRenderItemInfo // Import this
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBackground } from '@/contexts/BackgroundContext';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import PhotoViewer from './PhotoViewer';
 import VideoPlayer from './VideoPlayer';
@@ -23,10 +22,11 @@ import NoteViewer from './NoteViewer';
 import CallInfoViewer from './CallInfoViewer';
 import { MediaItem } from '@/types/mediaTypes';
 
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Create the animated component
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
 
 interface MediaViewerProps {
     visible: boolean;
@@ -35,6 +35,7 @@ interface MediaViewerProps {
     onClose: () => void;
 }
 
+
 export default function MediaViewer({
     visible,
     initialMediaItem,
@@ -42,6 +43,35 @@ export default function MediaViewer({
     onClose
 }: MediaViewerProps) {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
+
+    // ─── Header toggle ───────────────────────────────────────────────────
+    const headerOpacity = useRef(new Animated.Value(1)).current;
+    const isHeaderVisible = useRef(true);
+
+    const showHeader = () => {
+        if (isHeaderVisible.current) return;
+        isHeaderVisible.current = true;
+        Animated.timing(headerOpacity, {
+            toValue: 1,
+            duration: 220,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const hideHeader = () => {
+        if (!isHeaderVisible.current) return;
+        isHeaderVisible.current = false;
+        Animated.timing(headerOpacity, {
+            toValue: 0,
+            duration: 220,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const handleMediaTap = () => {
+        isHeaderVisible.current ? hideHeader() : showHeader();
+    };
+    // ────────────────────────────────────────────────────────────────────
 
     const backgroundColor = colorAnim.interpolate({
         inputRange: [0, 1],
@@ -66,6 +96,9 @@ export default function MediaViewer({
             setCurrentIndex(initialIndex);
             setIsListReady(false);
 
+            isHeaderVisible.current = true;
+            headerOpacity.setValue(1);
+
             scrollX.setValue(initialIndex * SCREEN_WIDTH);
 
             Animated.timing(opacity, {
@@ -89,10 +122,8 @@ export default function MediaViewer({
         }).start(() => onClose());
     };
 
-    // FIXED: Use 'any' for the item type in the signature to satisfy the generic constraint of AnimatedFlatList
-    // which loses type safety. We cast 'item' to MediaItem inside.
     const renderMediaItem = ({ item, index }: { item: any, index: number }) => {
-        const mediaItem = item as MediaItem; // Safe cast
+        const mediaItem = item as MediaItem;
         const isFocused = index === currentIndex;
 
         const inputRange = [
@@ -131,9 +162,6 @@ export default function MediaViewer({
                 case 'voice':
                     content = <AudioPlayer mediaItem={mediaItem} />;
                     break;
-                case 'note':
-                    content = <NoteViewer mediaItem={mediaItem} />;
-                    break;
                 case 'voice_call':
                 case 'video_call':
                     content = <CallInfoViewer mediaItem={mediaItem} />;
@@ -146,19 +174,21 @@ export default function MediaViewer({
         }
 
         return (
-            <View style={styles.carouselItem}>
-                <Animated.View
-                    style={[
-                        styles.animatedContent,
-                        {
-                            transform: [{ scale }, { translateY }],
-                            opacity: itemOpacity
-                        }
-                    ]}
-                >
-                    {content}
-                </Animated.View>
-            </View>
+            <TouchableWithoutFeedback onPress={handleMediaTap}>
+                <View style={styles.carouselItem}>
+                    <Animated.View
+                        style={[
+                            styles.animatedContent,
+                            {
+                                transform: [{ scale }, { translateY }],
+                                opacity: itemOpacity
+                            }
+                        ]}
+                    >
+                        {content}
+                    </Animated.View>
+                </View>
+            </TouchableWithoutFeedback>
         );
     };
 
@@ -171,19 +201,27 @@ export default function MediaViewer({
     const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
         if (viewableItems && viewableItems.length > 0) {
             setCurrentIndex(viewableItems[0].index);
+            showHeader();
         }
     }).current;
 
     const onScroll = Animated.event(
         [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-        { useNativeDriver: true }
+        {
+            useNativeDriver: true,
+            listener: () => { showHeader(); }
+        }
     );
 
     if (!visible) return null;
 
-    const safeData = allMediaItems && allMediaItems.length > 0 ? allMediaItems : (initialMediaItem ? [initialMediaItem] : []);
+    const safeData = allMediaItems && allMediaItems.length > 0
+        ? allMediaItems
+        : (initialMediaItem ? [initialMediaItem] : []);
     const currentItem = safeData[currentIndex];
-    const senderName = currentItem?.sender === 'me' ? 'You' : (currentItem?.sender === 'them' ? 'Them' : 'Unknown');
+    const senderName = currentItem?.sender === 'me'
+        ? 'You'
+        : (currentItem?.sender === 'them' ? 'Them' : 'Unknown');
 
     return (
         <Modal
@@ -198,6 +236,11 @@ export default function MediaViewer({
 
                 <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor }]} />
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
+
+                {/* ── Fullscreen tap zone — BELOW the header in zIndex ── */}
+                <TouchableWithoutFeedback onPress={handleMediaTap}>
+                    <View style={StyleSheet.absoluteFill} />
+                </TouchableWithoutFeedback>
 
                 {isListReady ? (
                     <AnimatedFlatList
@@ -221,7 +264,10 @@ export default function MediaViewer({
                         onScrollToIndexFailed={(info: any) => {
                             const wait = new Promise(resolve => setTimeout(resolve, 100));
                             wait.then(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
+                                flatListRef.current?.scrollToIndex({
+                                    index: info.index,
+                                    animated: false
+                                });
                             });
                         }}
                     />
@@ -229,34 +275,40 @@ export default function MediaViewer({
                     <View style={styles.carouselItem} />
                 )}
 
-                <View style={styles.topOverlay} pointerEvents="box-none">
-                    <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                        <Ionicons name="close" size={28} color="#fff" />
-                    </TouchableOpacity>
-
+                {/* ── Header — fades out on tap, back on tap/swipe ── */}
+                {/* pointerEvents="none" when hidden so it never blocks taps */}
+                <Animated.View
+                    style={[styles.topOverlay, { opacity: headerOpacity }]}
+                    pointerEvents="none"
+                >
+                    {/* Close button gets its own absolute Touchable above everything */}
                     <View style={styles.headerInfo}>
                         <Text style={styles.senderText}>{senderName}</Text>
                         <Text style={styles.dateText}>{currentItem?.timestamp || ''}</Text>
                     </View>
 
                     <View style={styles.counterContainer}>
-                        <Text style={styles.counterText}>{currentIndex + 1} / {safeData.length}</Text>
+                        <Text style={styles.counterText}>
+                            {currentIndex + 1} / {safeData.length}
+                        </Text>
                     </View>
-                </View>
+                </Animated.View>
 
-                {currentItem?.caption && (
-                    <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.8)']}
-                        style={styles.bottomOverlay}
-                        pointerEvents="none"
-                    >
-                        <Text style={styles.captionText}>{currentItem.caption}</Text>
-                    </LinearGradient>
-                )}
+                {/* ── Close button lives OUTSIDE the fading header ── */}
+                {/* Always tappable, always on top */}
+                <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={handleClose}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <Ionicons name="close" size={28} color="#fff" />
+                </TouchableOpacity>
+
             </Animated.View>
         </Modal>
     );
 }
+
 
 const styles = StyleSheet.create({
     container: {
@@ -286,62 +338,45 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
         paddingBottom: 15,
         paddingHorizontal: 20,
+        paddingLeft: 70,         // leave room for close button
         backgroundColor: 'rgba(0,0,0,0.4)',
-        zIndex: 50
+        zIndex: 50,
     },
     closeButton: {
+        position: 'absolute',
+        top: 44,
+        left: 20,
         width: 40,
         height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 15
+        zIndex: 100,             // always on top, never fades
     },
     headerInfo: {
         flex: 1,
         justifyContent: 'center',
-        paddingBottom: 2
+        paddingBottom: 2,
     },
     senderText: {
         color: '#fff',
         fontSize: 18,
         fontWeight: '700',
-        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowColor: 'rgba(0,0,0,0.3)',
         textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3
+        textShadowRadius: 3,
     },
     dateText: {
         color: 'rgba(255,255,255,0.9)',
         fontSize: 13,
-        fontWeight: '500'
+        fontWeight: '500',
     },
     counterContainer: {
         justifyContent: 'center',
-        paddingBottom: 8
+        paddingBottom: 8,
     },
     counterText: {
         color: '#fff',
         fontSize: 14,
-        fontWeight: '600'
+        fontWeight: '600',
     },
-    bottomOverlay: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingBottom: 50,
-        paddingTop: 40,
-        paddingHorizontal: 20,
-        zIndex: 40,
-        justifyContent: 'flex-end'
-    },
-    captionText: {
-        fontSize: 17,
-        fontWeight: '500',
-        color: '#fff',
-        textAlign: 'center',
-        textShadowColor: 'rgba(0, 0, 0, 0.5)',
-        textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 3,
-        lineHeight: 24
-    }
 });
