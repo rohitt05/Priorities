@@ -24,17 +24,16 @@ interface VideoPlayerProps extends BaseMediaProps {
     autoPlay?: boolean;
     onReady?: () => void;
     themeColor?: string;
+    onHeaderToggle?: () => void;
 }
 
-// ── Checks if a URI is actually playable by expo-video ───────────────────────
 const isPlayableUri = (uri: string | undefined | null): boolean => {
     if (!uri) return false;
     return uri.startsWith('https://') || uri.startsWith('http://') || uri.startsWith('file://');
 };
 
-export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, themeColor = '#000' }: VideoPlayerProps) {
+export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, themeColor = '#fff', onHeaderToggle }: VideoPlayerProps) {
 
-    // Guard: if URI isn't a valid playable URL, show error state immediately
     if (!isPlayableUri(mediaItem?.uri)) {
         console.warn('[VideoPlayer] Invalid or missing URI:', mediaItem?.uri, 'for item:', mediaItem?.id);
         return (
@@ -45,7 +44,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         );
     }
 
-    // 1. Initialize Player
     const player = useVideoPlayer(mediaItem.uri!, player => {
         player.loop = true;
         player.timeUpdateEventInterval = 0.1;
@@ -60,19 +58,11 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         }
     }, [isPlaying, onReady]);
 
-    // UI State
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [showControls, setShowControls] = useState(true);
     const [isScrubbing, setIsScrubbing] = useState(false);
-    const [cardLayout, setCardLayout] = useState<{ width: number; height: number } | null>(null);
 
-    const handleCardLayout = (e: any) => {
-        const { width, height } = e.nativeEvent.layout;
-        setCardLayout({ width, height });
-    };
-
-    // Animation & Timers
     const controlsOpacity = useRef(new Animated.Value(1)).current;
     const hideControlsTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -114,6 +104,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
     };
 
     const toggleControls = () => {
+        onHeaderToggle?.();
         if (showControls) {
             fadeOutControls();
         } else {
@@ -121,7 +112,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         }
     };
 
-    // Listeners
     useEffect(() => {
         const subscription = player.addListener('timeUpdate', (event) => {
             if (!isScrubbing) {
@@ -137,7 +127,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         };
     }, [player, isScrubbing, duration]);
 
-    // Focus Handling
     useEffect(() => {
         if (!isFocused) {
             player.pause();
@@ -185,7 +174,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
             onStartShouldSetPanResponder: () => true,
             onMoveShouldSetPanResponder: () => true,
             onPanResponderGrant: handleScrubStart,
-
             onPanResponderMove: (_, gestureState) => {
                 const relativeX = gestureState.moveX - 20;
                 let percentage = relativeX / PROGRESS_BAR_WIDTH;
@@ -194,12 +182,10 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                     setCurrentTime(percentage * player.duration);
                 }
             },
-
             onPanResponderRelease: (_, gestureState) => {
                 const relativeX = gestureState.moveX - 20;
                 let percentage = relativeX / PROGRESS_BAR_WIDTH;
                 percentage = Math.max(0, Math.min(1, percentage));
-
                 if (player.duration > 0) {
                     const newTime = percentage * player.duration;
                     player.currentTime = newTime;
@@ -215,7 +201,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         : 0;
 
     return (
-        <View style={styles.container} onLayout={handleCardLayout}>
+        <View style={styles.container}>
             <VideoView
                 player={player}
                 style={styles.video}
@@ -228,60 +214,57 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                 onPress={toggleControls}
             >
                 <Animated.View
-                    style={[
-                        styles.centerOverlay,
-                        { opacity: controlsOpacity }
-                    ]}
+                    style={[styles.centerOverlay, { opacity: controlsOpacity }]}
                     pointerEvents={showControls ? 'auto' : 'none'}
                 >
                     <TouchableOpacity
                         onPress={handlePlayPause}
-                        style={[styles.playButton, { backgroundColor: themeColor + '20', borderColor: themeColor }]}
+                        style={styles.playButton}
                         activeOpacity={0.7}
                     >
                         <Ionicons
                             name={isPlaying ? "pause" : "play"}
                             size={50}
-                            color={themeColor}
+                            color="#fff"
                             style={{ marginLeft: isPlaying ? 0 : 5 }}
                         />
                     </TouchableOpacity>
                 </Animated.View>
             </Pressable>
 
-            <Animated.View
-                style={[
-                    styles.controlsBottom,
-                    { opacity: controlsOpacity }
-                ]}
-                pointerEvents={showControls ? 'box-none' : 'none'}
-            >
-                <View style={styles.timeContainer}>
-                    <Text style={[styles.timeText, { color: themeColor }]}>{formatTime(currentTime)}</Text>
-                    <Text style={[styles.timeText, { color: themeColor }]}>{formatTime(duration)}</Text>
-                </View>
-
-                <View
-                    style={styles.progressBarContainer}
-                    {...panResponder.panHandlers}
-                    hitSlop={{ top: 20, bottom: 20 }}
+            {/* Progress bar + timer — only renders when video is playing or scrubbing */}
+            {(isPlaying || isScrubbing) && (
+                <Animated.View
+                    style={[styles.controlsBottom, { opacity: controlsOpacity }]}
+                    pointerEvents={showControls ? 'box-none' : 'none'}
                 >
-                    <View style={styles.progressBarTrack}>
-                        <View
-                            style={[
-                                styles.progressFill,
-                                { width: `${progressPercent}%`, backgroundColor: themeColor }
-                            ]}
-                        />
-                        <View
-                            style={[
-                                styles.scrubberKnob,
-                                { left: `${progressPercent}%`, backgroundColor: themeColor }
-                            ]}
-                        />
+                    <View style={styles.timeContainer}>
+                        <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+                        <Text style={styles.timeText}>{formatTime(duration)}</Text>
                     </View>
-                </View>
-            </Animated.View>
+
+                    <View
+                        style={styles.progressBarContainer}
+                        {...panResponder.panHandlers}
+                        hitSlop={{ top: 20, bottom: 20 }}
+                    >
+                        <View style={styles.progressBarTrack}>
+                            <View
+                                style={[
+                                    styles.progressFill,
+                                    { width: `${progressPercent}%` }
+                                ]}
+                            />
+                            <View
+                                style={[
+                                    styles.scrubberKnob,
+                                    { left: `${progressPercent}%` }
+                                ]}
+                            />
+                        </View>
+                    </View>
+                </Animated.View>
+            )}
         </View>
     );
 }
@@ -293,10 +276,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: '#000',
-        borderRadius: 32,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'transparent',
+        // ← no borderRadius, no overflow hidden, no border
     },
     errorContainer: {
         gap: 12,
@@ -309,8 +289,7 @@ const styles = StyleSheet.create({
     video: {
         width: '100%',
         height: '100%',
-        borderRadius: 32,
-        overflow: 'hidden',
+        // ← no borderRadius
     },
     centerOverlay: {
         ...StyleSheet.absoluteFillObject,
@@ -322,7 +301,7 @@ const styles = StyleSheet.create({
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: 'rgba(0,0,0,0.35)',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
@@ -343,6 +322,7 @@ const styles = StyleSheet.create({
     timeText: {
         fontSize: 14,
         fontWeight: '700',
+        color: '#fff',                          // ← always white
     },
     progressBarContainer: {
         height: 30,
@@ -350,13 +330,13 @@ const styles = StyleSheet.create({
     },
     progressBarTrack: {
         height: 4,
-        backgroundColor: 'rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.3)',  // ← white track
         borderRadius: 2,
         position: 'relative'
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#fff',
+        backgroundColor: '#fff',                   // ← white fill
         borderRadius: 2
     },
     scrubberKnob: {
@@ -366,8 +346,8 @@ const styles = StyleSheet.create({
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: '#fff',
-        shadowColor: "#000",
+        backgroundColor: '#fff',                   // ← white knob
+        shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.5,
         shadowRadius: 2,
