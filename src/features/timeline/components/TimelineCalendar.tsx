@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -7,14 +7,12 @@ import {
     FlatList,
     Dimensions,
     TouchableOpacity,
-    ViewToken
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
     TimelineRow,
     processTimelineData,
-    filterEventsForUser
+    filterEventsForUser,
 } from '@/features/timeline/utils/timelineCalendarLogic';
 import { TimelineEvent } from '@/types/domain';
 import SmartVideoTile from '@/components/ui/SmartVideoTile';
@@ -32,56 +30,48 @@ export default function TimelineCalendar({
     userUniqueId,
     timelineEvents,
     contentPaddingTop,
-    onMediaPress
+    onMediaPress,
 }: TimelineCalendarProps) {
 
-    // 1. Data Processing
-    // We already pass pre-filtered events from UserTimelineView,
-    // but filterEventsForUser is kept as a safety net.
-    const userEvents = filterEventsForUser(timelineEvents, userUniqueId);
-    const timelineRows = processTimelineData(userEvents);
+    // Memoized — never re-runs on scroll
+    const userEvents = useMemo(
+        () => filterEventsForUser(timelineEvents, userUniqueId),
+        [timelineEvents, userUniqueId]
+    );
 
-    // 2. Visibility State for Autoplay
-    const [visibleRowIds, setVisibleRowIds] = useState<Set<string>>(new Set());
+    const timelineRows = useMemo(
+        () => processTimelineData(userEvents),
+        [userEvents]
+    );
 
-    const viewabilityConfig = useRef({
-        itemVisiblePercentThreshold: 10,
-        minimumViewTime: 0
-    }).current;
+    // O(1) event lookup by id — fixes video tap not working
+    const eventById = useMemo(() => {
+        const map = new Map<string, TimelineEvent>();
+        userEvents.forEach(e => map.set((e as any).id, e));
+        return map;
+    }, [userEvents]);
 
-    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-        const newVisibleIds = new Set<string>();
-        viewableItems.forEach(viewToken => {
-            if (viewToken.isViewable) {
-                newVisibleIds.add(viewToken.item.id);
-            }
-        });
-        setVisibleRowIds(newVisibleIds);
-    }).current;
-
-    // 3. Render Grid Item
-    const renderGridItem = (item: any, index: number, dateKey: string, isRowVisible: boolean) => {
+    const renderGridItem = useCallback((item: any, itemIndex: number) => {
         const itemSize = (SCREEN_WIDTH * 0.70) / 3 - 6;
 
-        const dayEvents = userEvents.filter((e: TimelineEvent) => {
-            const eventDate = new Date(e.timestamp);
-            const y = eventDate.getFullYear();
-            const m = String(eventDate.getMonth() + 1).padStart(2, '0');
-            const d = String(eventDate.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}` === dateKey;
-        });
-        const originalEvent = dayEvents[index];
+        // Direct id lookup — always resolves to the correct original event
+        const originalEvent = item.id ? eventById.get(item.id) : undefined;
 
         const handlePress = () => {
-            if (originalEvent && onMediaPress) onMediaPress(originalEvent);
+            if (originalEvent && onMediaPress) {
+                onMediaPress(originalEvent);
+            }
         };
 
         const isVideo = item.type === 'video';
-        const hasUri = !!item.uri;
+
+        // Only the first tile (index 0) in a row autoplays its video preview.
+        // All other video tiles show a thumbnail still — no extra players running.
+        const shouldAutoplay = isVideo && itemIndex === 0;
 
         return (
             <TouchableOpacity
-                key={index}
+                key={item.id || String(itemIndex)}
                 activeOpacity={0.7}
                 onPress={handlePress}
                 style={[
@@ -91,46 +81,44 @@ export default function TimelineCalendar({
                         height: itemSize,
                         backgroundColor: item.bg || '#eee',
                         borderRadius: 8,
-                        overflow: 'hidden'
-                    }
+                        overflow: 'hidden',
+                    },
                 ]}
             >
-                {isVideo && hasUri ? (
+                {isVideo ? (
                     <SmartVideoTile
-                        uri={item.uri}
-                        thumbUri={item.thumbUri}
-                        isVisible={isRowVisible}
+                        uri={item.videoUri}
+                        thumbUri={item.thumbUri || item.uri}
+                        isVisible={shouldAutoplay}
                         style={{ width: '100%', height: '100%' }}
                     />
+                ) : item.uri ? (
+                    <Image
+                        source={{ uri: item.uri }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode="cover"
+                    />
                 ) : (
-                    <>
-                        {item.uri && (
-                            <Image
-                                source={{ uri: item.uri }}
-                                style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
-                            />
-                        )}
-                    </>
+                    <View style={{ flex: 1, backgroundColor: item.bg || '#eee' }} />
                 )}
             </TouchableOpacity>
         );
-    };
+    }, [eventById, onMediaPress]);
 
-    // 4. Render Row
-    const renderTimelineRow = ({ item }: { item: TimelineRow }) => {
+    const renderTimelineRow = useCallback(({ item }: { item: TimelineRow }) => {
         if (item.type === 'month_header') {
             return (
                 <View style={styles.monthHeaderRow}>
                     <View style={styles.leftCol} />
-                    <View style={styles.railColumn}><View style={styles.railLine} /></View>
-                    <View style={styles.rightCol}><Text style={styles.monthText}>{item.label}</Text></View>
+                    <View style={styles.railColumn}>
+                        <View style={styles.railLine} />
+                    </View>
+                    <View style={styles.rightCol}>
+                        <Text style={styles.monthText}>{item.label}</Text>
+                    </View>
                 </View>
             );
         }
-
-        const dateKey = item.id.replace('d_', '');
-        const isRowVisible = visibleRowIds.has(item.id);
 
         return (
             <View style={styles.timelineRow}>
@@ -139,15 +127,19 @@ export default function TimelineCalendar({
                     <Text style={styles.dayText}>{item.day}</Text>
                     <LinearGradient colors={item.moodColor} style={styles.moodDot} />
                 </View>
-                <View style={styles.railColumn}><View style={styles.railLine} /></View>
+                <View style={styles.railColumn}>
+                    <View style={styles.railLine} />
+                </View>
                 <View style={styles.rightCol}>
                     <View style={styles.gridContainer}>
-                        {item.items.map((gridItem, idx) => renderGridItem(gridItem, idx, dateKey, isRowVisible))}
+                        {item.items.map((gridItem, idx) =>
+                            renderGridItem(gridItem, idx)
+                        )}
                     </View>
                 </View>
             </View>
         );
-    };
+    }, [renderGridItem]);
 
     return (
         <FlatList
@@ -156,11 +148,9 @@ export default function TimelineCalendar({
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ paddingTop: contentPaddingTop, paddingBottom: 120 }}
             showsVerticalScrollIndicator={false}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
             initialNumToRender={5}
             maxToRenderPerBatch={5}
-            windowSize={5}
+            windowSize={7}
             removeClippedSubviews={true}
         />
     );
@@ -178,5 +168,5 @@ const styles = StyleSheet.create({
     moodDot: { width: 12, height: 12, borderRadius: 6 },
     railLine: { width: 3, backgroundColor: '#000', flex: 1, height: '100%' },
     gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    gridItem: { justifyContent: 'center', alignItems: 'center' }
+    gridItem: { justifyContent: 'center', alignItems: 'center' },
 });

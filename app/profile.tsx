@@ -34,7 +34,6 @@ import { BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConst
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
 import { useProfilePull } from '@/features/profile/hooks/useProfilePull';
-import { ProfileHeader } from '@/features/profile/components/ProfileHeader';
 import { PartnerSection } from '@/features/profile/components/PartnerSection';
 import YourPriorities from '@/features/profile/components/yourpriorities';
 import { FilmsInProfile } from '@/features/profile/components/FilmsInProfile';
@@ -43,6 +42,9 @@ import ProfileActionModal from '@/features/profile/components/ProfileActionModal
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { removePartner } from '@/services/partnerService';
 
+// ── Type shared between profile.tsx and ProfileHeader ─────────────────────────
+// ✅ ADD THIS with your other imports
+import { ProfileHeader, HeaderAccessState } from '@/features/profile/components/ProfileHeader';
 
 function ProfileScreenContent() {
     const { userId } = useLocalSearchParams<{ userId?: string }>();
@@ -60,6 +62,9 @@ function ProfileScreenContent() {
     const [isActionModalVisible, setIsActionModalVisible] = useState(false);
     const [showFlashBanner, setShowFlashBanner] = useState(false);
     const bannerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+    // ✅ Access state computed here alongside profile fetch — no delay
+    const [headerAccessState, setHeaderAccessState] = useState<HeaderAccessState>('loading');
 
     const scrollY = useSharedValue(0);
     const triggerEditMode = () => setIsEditing(true);
@@ -94,7 +99,6 @@ function ProfileScreenContent() {
     const prioritiesPointerProps = useAnimatedProps(() => ({
         pointerEvents: scrollY.value > 80 ? 'none' : 'auto',
     } as any));
-
 
     const filmsSlideUpStyle = useAnimatedStyle(() => ({
         transform: [{ translateY: interpolate(scrollY.value, [40, 140], [0, -130], Extrapolation.CLAMP) }],
@@ -136,7 +140,7 @@ function ProfileScreenContent() {
         }
     }, []);
 
-    // ── Main profile fetch ────────────────────────────────────────────────────
+    // ── Main profile fetch + access check together ────────────────────────────
     useFocusEffect(
         React.useCallback(() => {
             if (!authId) return;
@@ -164,12 +168,48 @@ function ProfileScreenContent() {
                             priorities: [],
                         };
                         setCurrentUser(userObj);
-                        if (isMounted) setIsActuallyOwner(dbUser.id === authId);
+
+                        const actuallyOwner = dbUser.id === authId;
+                        if (isMounted) setIsActuallyOwner(actuallyOwner);
 
                         if (dbUser.partner_id) {
                             await fetchAndSetPartner(dbUser.partner_id);
                         } else {
                             if (isMounted) setPartnerUser(null);
+                        }
+
+                        // ✅ Access check runs in parallel with each other,
+                        //    right here in the same fetch cycle — blur is ready
+                        //    before the screen even becomes visible
+                        if (actuallyOwner) {
+                            // Owner always sees their own profile normally
+                            if (isMounted) setHeaderAccessState('allowed');
+                        } else {
+                            const [{ data: priorityRow }, { data: pendingRow }] = await Promise.all([
+                                // Am I following this person?
+                                supabase
+                                    .from('priorities')
+                                    .select('id')
+                                    .eq('user_id', authId)
+                                    .eq('priority_user_id', dbUser.id)
+                                    .maybeSingle(),
+                                // Did I already send them a request?
+                                supabase
+                                    .from('priority_requests')
+                                    .select('id')
+                                    .eq('sender_id', authId)
+                                    .eq('receiver_id', dbUser.id)
+                                    .eq('status', 'pending')
+                                    .maybeSingle(),
+                            ]);
+
+                            if (isMounted) {
+                                setHeaderAccessState(
+                                    priorityRow ? 'allowed'
+                                        : pendingRow ? 'pending'
+                                            : 'locked'
+                                );
+                            }
                         }
                     }
                 } catch (error) {
@@ -185,8 +225,6 @@ function ProfileScreenContent() {
     );
 
     // ── Realtime: watch for accepted partner requests where I am the SENDER ───
-    // This makes the sender's screen auto-update when the receiver accepts —
-    // no metro restart needed, no manual refresh.
     useEffect(() => {
         if (!authId || !isActuallyOwner) return;
 
@@ -204,10 +242,7 @@ function ProfileScreenContent() {
                     const row = payload.new;
                     if (!row) return;
                     if (row.status === 'accepted') {
-                        // My outgoing request was accepted — fetch and show partner immediately
                         await fetchAndSetPartner(row.receiver_id);
-                    } else if (row.status === 'declined') {
-                        // Do nothing — partner section just stays as "+ partner"
                     }
                 }
             )
@@ -223,10 +258,8 @@ function ProfileScreenContent() {
                     const row = payload.new;
                     if (!row) return;
                     if (row.partner_id) {
-                        // My own profile's partner_id was set (e.g. I accepted someone)
                         await fetchAndSetPartner(row.partner_id);
                     } else {
-                        // partner_id was cleared — remove partner from UI
                         setPartnerUser(null);
                     }
                 }
@@ -236,7 +269,7 @@ function ProfileScreenContent() {
         return () => { supabase.removeChannel(channel); };
     }, [authId, isActuallyOwner, fetchAndSetPartner]);
 
-    // ── Remove partner — nulls BOTH sides ─────────────────────────────────────
+    // ── Remove partner ─────────────────────────────────────────────────────────
     const handleRemovePartner = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -317,16 +350,17 @@ function ProfileScreenContent() {
             >
                 <GestureDetector gesture={panGesture}>
                     <View>
+                        {/* ✅ initialAccessState passed in — blur is instant, no delay */}
                         <ProfileHeader
                             user={currentUser}
                             isOwner={isOwner}
                             headerAnimatedStyle={headerAnimatedStyle}
                             imageScaleStyle={imageScaleStyle}
+                            initialAccessState={headerAccessState}
                         />
                     </View>
                 </GestureDetector>
 
-                {/* Partner icon — visible to EVERYONE who views this profile */}
                 {partnerUser && (
                     <FloatingPartnerIcon
                         partnerUser={partnerUser}
@@ -340,7 +374,6 @@ function ProfileScreenContent() {
                     />
                 )}
 
-                {/* + partner capsule — only shown to actual owner when no partner */}
                 {isActuallyOwner && !partnerUser && (
                     <Reanimated.View style={[styles.capsuleRow, capsuleFadeStyle]}>
                         <PartnerSection

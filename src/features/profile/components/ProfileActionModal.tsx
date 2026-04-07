@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
     StyleSheet,
@@ -12,6 +12,7 @@ import {
     Alert,
     Share,
     Clipboard,
+    ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -28,33 +29,33 @@ import { useRouter } from 'expo-router';
 import { COLORS, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
 import { removePriority, blockUser } from '@/services/priorityService';
+import { supabase } from '@/lib/supabase';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SHEET_HEIGHT = 260;
 const SWIPE_CLOSE_THRESHOLD = 80;
 
-interface ActionOption {
-    label: string;
-    shortLabel: string;
-    icon: string;
-    iconLibrary: 'Ionicons' | 'FontAwesome5' | 'MaterialCommunityIcons';
-    color?: string;
-    onPress: () => void;
-}
+// handle (14+5+14=33) + one row (60+8+18=86, padVert 6*2=12 → 98) + bottom pad 12 + loader-breathing-room
+// Single row  → handle 33 + gridWrapper paddingBottom 12 + row ~100 + a bit of air = ~155
+// Double rows → handle 33 + gridWrapper paddingBottom 12 + row1 ~100 + divider 17 + row2 ~100 = ~262
+const SHEET_HEIGHT_ONE_ROW = 158;
+const SHEET_HEIGHT_TWO_ROWS = 268;
+const SHEET_HEIGHT_ABOUT = 220;
 
 interface ProfileActionModalProps {
     visible: boolean;
     onClose: () => void;
-    // @handle of the viewed user — used for Share/Copy display
     userId: string;
     userName: string;
-    // Real UUIDs needed for Supabase RPCs
-    authId: string;           // logged-in user's UUID
-    targetUUID: string;       // viewed user's UUID
-    // Called after a destructive action so the parent can navigate away / refresh
+    authId: string;
+    targetUUID: string;
     onRemoved?: () => void;
     onBlocked?: () => void;
 }
+
+type AboutData = {
+    createdAt: string | null;
+    birthday: string | null;
+};
 
 export default function ProfileActionModal({
     visible,
@@ -70,10 +71,18 @@ export default function ProfileActionModal({
     const router = useRouter();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
 
-    const [isAboutView, setIsAboutView] = React.useState(false);
-    const [isLoading, setIsLoading] = React.useState(false);
+    const [isAboutView, setIsAboutView] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isInMyPriorities, setIsInMyPriorities] = useState<boolean | null>(null);
+    const [aboutData, setAboutData] = useState<AboutData>({ createdAt: null, birthday: null });
 
-    const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+    const sheetHeight = isAboutView
+        ? SHEET_HEIGHT_ABOUT
+        : isInMyPriorities
+            ? SHEET_HEIGHT_TWO_ROWS
+            : SHEET_HEIGHT_ONE_ROW;
+
+    const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT_ONE_ROW)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const swipeY = useSharedValue(0);
 
@@ -84,11 +93,61 @@ export default function ProfileActionModal({
         outputRange: [toOpaque(prevBgColor), toOpaque(bgColor)],
     });
 
+    // ── Fetch priority membership + profile about data ────────────────────────
+    useEffect(() => {
+        if (!visible || !authId || !targetUUID) return;
+        let cancelled = false;
+
+        const fetchData = async () => {
+            try {
+                const [{ data: priorityRow }, { data: profileRow }] = await Promise.all([
+                    supabase
+                        .from('priorities')
+                        .select('id')
+                        .eq('user_id', authId)
+                        .eq('priority_user_id', targetUUID)
+                        .maybeSingle(),
+                    supabase
+                        .from('profiles')
+                        .select('created_at, birthday')
+                        .eq('id', targetUUID)
+                        .single(),
+                ]);
+
+                if (!cancelled) {
+                    setIsInMyPriorities(!!priorityRow);
+                    setAboutData({
+                        createdAt: profileRow?.created_at ?? null,
+                        birthday: profileRow?.birthday ?? null,
+                    });
+                }
+            } catch {
+                if (!cancelled) setIsInMyPriorities(false);
+            }
+        };
+
+        fetchData();
+        return () => { cancelled = true; };
+    }, [visible, authId, targetUUID]);
+
+    // Animate height change when priority status resolves or view switches
+    useEffect(() => {
+        if (!visible) return;
+        Animated.spring(slideAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 22,
+            mass: 0.9,
+            stiffness: 160,
+        }).start();
+    }, [isInMyPriorities, isAboutView]);
+
     useEffect(() => {
         if (visible) {
             swipeY.value = 0;
             setIsAboutView(false);
             setIsLoading(false);
+            slideAnim.setValue(SHEET_HEIGHT_ONE_ROW);
             Animated.parallel([
                 Animated.spring(slideAnim, {
                     toValue: 0,
@@ -104,15 +163,17 @@ export default function ProfileActionModal({
                 }),
             ]).start();
         } else {
-            slideAnim.setValue(SHEET_HEIGHT);
+            slideAnim.setValue(SHEET_HEIGHT_ONE_ROW);
             fadeAnim.setValue(0);
+            setIsInMyPriorities(null);
+            setAboutData({ createdAt: null, birthday: null });
         }
     }, [visible]);
 
     const handleClose = () => {
         Animated.parallel([
             Animated.timing(slideAnim, {
-                toValue: SHEET_HEIGHT,
+                toValue: sheetHeight,
                 duration: 220,
                 easing: Easing.in(Easing.ease),
                 useNativeDriver: true,
@@ -140,7 +201,7 @@ export default function ProfileActionModal({
             }
         });
 
-    // ─── REMOVE FROM PRIORITIES ────────────────────────────
+    // ─── REMOVE ─────────────────────────────────────────────────────────────
     const handleRemove = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Alert.alert(
@@ -158,7 +219,7 @@ export default function ProfileActionModal({
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             handleClose();
                             onRemoved?.();
-                        } catch (e) {
+                        } catch {
                             setIsLoading(false);
                             Alert.alert('Error', 'Failed to remove. Please try again.');
                         }
@@ -168,12 +229,12 @@ export default function ProfileActionModal({
         );
     };
 
-    // ─── BLOCK ─────────────────────────────────────────────
+    // ─── BLOCK ───────────────────────────────────────────────────────────────
     const handleBlock = () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert(
             `Block ${userName}?`,
-            'They won\'t be able to find you or interact with you on Priorities. They will also be removed from your Priorities list.',
+            "They won't be able to find you or interact with you on Priorities. They will also be removed from your Priorities list.",
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -186,7 +247,7 @@ export default function ProfileActionModal({
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                             handleClose();
                             onBlocked?.();
-                        } catch (e) {
+                        } catch {
                             setIsLoading(false);
                             Alert.alert('Error', 'Failed to block. Please try again.');
                         }
@@ -196,7 +257,7 @@ export default function ProfileActionModal({
         );
     };
 
-    // ─── REPORT ────────────────────────────────────────────
+    // ─── REPORT ──────────────────────────────────────────────────────────────
     const handleReport = () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         Alert.alert(
@@ -219,72 +280,36 @@ export default function ProfileActionModal({
         );
     };
 
-    const options: ActionOption[] = [
-        {
-            label: 'Copy User ID',
-            shortLabel: 'Copy',
-            icon: 'copy-outline',
-            iconLibrary: 'Ionicons',
-            onPress: () => {
-                Clipboard.setString(userId);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                handleClose();
-            },
-        },
-        {
-            label: 'Share Profile',
-            shortLabel: 'Share',
-            icon: 'share-outline',
-            iconLibrary: 'Ionicons',
-            onPress: async () => {
-                await Share.share({
-                    message: `Check out ${userName}'s profile on Priorities! @${userId}`,
-                });
-                handleClose();
-            },
-        },
-        {
-            label: 'About this account',
-            shortLabel: 'Info',
-            icon: 'information-circle-outline',
-            iconLibrary: 'Ionicons',
-            onPress: () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setIsAboutView(true);
-            },
-        },
-        {
-            label: 'Remove from Priorities',
-            shortLabel: 'Remove',
-            icon: 'account-remove-outline',
-            iconLibrary: 'MaterialCommunityIcons',
-            color: '#FF3B30',
-            onPress: handleRemove,
-        },
-        {
-            label: 'Report Account',
-            shortLabel: 'Report',
-            icon: 'flag-outline',
-            iconLibrary: 'Ionicons',
-            color: '#FF3B30',
-            onPress: handleReport,
-        },
-        {
-            label: 'Block',
-            shortLabel: 'Block',
-            icon: 'block-helper',
-            iconLibrary: 'MaterialCommunityIcons',
-            color: '#FF3B30',
-            onPress: handleBlock,
-        },
-    ];
+    // ─── About date helpers ──────────────────────────────────────────────────
+    const formatJoinDate = (iso: string | null) => {
+        if (!iso) return { day: '--', month: '---', year: '----' };
+        const d = new Date(iso);
+        return {
+            day: String(d.getDate()).padStart(2, '0'),
+            month: d.toLocaleString('default', { month: 'short' }).toUpperCase(),
+            year: String(d.getFullYear()),
+        };
+    };
 
-    const renderIcon = (option: ActionOption) => {
-        const Lib =
-            option.iconLibrary === 'Ionicons' ? Ionicons :
-                option.iconLibrary === 'FontAwesome5' ? FontAwesome5 :
-                    MaterialCommunityIcons;
-        return <Lib name={option.icon as any} size={22} color={option.color || COLORS.text} />;
+    const formatBirthday = (dateStr: string | null) => {
+        if (!dateStr) return { day: '--', month: '---' };
+        const d = new Date(`${dateStr}T00:00:00`);
+        return {
+            day: String(d.getDate()).padStart(2, '0'),
+            month: d.toLocaleString('default', { month: 'short' }).toUpperCase(),
+        };
+    };
+
+    const joinDate = formatJoinDate(aboutData.createdAt);
+    const bday = formatBirthday(aboutData.birthday);
+
+    const renderIcon = (
+        lib: 'Ionicons' | 'FontAwesome5' | 'MaterialCommunityIcons',
+        icon: string,
+        color?: string
+    ) => {
+        const Lib = lib === 'Ionicons' ? Ionicons : lib === 'FontAwesome5' ? FontAwesome5 : MaterialCommunityIcons;
+        return <Lib name={icon as any} size={22} color={color ?? COLORS.text} />;
     };
 
     if (!visible) return null;
@@ -294,7 +319,7 @@ export default function ProfileActionModal({
             transparent
             visible={visible}
             animationType="none"
-            statusBarTranslucent={true}
+            statusBarTranslucent
             onRequestClose={handleClose}
         >
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -303,25 +328,22 @@ export default function ProfileActionModal({
                         <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} />
                     </TouchableWithoutFeedback>
 
-                    <Animated.View style={[
-                        styles.sheetContainer,
-                        { transform: [{ translateY: slideAnim }] }
-                    ]}>
-                        <Reanimated.View style={[
-                            styles.sheetInner,
-                            { transform: [{ translateY: swipeY }] }
-                        ]}>
-                            {/* Layer 1: white base */}
+                    {/* Sheet — height is driven by sheetHeight state */}
+                    <Animated.View
+                        style={[
+                            styles.sheetContainer,
+                            { height: sheetHeight, transform: [{ translateY: slideAnim }] },
+                        ]}
+                    >
+                        <Reanimated.View
+                            style={[styles.sheetInner, { transform: [{ translateY: swipeY }] }]}
+                        >
                             <View style={[StyleSheet.absoluteFill, styles.sheetWhiteBase]} />
-
-                            {/* Layer 2: color tint from profile context */}
                             <Animated.View
-                                style={[
-                                    StyleSheet.absoluteFill,
-                                    { backgroundColor: animatedSheetBgColor }
-                                ]}
+                                style={[StyleSheet.absoluteFill, { backgroundColor: animatedSheetBgColor }]}
                             />
 
+                            {/* ── ABOUT VIEW ─────────────────────────────── */}
                             {isAboutView ? (
                                 <View style={styles.aboutContainer}>
                                     <TouchableOpacity
@@ -330,15 +352,34 @@ export default function ProfileActionModal({
                                     >
                                         <Ionicons name="chevron-back" size={24} color="#1C1917" />
                                     </TouchableOpacity>
-                                    <Text style={styles.joinedTitle}>Joined Priorities on</Text>
-                                    <View style={styles.aboutContent}>
-                                        <Text style={styles.aboutYear}>2024</Text>
-                                        <Text style={styles.aboutDate}>
-                                            AUG <Text style={styles.dot}>·</Text> 24
-                                        </Text>
+
+                                    <Text style={styles.aboutSectionLabel}>About this account</Text>
+
+                                    <View style={styles.aboutRow}>
+                                        {/* LEFT — Joined */}
+                                        <View style={styles.aboutHalf}>
+                                            <Text style={styles.aboutSubLabel}>Joined</Text>
+                                            <Text style={styles.aboutBigNumber}>{joinDate.year}</Text>
+                                            <Text style={styles.aboutSmallDate}>
+                                                {joinDate.month}
+                                                <Text style={styles.dot}> · </Text>
+                                                {joinDate.day}
+                                            </Text>
+                                        </View>
+
+                                        {/* Vertical divider */}
+                                        <View style={styles.aboutDivider} />
+
+                                        {/* RIGHT — Birthday */}
+                                        <View style={styles.aboutHalf}>
+                                            <Text style={styles.aboutSubLabel}>Birthday</Text>
+                                            <Text style={styles.aboutBigNumber}>{bday.day}</Text>
+                                            <Text style={styles.aboutSmallDate}>{bday.month}</Text>
+                                        </View>
                                     </View>
                                 </View>
                             ) : (
+                                /* ── MAIN GRID ───────────────────────────── */
                                 <>
                                     <GestureDetector gesture={swipeGesture}>
                                         <View style={styles.handleContainer}>
@@ -346,33 +387,130 @@ export default function ProfileActionModal({
                                         </View>
                                     </GestureDetector>
 
-                                    <View style={styles.gridContainer}>
-                                        {options.map((option, index) => (
-                                            <TouchableOpacity
-                                                key={index}
-                                                style={[
-                                                    styles.gridItem,
-                                                    isLoading && option.color ? styles.gridItemDisabled : null,
-                                                ]}
-                                                activeOpacity={0.7}
-                                                onPress={option.onPress}
-                                                disabled={isLoading}
-                                            >
-                                                <View style={[
-                                                    styles.iconContainer,
-                                                    option.color ? { borderColor: option.color, borderWidth: 1 } : {}
-                                                ]}>
-                                                    {renderIcon(option)}
-                                                </View>
-                                                <Text style={[
-                                                    styles.gridLabel,
-                                                    option.color ? { color: option.color } : {}
-                                                ]}>
-                                                    {option.shortLabel}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
+                                    {isInMyPriorities === null ? (
+                                        <View style={styles.loaderContainer}>
+                                            <ActivityIndicator size="small" color={COLORS.text} />
+                                        </View>
+                                    ) : (
+                                        <View style={styles.gridWrapper}>
+
+                                            {/* ── ROW 1: Copy · Share · Info · Block (if not priority) ── */}
+                                            <View style={styles.gridRow}>
+                                                {/* Copy */}
+                                                <TouchableOpacity
+                                                    style={styles.gridItem}
+                                                    activeOpacity={0.7}
+                                                    disabled={isLoading}
+                                                    onPress={() => {
+                                                        Clipboard.setString(userId);
+                                                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                                        handleClose();
+                                                    }}
+                                                >
+                                                    <View style={styles.iconContainer}>
+                                                        {renderIcon('Ionicons', 'copy-outline')}
+                                                    </View>
+                                                    <Text style={styles.gridLabel}>Copy</Text>
+                                                </TouchableOpacity>
+
+                                                {/* Share */}
+                                                <TouchableOpacity
+                                                    style={styles.gridItem}
+                                                    activeOpacity={0.7}
+                                                    disabled={isLoading}
+                                                    onPress={async () => {
+                                                        await Share.share({
+                                                            message: `Check out ${userName}'s profile on Priorities! @${userId}`,
+                                                        });
+                                                        handleClose();
+                                                    }}
+                                                >
+                                                    <View style={styles.iconContainer}>
+                                                        {renderIcon('Ionicons', 'share-outline')}
+                                                    </View>
+                                                    <Text style={styles.gridLabel}>Share</Text>
+                                                </TouchableOpacity>
+
+                                                {/* Info */}
+                                                <TouchableOpacity
+                                                    style={styles.gridItem}
+                                                    activeOpacity={0.7}
+                                                    disabled={isLoading}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setIsAboutView(true);
+                                                    }}
+                                                >
+                                                    <View style={styles.iconContainer}>
+                                                        {renderIcon('Ionicons', 'information-circle-outline')}
+                                                    </View>
+                                                    <Text style={styles.gridLabel}>Info</Text>
+                                                </TouchableOpacity>
+
+                                                {/* Block — only in row 1 when NOT a priority */}
+                                                {!isInMyPriorities && (
+                                                    <TouchableOpacity
+                                                        style={[styles.gridItem, isLoading && styles.gridItemDisabled]}
+                                                        activeOpacity={0.7}
+                                                        disabled={isLoading}
+                                                        onPress={handleBlock}
+                                                    >
+                                                        <View style={[styles.iconContainer, styles.dangerBorder]}>
+                                                            {renderIcon('MaterialCommunityIcons', 'block-helper', '#FF3B30')}
+                                                        </View>
+                                                        <Text style={[styles.gridLabel, styles.dangerLabel]}>Block</Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+
+                                            {/* ── ROW 2: only when IS a priority ── */}
+                                            {isInMyPriorities && (
+                                                <>
+                                                    <View style={styles.rowDivider} />
+                                                    <View style={styles.gridRow}>
+                                                        {/* Remove */}
+                                                        <TouchableOpacity
+                                                            style={[styles.gridItem, isLoading && styles.gridItemDisabled]}
+                                                            activeOpacity={0.7}
+                                                            disabled={isLoading}
+                                                            onPress={handleRemove}
+                                                        >
+                                                            <View style={[styles.iconContainer, styles.dangerBorder]}>
+                                                                {renderIcon('MaterialCommunityIcons', 'account-remove-outline', '#FF3B30')}
+                                                            </View>
+                                                            <Text style={[styles.gridLabel, styles.dangerLabel]}>Remove</Text>
+                                                        </TouchableOpacity>
+
+                                                        {/* Report */}
+                                                        <TouchableOpacity
+                                                            style={[styles.gridItem, isLoading && styles.gridItemDisabled]}
+                                                            activeOpacity={0.7}
+                                                            disabled={isLoading}
+                                                            onPress={handleReport}
+                                                        >
+                                                            <View style={[styles.iconContainer, styles.dangerBorder]}>
+                                                                {renderIcon('Ionicons', 'flag-outline', '#FF3B30')}
+                                                            </View>
+                                                            <Text style={[styles.gridLabel, styles.dangerLabel]}>Report</Text>
+                                                        </TouchableOpacity>
+
+                                                        {/* Block */}
+                                                        <TouchableOpacity
+                                                            style={[styles.gridItem, isLoading && styles.gridItemDisabled]}
+                                                            activeOpacity={0.7}
+                                                            disabled={isLoading}
+                                                            onPress={handleBlock}
+                                                        >
+                                                            <View style={[styles.iconContainer, styles.dangerBorder]}>
+                                                                {renderIcon('MaterialCommunityIcons', 'block-helper', '#FF3B30')}
+                                                            </View>
+                                                            <Text style={[styles.gridLabel, styles.dangerLabel]}>Block</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                </>
+                                            )}
+                                        </View>
+                                    )}
                                 </>
                             )}
                         </Reanimated.View>
@@ -394,7 +532,6 @@ const styles = StyleSheet.create({
     },
     sheetContainer: {
         width: '100%',
-        height: SHEET_HEIGHT,
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
         overflow: 'hidden',
@@ -408,6 +545,8 @@ const styles = StyleSheet.create({
     sheetWhiteBase: {
         backgroundColor: '#FFFFFF',
     },
+
+    // ── Handle ────────────────────────────────────────────────────────────────
     handleContainer: {
         width: '100%',
         alignItems: 'center',
@@ -419,77 +558,129 @@ const styles = StyleSheet.create({
         borderRadius: 999,
         backgroundColor: 'rgba(0,0,0,0.12)',
     },
-    gridContainer: {
+
+    // ── Loader ────────────────────────────────────────────────────────────────
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingBottom: 16,
+    },
+
+    // ── Grid ──────────────────────────────────────────────────────────────────
+    gridWrapper: {
+        paddingHorizontal: 8,
+        paddingBottom: 12,
+    },
+    gridRow: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        paddingHorizontal: 10,
-        paddingTop: 4,
+        justifyContent: 'space-around',
+    },
+    rowDivider: {
+        height: 1,
+        backgroundColor: 'rgba(0,0,0,0.07)',
+        marginHorizontal: 16,
+        marginVertical: 8,
     },
     gridItem: {
-        width: '33.33%',
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 6,
+        paddingVertical: 4,          // tight — keeps single-row sheet compact
+        maxWidth: 90,
     },
     gridItemDisabled: {
         opacity: 0.4,
     },
     iconContainer: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 54,                   // slightly smaller keeps row1 row tight
+        height: 54,
+        borderRadius: 27,
         backgroundColor: 'rgba(255,255,255,0.75)',
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 8,
+        marginBottom: 6,
+    },
+    dangerBorder: {
+        borderColor: '#FF3B30',
+        borderWidth: 1,
     },
     gridLabel: {
-        fontSize: 12,
+        fontSize: 11,
         fontFamily: FONTS.bold,
         color: '#1C1917',
         opacity: 0.7,
         textAlign: 'center',
     },
+    dangerLabel: {
+        color: '#FF3B30',
+        opacity: 1,
+    },
+
+    // ── About ─────────────────────────────────────────────────────────────────
     aboutContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingBottom: 40,
+        paddingBottom: 16,
+        paddingHorizontal: 24,
     },
-    joinedTitle: {
-        fontSize: 14,
+    aboutBackButton: {
+        position: 'absolute',
+        top: 16,
+        left: 16,
+        padding: 8,
+    },
+    aboutSectionLabel: {
+        fontSize: 10,
         fontFamily: FONTS.bold,
         color: '#1C1917',
-        opacity: 0.6,
-        marginBottom: 8,
+        opacity: 0.4,
+        marginBottom: 16,
+        textTransform: 'uppercase',
+        letterSpacing: 1.2,
+    },
+    aboutRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+    },
+    aboutHalf: {
+        flex: 1,
+        alignItems: 'center',
+        gap: 2,
+    },
+    aboutDivider: {
+        width: 1,
+        height: 80,
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        marginHorizontal: 8,
+    },
+    aboutSubLabel: {
+        fontSize: 10,
+        fontFamily: FONTS.bold,
+        color: '#1C1917',
+        opacity: 0.4,
         textTransform: 'uppercase',
         letterSpacing: 1,
+        marginBottom: 4,
     },
-    aboutContent: {
-        alignItems: 'center',
-    },
-    aboutYear: {
-        fontSize: 42,
+    aboutBigNumber: {
+        fontSize: 36,
         fontFamily: FONTS.bold,
         fontWeight: '900',
         color: '#1C1917',
         letterSpacing: -1,
+        includeFontPadding: false,
     },
-    aboutDate: {
-        fontSize: 24,
+    aboutSmallDate: {
+        fontSize: 15,
         fontFamily: FONTS.bold,
         fontWeight: '700',
         color: '#1C1917',
-        marginTop: -4,
+        marginTop: -2,
     },
     dot: {
         color: 'rgba(0,0,0,0.2)',
-        marginHorizontal: 4,
-    },
-    aboutBackButton: {
-        position: 'absolute',
-        top: 20,
-        left: 20,
-        padding: 8,
     },
 });

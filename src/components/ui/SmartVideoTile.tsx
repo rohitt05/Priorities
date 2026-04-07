@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
@@ -13,9 +13,9 @@ interface SmartVideoTileProps {
 }
 
 export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: SmartVideoTileProps) {
-    const player = useVideoPlayer(uri, player => {
-        player.loop = true;
-        player.muted = true;
+    const player = useVideoPlayer(uri, p => {
+        p.loop = true;
+        p.muted = true;
     });
 
     const { isPlaying } = useEvent(player, 'playingChange', { isPlaying: player.playing });
@@ -30,16 +30,27 @@ export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: Smar
 
     return (
         <View style={[styles.container, style]}>
+            {/* Thumbnail shows until video starts playing */}
             {thumbUri && !isPlaying && (
-                <Image source={{ uri: thumbUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <Image
+                    source={{ uri: thumbUri }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                />
             )}
+
+            {/* ✅ pointerEvents="none" — VideoView is fully touch-transparent.
+                All taps fall through to the TouchableOpacity in the parent. */}
             <VideoView
                 player={player}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
                 nativeControls={false}
+                pointerEvents="none"
             />
-            <View style={styles.badge}>
+
+            {/* Play badge — also touch-transparent so it doesn't block taps */}
+            <View pointerEvents="none" style={styles.badge}>
                 <Ionicons name="play" size={10} color="#fff" />
             </View>
         </View>
@@ -49,7 +60,7 @@ export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: Smar
 const styles = StyleSheet.create({
     container: {
         backgroundColor: '#000',
-        overflow: 'hidden'
+        overflow: 'hidden',
     },
     badge: {
         position: 'absolute',
@@ -60,6 +71,6 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
-        alignItems: 'center'
-    }
+        alignItems: 'center',
+    },
 });

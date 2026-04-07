@@ -1,30 +1,72 @@
 // src/features/profile/components/ProfileHeader.tsx
 
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    StyleSheet,
+    View,
+    Text,
+    TouchableOpacity,
+    ActivityIndicator,
+} from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 
-import { useRouter } from 'expo-router';
-import { COLORS } from '@/theme/theme';
 import { User } from '@/types/domain';
+import { sendPriorityRequest } from '@/services/priorityService';
+import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 
+// ✅ Type lives here — imported by profile.tsx, no circular deps
+export type HeaderAccessState = 'loading' | 'allowed' | 'pending' | 'locked';
 
 interface ProfileHeaderProps {
     user: User;
     isOwner?: boolean;
     headerAnimatedStyle: any;
     imageScaleStyle: any;
+    initialAccessState?: HeaderAccessState;
 }
-
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     user,
     isOwner = false,
     headerAnimatedStyle,
     imageScaleStyle,
+    initialAccessState,
 }) => {
-    const router = useRouter();
+    const authId = useAuthUser();
+
+    const [accessState, setAccessState] = useState<HeaderAccessState>(
+        initialAccessState ?? 'loading'
+    );
+    const [isSending, setIsSending] = useState(false);
+
+    useEffect(() => {
+        if (initialAccessState) {
+            setAccessState(initialAccessState);
+        }
+    }, [initialAccessState]);
+
+    const handleSendRequest = async () => {
+        if (!authId || !user?.id || isSending) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setIsSending(true);
+        try {
+            await sendPriorityRequest(authId, user.id);
+            setAccessState('pending');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (e: any) {
+            if (e?.code === '23505') {
+                setAccessState('pending');
+            }
+        } finally {
+            setIsSending(false);
+        }
+    };
+
+    const isLocked = accessState === 'locked' || accessState === 'pending';
 
     return (
         <Reanimated.View style={[styles.imageHeader, headerAnimatedStyle]}>
@@ -34,7 +76,6 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 resizeMode="cover"
             />
 
-            {/* Top gradient — dark → transparent behind the icon bar */}
             <LinearGradient
                 colors={['rgba(0,0,0,0.65)', 'transparent']}
                 locations={[0, 1]}
@@ -42,11 +83,54 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 pointerEvents="none"
             />
 
+            {isLocked && (
+                <>
+                    <BlurView
+                        intensity={55}
+                        tint="default"
+                        style={StyleSheet.absoluteFill}
+                        experimentalBlurMethod="dimezisBlurView"
+                    />
 
+                    <View style={styles.blurDimLayer} pointerEvents="none" />
+
+                    <View style={styles.lockOverlay} pointerEvents="box-none">
+                        <TouchableOpacity
+                            style={styles.lockCta}
+                            activeOpacity={0.75}
+                            onPress={accessState === 'locked' ? handleSendRequest : undefined}
+                            disabled={accessState === 'pending' || isSending}
+                        >
+                            {isSending ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : accessState === 'pending' ? (
+                                <Ionicons
+                                    name="checkmark-circle-outline"
+                                    size={38}
+                                    color="white"
+                                    style={styles.ctaIcon}
+                                />
+                            ) : (
+                                <Ionicons
+                                    name="add-circle-outline"
+                                    size={38}
+                                    color="white"
+                                    style={styles.ctaIcon}
+                                />
+                            )}
+
+                            <Text style={styles.lockLabel}>
+                                {accessState === 'pending'
+                                    ? 'Request sent'
+                                    : 'Add them to see more'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </>
+            )}
         </Reanimated.View>
     );
 };
-
 
 const styles = StyleSheet.create({
     imageHeader: {
@@ -62,12 +146,6 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
-
-    /*
-     * Top gradient — rgba(0,0,0,0.65) at top edge fading to transparent.
-     * Covers 30% of header height for a deeper shadow behind the icon bar.
-     * zIndex 2 keeps it below the SafeAreaView (zIndex 10) so icons stay tappable.
-     */
     gradientTop: {
         position: 'absolute',
         left: 0,
@@ -76,45 +154,34 @@ const styles = StyleSheet.create({
         height: '30%',
         zIndex: 2,
     },
-
-    headerSafeOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 10,
+    blurDimLayer: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.10)',
+        zIndex: 3,
     },
-    headerRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        marginTop: 10,
-    },
-    iconButton: {
-        padding: 8,
+    lockOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 4,
         justifyContent: 'center',
         alignItems: 'center',
     },
-
-    /*
-     * Name centered absolutely between icons.
-     * left/right 60 = icon width (40) + horizontal padding (20).
-     */
-    nameCenterSlot: {
-        position: 'absolute',
-        left: 60,
-        right: 60,
+    lockCta: {
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 8,
     },
-    name: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: COLORS.surfaceLight,
-        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    ctaIcon: {
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 8,
+    },
+    lockLabel: {
+        color: 'white',
+        fontSize: 13,
+        fontWeight: '600',
+        letterSpacing: 0.1,
+        textShadowColor: 'rgba(0,0,0,0.6)',
         textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 4,
-        letterSpacing: -0.2,
+        textShadowRadius: 6,
     },
 });

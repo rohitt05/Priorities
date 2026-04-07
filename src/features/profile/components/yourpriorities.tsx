@@ -6,6 +6,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 
 import { User } from '@/types/domain';
 import { COLORS, SPACING, FONTS, FONT_SIZES } from '@/theme/theme';
@@ -39,7 +40,8 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
 
     const [prioritiesList, setPrioritiesList] = useState<Priority[]>([]);
 
-    const [myPriorityIds, setMyPriorityIds] = useState<string[] | null>(null);
+    // UUIDs of people the VIEWER has in their own priority list
+    const [myPriorityIds, setMyPriorityIds] = useState<Set<string>>(new Set());
     const [accessLoaded, setAccessLoaded] = useState(false);
 
     const isOwner = !!authId && authId === user.id;
@@ -53,26 +55,26 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
             .catch(() => setPrioritiesList([]));
     }, [user.id, refreshKey]);
 
-    // ── Fetch logged-in user's own priority UUIDs for access gate ──────────
+    // ── Fetch viewer's own priority UUIDs ──────────────────────────────────
     useEffect(() => {
         if (!authId) return;
 
+        // Owner sees everything unblurred — no need to fetch
         if (isOwner) {
-            setMyPriorityIds([]);
+            setMyPriorityIds(new Set());
             setAccessLoaded(true);
             return;
         }
 
-        setMyPriorityIds(null);
         setAccessLoaded(false);
 
         getMyPriorities(authId)
             .then((list) => {
-                setMyPriorityIds((list as Priority[]).map((p) => p.id));
+                setMyPriorityIds(new Set((list as Priority[]).map((p) => p.id)));
                 setAccessLoaded(true);
             })
             .catch(() => {
-                setMyPriorityIds([]);
+                setMyPriorityIds(new Set());
                 setAccessLoaded(true);
             });
     }, [authId, isOwner, refreshKey]);
@@ -81,7 +83,6 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
         ? 'My Priorities'
         : `${user.name ? user.name.split(' ')[0] : 'Their'}'s Priorities`;
 
-    // Hide the entire section when there are no priorities
     if (prioritiesList.length === 0) return null;
 
     return (
@@ -97,6 +98,16 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                 >
                     {prioritiesList.slice(0, 9).map((u, index: number) => {
                         const isBeingPressed = activeLongPressId === u.uniqueUserId;
+
+                        // ✅ Blur this avatar if:
+                        // — viewer is NOT the owner AND
+                        // — this priority person is NOT in the viewer's own priority list AND
+                        // — this priority person is not the viewer themselves
+                        const shouldBlur =
+                            !isOwner &&
+                            accessLoaded &&
+                            u.id !== authId &&
+                            !myPriorityIds.has(u.id);
 
                         return (
                             <View
@@ -121,7 +132,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                 <Pressable
                                     style={({ pressed }) => [
                                         styles.itemContainer,
-                                        pressed && { transform: [{ scale: 0.94 }] }
+                                        pressed && { transform: [{ scale: 0.94 }] },
                                     ]}
                                     onPress={() => {
                                         if (!accessLoaded) return;
@@ -129,12 +140,12 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         const canNavigate =
                                             isOwner ||
                                             u.id === authId ||
-                                            (myPriorityIds ?? []).includes(u.id);
+                                            myPriorityIds.has(u.id);
 
                                         if (canNavigate) {
                                             router.push({
                                                 pathname: '/profile',
-                                                params: { userId: u.uniqueUserId }
+                                                params: { userId: u.uniqueUserId },
                                             });
                                         } else {
                                             onUnauthorizedAccess?.();
@@ -149,16 +160,32 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                 >
                                     <View style={styles.cardContent}>
                                         {u.profilePicture ? (
-                                            <Image
-                                                source={{ uri: u.profilePicture }}
-                                                style={styles.avatarImage}
-                                                contentFit="cover"
-                                                cachePolicy="memory-disk"
-                                            />
+                                            <>
+                                                <Image
+                                                    source={{ uri: u.profilePicture }}
+                                                    style={styles.avatarImage}
+                                                    contentFit="cover"
+                                                    cachePolicy="memory-disk"
+                                                />
+                                                {/* ── Blur overlay on avatar ── */}
+                                                {shouldBlur && (
+                                                    <BlurView
+                                                        intensity={55}
+                                                        tint="default"
+                                                        style={[
+                                                            StyleSheet.absoluteFill,
+                                                            styles.avatarBlur,
+                                                        ]}
+                                                        experimentalBlurMethod="dimezisBlurView"
+                                                    />
+                                                )}
+                                            </>
                                         ) : (
                                             <View style={[styles.avatarImage, styles.placeholder]}>
                                                 <Text style={styles.initials}>
-                                                    {u.name?.[0]?.toUpperCase() || '?'}
+                                                    {shouldBlur
+                                                        ? '?'
+                                                        : u.name?.[0]?.toUpperCase() || '?'}
                                                 </Text>
                                             </View>
                                         )}
@@ -268,12 +295,17 @@ const styles = StyleSheet.create({
         elevation: 4,
         backgroundColor: COLORS.surface,
         borderRadius: 28,
+        overflow: 'hidden',      // ✅ needed so BlurView clips to the circle
     },
     avatarImage: {
         width: 56,
         height: 56,
         borderRadius: 28,
         backgroundColor: COLORS.surfaceLight,
+    },
+    avatarBlur: {
+        borderRadius: 28,        // ✅ matches avatar shape
+        zIndex: 5,
     },
     placeholder: {
         justifyContent: 'center',

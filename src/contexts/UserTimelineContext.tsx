@@ -1,7 +1,12 @@
 // src/contexts/UserTimelineContext.tsx
-import React, { createContext, useContext, useState, useRef, useCallback, useMemo, ReactNode, useEffect } from 'react';
+import React, {
+    createContext, useContext, useState, useRef,
+    useCallback, useMemo, ReactNode, useEffect
+} from 'react';
 import { LayoutRectangle, FlatList } from 'react-native';
-import Animated, { useSharedValue, withTiming, Easing, runOnJS } from 'react-native-reanimated';
+import Animated, {
+    useSharedValue, withTiming, Easing, runOnJS
+} from 'react-native-reanimated';
 import { useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
 import { useBackground } from '@/contexts/BackgroundContext';
 import UserTimelineView from '@/features/timeline/components/UserTimelineView';
@@ -9,6 +14,16 @@ import { User, PriorityUserWithPost, TimelineEvent } from '@/types/domain';
 import { timelineService } from '@/services/timelineService';
 import { supabase } from '@/lib/supabase';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 10; // items fetched per page
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface PaginationMeta {
+    page: number;
+    hasMore: boolean;
+    loading: boolean;
+}
 
 interface UserTimelineContextType {
     expandedUser: any | null;
@@ -21,10 +36,13 @@ interface UserTimelineContextType {
     flatListRef: React.RefObject<FlatList | null>;
     liveTimelineEvents: Record<string, TimelineEvent[]>;
     timelineLoading: boolean;
+    loadMoreEvents: (userId: string, uniqueUserId: string) => void;
+    paginationMeta: Record<string, PaginationMeta>;
 }
 
 const UserTimelineContext = createContext<UserTimelineContextType | undefined>(undefined);
 
+// ─── Provider ─────────────────────────────────────────────────────────────────
 export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const [expandedUser, setExpandedUser] = useState<any | null>(null);
     const [originLayout, setOriginLayout] = useState<LayoutRectangle | null>(null);
@@ -34,12 +52,15 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const { timelineEvents: inboxEvents } = useMediaInbox();
     const [liveTimelineEvents, setLiveTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
     const [timelineLoading, setTimelineLoading] = useState(false);
+
+    // tracks pagination state per user
+    const [paginationMeta, setPaginationMeta] = useState<Record<string, PaginationMeta>>({});
+
+    // tracks which users had their FIRST page loaded already
     const loadedUsers = useRef<Set<string>>(new Set());
 
     const expandAnim = useSharedValue(0);
     const flatListRef = useRef<FlatList>(null);
-
-    // Safety timeout ref — clears isAnimating if the animation callback never fires
     const animSafetyTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { hideTabBar, showTabBar } = useTabBarVisibility();
@@ -52,40 +73,99 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    const fetchTimelineForUser = useCallback(async (user: any, force = false) => {
-        if (!force && loadedUsers.current.has(user.id)) return;
+    // ─── Core fetch with pagination ───────────────────────────────────────────
+    // `page` starts at 0.
+    // Page 0 = first PAGE_SIZE items (newest first).
+    // Page 1 = next PAGE_SIZE items, appended. And so on.
+    const fetchTimelinePage = useCallback(async (
+        user: any,
+        page: number,
+        force = false
+    ) => {
+        const uniqueKey = user.uniqueUserId || user.id;
 
-        setTimelineLoading(true);
+        // skip if already loading this user's page
+        setPaginationMeta(prev => {
+            if (prev[uniqueKey]?.loading) return prev;
+            return {
+                ...prev,
+                [uniqueKey]: {
+                    page,
+                    hasMore: prev[uniqueKey]?.hasMore ?? true,
+                    loading: true,
+                }
+            };
+        });
+
+        if (page === 0) setTimelineLoading(true);
+
         try {
             const { data: sessionData } = await supabase.auth.getSession();
             const myId = sessionData?.session?.user?.id;
             if (!myId) return;
 
+            // pass page + PAGE_SIZE to timelineService so it can LIMIT/OFFSET
             const events = await timelineService.getTimelineForPair(
                 myId,
                 user.id,
-                user.uniqueUserId
+                user.uniqueUserId,
+                page,
+                PAGE_SIZE
             );
 
-            setLiveTimelineEvents(prev => ({
+            const hasMore = events.length === PAGE_SIZE;
+
+            setLiveTimelineEvents(prev => {
+                const existing = page === 0 ? [] : (prev[uniqueKey] ?? []);
+                // dedup by id before appending
+                const existingIds = new Set(existing.map((e: TimelineEvent) => (e as any).id));
+                const fresh = events.filter((e: TimelineEvent) => !existingIds.has((e as any).id));
+                return {
+                    ...prev,
+                    [uniqueKey]: [...existing, ...fresh],
+                };
+            });
+
+            setPaginationMeta(prev => ({
                 ...prev,
-                [user.uniqueUserId || user.id]: events,
+                [uniqueKey]: { page, hasMore, loading: false }
             }));
+
             loadedUsers.current.add(user.id);
         } catch (err) {
             console.error('[UserTimelineContext] Failed to fetch timeline:', err);
+            setPaginationMeta(prev => ({
+                ...prev,
+                [uniqueKey]: {
+                    ...(prev[uniqueKey] ?? { page: 0, hasMore: true }),
+                    loading: false,
+                }
+            }));
         } finally {
-            setTimelineLoading(false);
+            if (page === 0) setTimelineLoading(false);
         }
     }, []);
 
-    const fetchedInboxMessageIds = useRef<Set<string>>(new Set());
+    // ─── Called by UserTimelineView when user reaches end of scroll ───────────
+    const loadMoreEvents = useCallback((userId: string, uniqueUserId: string) => {
+        const uniqueKey = uniqueUserId || userId;
+        const meta = paginationMeta[uniqueKey];
+        if (!meta || meta.loading || !meta.hasMore) return;
+        fetchTimelinePage({ id: userId, uniqueUserId }, meta.page + 1);
+    }, [paginationMeta, fetchTimelinePage]);
 
+    // ─── Initial fetch (page 0) for a user ───────────────────────────────────
+    const fetchTimelineForUser = useCallback(async (user: any, force = false) => {
+        if (!force && loadedUsers.current.has(user.id)) return;
+        fetchTimelinePage(user, 0, force);
+    }, [fetchTimelinePage]);
+
+    // ─── React to inbox events ────────────────────────────────────────────────
+    const fetchedInboxMessageIds = useRef<Set<string>>(new Set());
     useEffect(() => {
         Object.entries(inboxEvents).forEach(([userId, events]) => {
             if (events.length === 0) return;
             const topMsgId = events[0].id;
-
             if (!fetchedInboxMessageIds.current.has(topMsgId)) {
                 fetchedInboxMessageIds.current.add(topMsgId);
                 fetchTimelineForUser({ id: events[0].senderId, uniqueUserId: userId }, true);
@@ -93,6 +173,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         });
     }, [inboxEvents, fetchTimelineForUser]);
 
+    // ─── Open / Close ─────────────────────────────────────────────────────────
     const openTimeline = (user: any, layout: LayoutRectangle) => {
         if (isAnimating) return;
         setIsAnimating(true);
@@ -102,7 +183,6 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         handleColorChange(user.dominantColor);
         fetchTimelineForUser(user);
 
-        // Safety escape: if animation never completes (crash/interrupt), unlock after 600ms
         clearAnimSafety();
         animSafetyTimeout.current = setTimeout(() => setIsAnimating(false), 600);
 
@@ -122,7 +202,6 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         setIsAnimating(true);
         showTabBar();
 
-        // Safety escape: if animation never completes (crash/interrupt), unlock after 550ms
         clearAnimSafety();
         animSafetyTimeout.current = setTimeout(() => {
             setExpandedUser(null);
@@ -150,10 +229,17 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     const value = useMemo(() => ({
-        expandedUser, expandAnim, openTimeline, closeTimeline,
-        priorities, setPriorities, scrollToUserIndex, flatListRef,
+        expandedUser, expandAnim,
+        openTimeline, closeTimeline,
+        priorities, setPriorities,
+        scrollToUserIndex, flatListRef,
         liveTimelineEvents, timelineLoading,
-    }), [expandedUser, priorities, scrollToUserIndex, liveTimelineEvents, timelineLoading]);
+        loadMoreEvents, paginationMeta,
+    }), [
+        expandedUser, priorities, scrollToUserIndex,
+        liveTimelineEvents, timelineLoading,
+        loadMoreEvents, paginationMeta,
+    ]);
 
     return (
         <UserTimelineContext.Provider value={value}>

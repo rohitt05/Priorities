@@ -2,9 +2,12 @@ export type { TimelineEvent } from '@/types/domain';
 import { TimelineEvent } from '@/types/domain';
 
 export interface TimelineGridItem {
+    id: string;
     type: 'photo' | 'video';
     bg: string;
-    uri?: string;
+    uri?: string;        // always image-renderable (thumb for video, full for photo)
+    videoUri?: string;   // actual .mp4 URI — only set for videos
+    thumbUri?: string;   // thumbnail URI for videos
     text?: string;
 }
 
@@ -29,46 +32,28 @@ export type TimelineRow = TimelineDayRow | TimelineMonthHeader;
 // DATE UTILITIES
 // ==========================================
 
-/**
- * Pads a number with leading zero if less than 10
- */
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : `${n}`);
 
-/**
- * Converts ISO timestamp to date key (YYYY-MM-DD)
- */
 export const toDateKey = (isoTs: string): string => {
     if (!isoTs) return '0000-00-00';
     const d = new Date(isoTs);
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
-/**
- * Gets month label from date key (e.g., "SEP")
- */
 export const getMonthLabel = (dateKey: string): string => {
     const [y, m] = dateKey.split('-').map(x => parseInt(x, 10));
     const d = new Date(y, m - 1, 1);
     return d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase();
 };
 
-/**
- * Gets weekday abbreviation from ISO timestamp (e.g., "MON")
- */
 export const getWeekday = (isoTs: string): string => {
     return new Date(isoTs).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase();
 };
 
-/**
- * Gets day number from ISO timestamp
- */
 export const getDay = (isoTs: string): string => {
     return `${new Date(isoTs).getDate()}`;
 };
 
-/**
- * Gets year-month key from date key (YYYY-MM)
- */
 export const getYearMonth = (dateKey: string): string => {
     return dateKey.slice(0, 7);
 };
@@ -77,45 +62,48 @@ export const getYearMonth = (dateKey: string): string => {
 // EVENT TRANSFORMATION
 // ==========================================
 
-/**
- * Transforms raw timeline event to UI grid item
- */
 export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem => {
     const ev = event as any;
     let type: TimelineGridItem['type'] = 'photo';
     let bg = '#eee';
+    let uri: string | undefined;
+    let videoUri: string | undefined;
+    let thumbUri: string | undefined;
 
     switch (ev.type) {
         case 'photo':
         case 'image':
             type = 'photo';
             bg = '#eee';
+            uri = ev.uri;
             break;
         case 'video':
             type = 'video';
-            bg = '#000';
+            bg = '#111';
+            // uri = thumbnail for still display in tile
+            // videoUri = actual video file for the player
+            thumbUri = ev.thumbUri;
+            videoUri = ev.uri;
+            uri = ev.thumbUri || undefined; // <Image> only gets the thumb
             break;
     }
 
     return {
+        id: ev.id,
         type,
         bg,
-        uri: ev.thumbUri || ev.uri,
+        uri,
+        videoUri,
+        thumbUri,
         text: ev.textContent || ev.text || ev.caption,
     };
 };
 
-/**
- * Calculates mood color gradient based on items in a day
- */
 export const calculateMoodColor = (items: TimelineGridItem[]): [string, string] => {
     const hasPhotos = items.some(item => item.type === 'photo' || item.type === 'video');
-
     if (hasPhotos) {
-        // Photo/video days get purple-pink gradient
         return ['#a18cd1', '#fbc2eb'];
     } else {
-        // Other days get pink-light pink gradient
         return ['#FF9A9E', '#FECFEF'];
     }
 };
@@ -124,26 +112,16 @@ export const calculateMoodColor = (items: TimelineGridItem[]): [string, string] 
 // DATA GROUPING
 // ==========================================
 
-/**
- * Groups events by date key
- */
 export const groupEventsByDate = (events: TimelineEvent[]): Map<string, TimelineEvent[]> => {
     const grouped = new Map<string, TimelineEvent[]>();
-
     events.forEach(event => {
         const key = toDateKey(event.timestamp);
-        if (!grouped.has(key)) {
-            grouped.set(key, []);
-        }
+        if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key)!.push(event);
     });
-
     return grouped;
 };
 
-/**
- * Sorts events by timestamp (newest first)
- */
 export const sortEventsByDate = (events: TimelineEvent[]): TimelineEvent[] => {
     return [...events].sort((a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -154,52 +132,36 @@ export const sortEventsByDate = (events: TimelineEvent[]): TimelineEvent[] => {
 // TIMELINE PROCESSING
 // ==========================================
 
-/**
- * Main function to process timeline events into FlatList rows
- * with month headers and day rows
- */
 export const processTimelineData = (events: TimelineEvent[]): TimelineRow[] => {
-    // Sort events by date (newest first)
     const sortedEvents = sortEventsByDate(events);
-
-    // Group by date
     const groupedByDate = groupEventsByDate(sortedEvents);
 
-    // Build rows array
     const rows: TimelineRow[] = [];
     let lastMonth = '';
 
-    // Iterate through grouped dates
     groupedByDate.forEach((dateEvents, dateKey) => {
         const yearMonth = getYearMonth(dateKey);
 
-        // Add month header if new month
         if (yearMonth !== lastMonth) {
             rows.push({
                 id: `h_${yearMonth}`,
                 type: 'month_header',
-                label: getMonthLabel(dateKey)
+                label: getMonthLabel(dateKey),
             });
             lastMonth = yearMonth;
         }
 
-        // Transform events to grid items
         const items = dateEvents.map(transformEventToGridItem);
-
-        // Calculate mood color
         const moodColor = calculateMoodColor(items);
-
-        // Get first event for date info
         const firstEvent = dateEvents[0];
 
-        // Add day row
         rows.push({
             id: `d_${dateKey}`,
             type: 'day',
             weekday: getWeekday(firstEvent.timestamp),
             day: getDay(firstEvent.timestamp),
             moodColor,
-            items
+            items,
         });
     });
 
@@ -217,9 +179,6 @@ export const filterEventsForUser = (
     return events.filter(event => event.userUniqueId === userUniqueId);
 };
 
-/**
- * Filters events for a date range
- */
 export const filterEventsByDateRange = (
     events: TimelineEvent[],
     startDate: Date,
@@ -231,9 +190,6 @@ export const filterEventsByDateRange = (
     });
 };
 
-/**
- * Filters events by type
- */
 export const filterEventsByType = (
     events: TimelineEvent[],
     types: any[]
@@ -245,9 +201,6 @@ export const filterEventsByType = (
 // STATISTICS
 // ==========================================
 
-/**
- * Calculates statistics for timeline events
- */
 export interface TimelineStats {
     totalEvents: number;
     photoCount: number;
@@ -263,7 +216,7 @@ export const calculateTimelineStats = (events: TimelineEvent[]): TimelineStats =
         totalEvents: events.length,
         photoCount: 0,
         videoCount: 0,
-        dateRange: null
+        dateRange: null,
     };
 
     if (events.length === 0) return stats;
@@ -280,7 +233,7 @@ export const calculateTimelineStats = (events: TimelineEvent[]): TimelineStats =
     const sortedEvents = sortEventsByDate(events);
     stats.dateRange = {
         oldest: sortedEvents[sortedEvents.length - 1].timestamp,
-        newest: sortedEvents[0].timestamp
+        newest: sortedEvents[0].timestamp,
     };
 
     return stats;
