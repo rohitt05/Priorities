@@ -125,30 +125,60 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
 
     const handleCardLayout = (e: LayoutChangeEvent) => {};
 
-    const uploadFileToBucket = async (
+    /**
+     * Upload via fetch + ArrayBuffer — the only reliable method on React Native.
+     * supabase-js .upload() with FormData silently fails on RN for binary files.
+     */
+    const uploadFileViaFetch = async (
         bucket: string,
-        senderId: string,
-        finalMediaUri: string
-    ): Promise<string | null> => {
-        if (!capturedMedia) return null;
-        const isVideoFile = capturedMedia.type === 'video';
-        const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
-        const ext = isVideoFile ? 'mp4' : 'jpg';
-        const fileName = `${senderId}/media/${Date.now()}.${ext}`;
-        const formData = new FormData();
-        formData.append('file', { uri: finalMediaUri, type: mimeType, name: fileName } as any);
-        const { error: uploadError } = await supabase.storage
-            .from(bucket)
-            .upload(fileName, formData, { contentType: mimeType, upsert: false });
-        if (uploadError) {
-            console.error(`[MediaPreview] Upload to "${bucket}" failed:`, uploadError);
-            return null;
+        filePath: string,
+        localUri: string,
+        mimeType: string,
+    ): Promise<boolean> => {
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const token = sessionData?.session?.access_token;
+            if (!token) {
+                console.error('[Upload] No auth token');
+                return false;
+            }
+
+            const supabaseUrl = 'https://olpnssfgzhpwrjiejfnr.supabase.co';
+
+            // Read the file as a blob via fetch (works on RN with local file:// URIs)
+            const fileResponse = await fetch(localUri);
+            const blob = await fileResponse.blob();
+
+            const uploadResponse = await fetch(
+                `${supabaseUrl}/storage/v1/object/${bucket}/${filePath}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': mimeType,
+                        'x-upsert': 'false',
+                    },
+                    body: blob,
+                }
+            );
+
+            if (!uploadResponse.ok) {
+                const errText = await uploadResponse.text();
+                console.error(`[Upload] Failed (${uploadResponse.status}):`, errText);
+                return false;
+            }
+
+            return true;
+        } catch (err) {
+            console.error('[Upload] Exception:', err);
+            return false;
         }
-        return fileName;
     };
 
     const sendAsMessage = async (senderId: string, finalUri: string) => {
         if (!capturedMedia || !recipient) return;
+
+        // ── Resolve receiver ID ───────────────────────────────────────────
         let receiverId: string | null = null;
         if (recipientId) {
             receiverId = recipientId;
@@ -165,17 +195,28 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             receiverId = data.id;
         }
 
-        const fileName = await uploadFileToBucket('messages', senderId, finalUri);
-        if (!fileName) { Alert.alert('Error', 'Failed to upload media. Please try again.'); return; }
+        const isVideoFile = capturedMedia.type === 'video';
+        const mimeType = isVideoFile ? 'video/mp4' : 'image/jpeg';
+        const ext = isVideoFile ? 'mp4' : 'jpg';
+        const filePath = `${senderId}/media/${Date.now()}.${ext}`;
 
-        const { data: signedData, error: signedError } = await supabase.storage
-            .from('messages')
-            .createSignedUrl(fileName, 60 * 60 * 24 * 7);
-        if (signedError || !signedData?.signedUrl) {
-            Alert.alert('Error', 'Failed to process media. Please try again.'); return;
+        // ── Upload using fetch+blob (reliable on React Native) ────────────
+        const uploaded = await uploadFileViaFetch('messages', filePath, finalUri, mimeType);
+        if (!uploaded) {
+            Alert.alert('Error', 'Failed to upload media. Please try again.');
+            return;
         }
 
-        const isVideoFile = capturedMedia.type === 'video';
+        // ── Get signed URL ────────────────────────────────────────────────
+        const { data: signedData, error: signedError } = await supabase.storage
+            .from('messages')
+            .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+        if (signedError || !signedData?.signedUrl) {
+            Alert.alert('Error', 'Failed to process media. Please try again.');
+            return;
+        }
+
+        // ── Insert into messages table ────────────────────────────────────
         const { error: insertError } = await supabase.from('messages').insert({
             sender_id: senderId,
             receiver_id: receiverId,
@@ -185,9 +226,12 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             disappeared: false,
             overlay_data: null,
         });
-        if (insertError) { Alert.alert('Error', 'Failed to send message. Please try again.'); return; }
+        if (insertError) {
+            console.error('[sendAsMessage] Insert error:', insertError);
+            Alert.alert('Error', 'Failed to send message. Please try again.');
+            return;
+        }
 
-        // Show flash then go home
         setShowSuccessFlash(true);
     };
 
@@ -199,29 +243,18 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         const fileName = `${senderId}/media/${Date.now()}.${ext}`;
 
         try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const token = sessionData?.session?.access_token;
-            if (!token) { Alert.alert('Error', 'Not logged in.'); return; }
-
-            const supabaseUrl = 'https://olpnssfgzhpwrjiejfnr.supabase.co';
-            const uploadSuccess = await new Promise<boolean>((resolve) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', `${supabaseUrl}/storage/v1/object/films/${fileName}`);
-                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-                xhr.setRequestHeader('Content-Type', mimeType);
-                xhr.setRequestHeader('x-upsert', 'false');
-                xhr.onload = () => resolve(xhr.status === 200);
-                xhr.onerror = () => resolve(false);
-                xhr.send({ uri: finalUri, type: mimeType, name: fileName } as any);
-            });
-
-            if (!uploadSuccess) { Alert.alert('Error', 'Failed to upload film. Please try again.'); return; }
+            const uploaded = await uploadFileViaFetch('films', fileName, finalUri, mimeType);
+            if (!uploaded) {
+                Alert.alert('Error', 'Failed to upload film. Please try again.');
+                return;
+            }
 
             const { data: signedData, error: signedError } = await supabase.storage
                 .from('films')
                 .createSignedUrl(fileName, 60 * 60 * 24 * 30);
             if (signedError || !signedData?.signedUrl) {
-                Alert.alert('Error', 'Failed to get signed URL.'); return;
+                Alert.alert('Error', 'Failed to get signed URL.');
+                return;
             }
 
             const { error: insertError } = await supabase.from('films').insert({
@@ -230,9 +263,11 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 uri: signedData.signedUrl,
                 overlay_data: null,
             });
-            if (insertError) { Alert.alert('Error', insertError.message); return; }
+            if (insertError) {
+                Alert.alert('Error', insertError.message);
+                return;
+            }
 
-            // Show flash then go home
             setShowSuccessFlash(true);
         } catch (err: any) {
             Alert.alert('Error', err?.message || 'Something went wrong.');
@@ -242,7 +277,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
     const handleSend = async () => {
         if (!capturedMedia) return;
         setIsSending(true);
-        let finalUri = capturedMedia.uri;
+        const finalUri = capturedMedia.uri;
 
         try {
             const { data: sessionData } = await supabase.auth.getSession();
@@ -289,10 +324,8 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         }
     };
 
-    // Called when the flash animation finishes — go home
     const handleFlashDismiss = () => {
-        onDiscard(); // clean up captured media state
-        // navigate to root tabs home
+        onDiscard();
         router.replace('/(tabs)');
     };
 
@@ -400,7 +433,6 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 </View>
             </View>
 
-            {/* Post success flash — rendered on top of everything */}
             {showSuccessFlash && (
                 <PostSuccessFlash
                     isFilm={!isMessageMode}
