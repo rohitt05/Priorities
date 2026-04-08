@@ -17,7 +17,6 @@ import TimelineCalendar from './TimelineCalendar';
 import MediaViewer from '@/components/ui/MediaViewer';
 import { MediaItem } from '@/types/mediaTypes';
 import { User, TimelineEvent } from '@/types/domain';
-import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
 
 
@@ -49,7 +48,6 @@ export default function UserTimelineView({
 
 
     const { liveTimelineEvents, timelineLoading } = useUserTimeline();
-    const { timelineEvents: inboxTimelineEvents } = useMediaInbox();
 
 
     useEffect(() => {
@@ -71,99 +69,24 @@ export default function UserTimelineView({
     }, [user, mediaViewerVisible, onClose]);
 
 
+    // ── Single source of truth: user_timelines (HISTORY LAYER) ──────────────────
+    // liveTimelineEvents is populated by:
+    //   a) getTimelineForPair() on mount  → reads from user_timelines table
+    //   b) addTimelineEvent() on markAsSeen → optimistic insert for instant UI
+    // No dedup needed — user_timelines has UNIQUE(owner_id, source_id)
+    // All 4 types supported: photo, video, voice, text
     const mergedEvents = useMemo((): TimelineEvent[] => {
         if (!user) return [];
-
-
-        const liveEvents: TimelineEvent[] = liveTimelineEvents[user.uniqueUserId] ?? [];
-
-
-        // ─── FIX: inbox events are keyed by sender's AUTH UUID, not uniqueUserId ───
-        // Try both the uniqueUserId key AND the user.id (auth uuid) key
-        const inboxByUniqueId: TimelineEvent[] = inboxTimelineEvents[user.uniqueUserId] ?? [];
-        const inboxByAuthId: TimelineEvent[] = (user as any).id
-            ? (inboxTimelineEvents[(user as any).id] ?? [])
-            : [];
-
-
-        // Merge all three sources
-        const allRaw = [...inboxByUniqueId, ...inboxByAuthId, ...liveEvents];
-
-
-        console.log('[Timeline] mergedEvents build:', {
-            userId: user.uniqueUserId,
-            userAuthId: (user as any).id,
-            liveCount: liveEvents.length,
-            inboxByUniqueIdCount: inboxByUniqueId.length,
-            inboxByAuthIdCount: inboxByAuthId.length,
-            totalRaw: allRaw.length,
-        });
-
-
-        // ─── FIX: dedup by URI, not just id ───────────────────────────────────────
-        // Same media can arrive with different IDs (message id vs film id).
-        // Primary dedup: by id. Secondary dedup: by uri (catches same media, diff id).
-        const seenIds = new Set<string>();
-        const seenUris = new Set<string>();
-
-
-        const deduped = allRaw.filter((e): e is TimelineEvent => {
-            const ev = e as any;
-            const type = ev.type;
-
-
-            if (type !== 'video' && type !== 'photo' && type !== 'image') return false;
-
-
-            // Dedup by id first
-            if (ev.id) {
-                if (seenIds.has(ev.id)) {
-                    console.log('[Timeline] Dropped duplicate by id:', ev.id);
-                    return false;
-                }
-                seenIds.add(ev.id);
-            }
-
-
-            // Dedup by uri (catches message vs film same media)
-            const uriKey = ev.uri || ev.thumbUri;
-            if (uriKey) {
-                // Strip query params (signed URL tokens differ but path is same)
-                const uriPath = uriKey.split('?')[0];
-                if (seenUris.has(uriPath)) {
-                    console.log('[Timeline] Dropped duplicate by uri path:', uriPath);
-                    return false;
-                }
-                seenUris.add(uriPath);
-            }
-
-
-            return true;
-        });
-
-
-        const sorted = deduped.sort((a, b) =>
-            new Date((b as any).timestamp).getTime() - new Date((a as any).timestamp).getTime()
-        );
-
-
-        console.log('[Timeline] Final deduplicated events:', sorted.length, sorted.map((e: any) => ({
-            id: e.id,
-            type: e.type,
-            uri: e.uri?.split('?')[0]?.split('/').pop(),
-        })));
-
-
-        return sorted;
-    }, [user, liveTimelineEvents, inboxTimelineEvents]);
+        return liveTimelineEvents[user.uniqueUserId] ?? [];
+    }, [user, liveTimelineEvents]);
 
 
     const allUserMedia = useMemo((): MediaItem[] => {
-        const media = mergedEvents.map((event) => {
+        return mergedEvents.map((event) => {
             const ev = event as any;
             return {
                 id: ev.id,
-                type: (ev.type === 'image' || ev.type === 'photo') ? 'photo' : 'video',
+                type: (ev.type === 'image' || ev.type === 'photo') ? 'photo' : ev.type,
                 uri: ev.uri,
                 thumbUri: ev.thumbUri || ev.uri,
                 text: ev.textContent || ev.text,
@@ -173,10 +96,6 @@ export default function UserTimelineView({
                 sender: ev.sender,
             } as MediaItem;
         });
-
-
-        console.log('[Timeline] allUserMedia built:', media.length, 'items');
-        return media;
     }, [mergedEvents]);
 
 
@@ -184,34 +103,17 @@ export default function UserTimelineView({
         const ev = event as any;
 
 
-        console.log('[Timeline] handleMediaPress called:', {
-            id: ev.id,
-            type: ev.type,
-            uri: ev.uri?.split('?')[0]?.split('/').pop(),
-            hasUri: !!ev.uri,
-        });
-
-
         const mediaItem = allUserMedia.find(item => item.id === ev.id);
 
 
-        console.log('[Timeline] mediaItem lookup:', {
-            found: !!mediaItem,
-            searchId: ev.id,
-            allIds: allUserMedia.map(m => m.id),
-        });
-
-
         if (mediaItem) {
-            console.log('[Timeline] Opening MediaViewer with:', mediaItem.id, mediaItem.type);
             setSelectedMedia(mediaItem);
             setMediaViewerVisible(true);
         } else {
             // Fallback: build inline if lookup missed
-            console.log('[Timeline] mediaItem not found in allUserMedia, using fallback');
             setSelectedMedia({
                 id: ev.id,
-                type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : 'video',
+                type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : ev.type,
                 uri: ev.uri,
                 thumbUri: ev.thumbUri || ev.uri,
                 text: ev.textContent || ev.text,
