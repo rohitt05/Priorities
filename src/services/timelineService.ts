@@ -45,7 +45,7 @@ const refreshSignedUrl = async (
 export const timelineService = {
     getTimelineForPair: async (
         myId: string,
-        theirId: string,
+        theirId: string,           // their auth UUID (profiles.id)
         theirUniqueUserId: string,
         page = 0,
         pageSize = 10
@@ -54,8 +54,12 @@ export const timelineService = {
         const from = page * pageSize;
         const to = from + pageSize - 1;
 
-        // ── Fetch films + messages IN PARALLEL ───────────────────────────────
-        const [filmsResult, messagesResult] = await Promise.all([
+        // ── Fetch films + user_timelines IN PARALLEL ──────────────────────────
+        // Films: unchanged — still read from films table
+        // Messages history: now reads from user_timelines (HISTORY LAYER)
+        //   Simple query: owner_id = myId AND other_user_id = theirId
+        //   No complex OR filters, no seen_at checks, no dedup needed
+        const [filmsResult, timelineResult] = await Promise.all([
             supabase
                 .from('films')
                 .select('id, creator_id, type, uri, thumbnail, created_at')
@@ -64,33 +68,28 @@ export const timelineService = {
                 .range(from, to),
 
             supabase
-                .from('messages')
-                .select('id, sender_id, receiver_id, type, uri, duration_sec, sent_at, seen_at, disappeared')
-                .or(`sender_id.eq.${myId},and(receiver_id.eq.${myId},seen_at.not.is.null)`)
-                .or(
-                    `and(sender_id.eq.${myId},receiver_id.eq.${theirId}),` +
-                    `and(sender_id.eq.${theirId},receiver_id.eq.${myId})`
-                )
-                .eq('disappeared', false)
-                .order('sent_at', { ascending: false })
+                .from('user_timelines')
+                .select('id, source_id, media_type, uri, thumb_uri, duration_sec, sender, text_content, seen_at, created_at')
+                .eq('owner_id', myId)
+                .eq('other_user_id', theirId)
+                .order('seen_at', { ascending: false })
                 .range(from, to),
         ]);
 
         if (filmsResult.error) {
             console.error('[timelineService] films fetch error:', filmsResult.error.message);
         }
-        if (messagesResult.error) {
-            console.error('[timelineService] messages fetch error:', messagesResult.error.message);
+        if (timelineResult.error) {
+            console.error('[timelineService] user_timelines fetch error:', timelineResult.error.message);
         }
 
         const films = filmsResult.data ?? [];
-        const messages = messagesResult.data ?? [];
+        const timelineRows = timelineResult.data ?? [];
 
         // ── Re-sign ALL URLs in parallel ─────────────────────────────────────
-        const [signedFilms, signedMessages] = await Promise.all([
+        const [signedFilms, signedTimeline] = await Promise.all([
             Promise.all(
                 films.map(async (film) => {
-                    // Films bucket: "films", messages bucket: "messages"
                     const [freshUri, freshThumb] = await Promise.all([
                         refreshSignedUrl(film.uri, 'films'),
                         refreshSignedUrl(film.thumbnail, 'films'),
@@ -99,9 +98,9 @@ export const timelineService = {
                 })
             ),
             Promise.all(
-                messages.map(async (msg) => {
-                    const freshUri = await refreshSignedUrl(msg.uri, 'messages');
-                    return { msg, freshUri };
+                timelineRows.map(async (row) => {
+                    const freshUri = await refreshSignedUrl(row.uri, 'messages');
+                    return { row, freshUri };
                 })
             ),
         ]);
@@ -109,8 +108,8 @@ export const timelineService = {
         // ── Build events array ────────────────────────────────────────────────
         const events: TimelineEvent[] = [];
 
+        // Films (unchanged mapping)
         for (const { film, freshUri, freshThumb } of signedFilms) {
-            // Skip films where we couldn't get a valid URI
             if (!freshUri) {
                 console.warn('[timelineService] Skipping film with no valid URI:', film.id);
                 continue;
@@ -119,7 +118,6 @@ export const timelineService = {
                 id: film.id,
                 senderId: film.creator_id,
                 receiverId: film.creator_id === myId ? theirId : myId,
-                // Normalize: DB stores "image" for photos, app uses "photo"
                 type: (film.type === 'video') ? 'video' : 'photo',
                 uri: freshUri,
                 sentAt: film.created_at,
@@ -131,25 +129,30 @@ export const timelineService = {
             } as TimelineEvent);
         }
 
-        for (const { msg, freshUri } of signedMessages) {
-            if (!freshUri && (msg.type === 'photo' || msg.type === 'video')) {
-                console.warn('[timelineService] Skipping message with no valid URI:', msg.id);
+        // user_timelines rows → TimelineEvent
+        // All 4 types supported: photo, video, voice, text
+        // sender is pre-computed ('me' | 'them') — no derivation needed
+        for (const { row, freshUri } of signedTimeline) {
+            // Skip photo/video rows with no valid URI (voice + text have no URI, that's fine)
+            if (!freshUri && (row.media_type === 'photo' || row.media_type === 'video')) {
+                console.warn('[timelineService] Skipping timeline row with no valid URI:', row.source_id);
                 continue;
             }
             events.push({
-                id: msg.id,
-                senderId: msg.sender_id,
-                receiverId: msg.receiver_id,
-                type: msg.type as TimelineEvent['type'],
+                id: row.source_id,        // source_id = original messages.id
+                senderId: row.sender === 'me' ? myId : theirId,
+                receiverId: row.sender === 'me' ? theirId : myId,
+                type: row.media_type as TimelineEvent['type'],
                 uri: freshUri,
-                durationSec: msg.duration_sec ?? undefined,
-                sentAt: msg.sent_at,
-                seenAt: msg.seen_at ?? null,
-                disappeared: msg.disappeared,
+                thumbUri: row.thumb_uri ?? freshUri,
+                durationSec: row.duration_sec ?? undefined,
+                textContent: row.text_content ?? undefined,
+                sentAt: row.seen_at,      // seen_at is the canonical timestamp for history
+                seenAt: row.seen_at,
+                disappeared: false,
                 userUniqueId: theirUniqueUserId,
-                sender: msg.sender_id === myId ? 'me' : 'them',
-                timestamp: msg.sent_at,
-                thumbUri: freshUri,
+                sender: row.sender as 'me' | 'them',
+                timestamp: row.seen_at,
             } as TimelineEvent);
         }
 
