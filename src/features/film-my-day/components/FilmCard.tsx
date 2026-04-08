@@ -13,7 +13,6 @@ import { FONTS } from '@/theme/theme';
 import { formatRelativeTime } from '../utils/dateUtils';
 import FilmMedia from './FilmMedia';
 import * as Haptics from 'expo-haptics';
-import OverlayRenderer from '@/components/ui/OverlayRenderer';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -92,13 +91,7 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
                         type={film.type as 'image' | 'video'}
                     />
                     
-                    {film.overlay_data && (
-                        <OverlayRenderer
-                            overlayData={film.overlay_data}
-                            containerWidth={cardWidth}
-                            containerHeight={cardHeight}
-                        />
-                    )}
+
                 </View>
 
                 {/* Scrim */}

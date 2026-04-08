@@ -352,6 +352,69 @@ export type Database = {
                     },
                 ]
             }
+            user_timelines: {
+                Row: {
+                    id: string
+                    created_at: string
+                    owner_id: string
+                    other_user_id: string
+                    source_id: string
+                    source_type: string
+                    media_type: string
+                    uri: string | null
+                    thumb_uri: string | null
+                    duration_sec: number | null
+                    sender: string
+                    text_content: string | null
+                    seen_at: string | null
+                }
+                Insert: {
+                    id?: string
+                    created_at?: string
+                    owner_id: string
+                    other_user_id: string
+                    source_id: string
+                    source_type: string
+                    media_type: string
+                    uri?: string | null
+                    thumb_uri?: string | null
+                    duration_sec?: number | null
+                    sender: string
+                    text_content?: string | null
+                    seen_at?: string | null
+                }
+                Update: {
+                    id?: string
+                    created_at?: string
+                    owner_id?: string
+                    other_user_id?: string
+                    source_id?: string
+                    source_type?: string
+                    media_type?: string
+                    uri?: string | null
+                    thumb_uri?: string | null
+                    duration_sec?: number | null
+                    sender?: string
+                    text_content?: string | null
+                    seen_at?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "user_timelines_owner_id_fkey"
+                        columns: ["owner_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "user_timelines_other_user_id_fkey"
+                        columns: ["other_user_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
             priority_requests: {
                 Row: {
                     created_at: string

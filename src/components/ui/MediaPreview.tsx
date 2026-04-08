@@ -224,7 +224,6 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             uri: signedData.signedUrl,
             duration_sec: isVideoFile ? Math.round(duration) || null : null,
             disappeared: false,
-            overlay_data: null,
         });
         if (insertError) {
             console.error('[sendAsMessage] Insert error:', insertError);
