@@ -16,15 +16,21 @@ import Animated, {
 } from 'react-native-reanimated';
 import { FONTS } from '@/theme/theme';
 
-const SHEET_HEIGHT = 170;
+// Height grows to fit the third row
+const SHEET_HEIGHT = 240;
 
 interface MessageMediaItemBottomSheetProps {
     visible: boolean;
     onClose: () => void;
     onDownload: () => void;
     onDelete: () => void;
+    // NEW — request the other user to delete this memory
+    onRequestMemoryDeletion?: () => void;
     isSaving?: boolean;
     isDeleting?: boolean;
+    // Show the request row only for memories that belong to the other user
+    canRequestDeletion?: boolean;
+    isRequestingDeletion?: boolean;
 }
 
 export default function MessageMediaItemBottomSheet({
@@ -32,8 +38,11 @@ export default function MessageMediaItemBottomSheet({
     onClose,
     onDownload,
     onDelete,
+    onRequestMemoryDeletion,
     isSaving = false,
     isDeleting = false,
+    canRequestDeletion = false,
+    isRequestingDeletion = false,
 }: MessageMediaItemBottomSheetProps) {
     const insets = useSafeAreaInsets();
     const translateY = useSharedValue(SHEET_HEIGHT);
@@ -66,12 +75,10 @@ export default function MessageMediaItemBottomSheet({
 
     if (!visible) return null;
 
-    const busy = isSaving || isDeleting;
+    const busy = isSaving || isDeleting || isRequestingDeletion;
 
     return (
-        <Animated.View
-            style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]}
-        >
+        <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]}>
             {/* Backdrop — tap to dismiss */}
             <Pressable
                 style={StyleSheet.absoluteFill}
@@ -108,7 +115,29 @@ export default function MessageMediaItemBottomSheet({
 
                 <View style={styles.separator} />
 
-                {/* Delete */}
+                {/* Request Memory Deletion — only shown when the media belongs to the other user */}
+                {canRequestDeletion && (
+                    <>
+                        <TouchableOpacity
+                            style={[styles.row, busy && styles.rowDisabled]}
+                            onPress={() => {
+                                if (!busy && onRequestMemoryDeletion) {
+                                    onClose();
+                                    setTimeout(() => onRequestMemoryDeletion(), 300);
+                                }
+                            }}
+                            disabled={busy}
+                            activeOpacity={0.55}
+                        >
+                            <Text style={[styles.rowText, styles.requestText]}>
+                                {isRequestingDeletion ? 'Sending Request…' : 'Request Memory Deletion'}
+                            </Text>
+                        </TouchableOpacity>
+                        <View style={styles.separator} />
+                    </>
+                )}
+
+                {/* Delete (my own media) */}
                 <TouchableOpacity
                     style={[styles.row, busy && styles.rowDisabled]}
                     onPress={() => {
@@ -168,6 +197,10 @@ const styles = StyleSheet.create({
         color: '#1C1C1E',
         textAlign: 'center',
         letterSpacing: -0.2,
+    },
+    requestText: {
+        color: '#FF9500',   // Orange — intentional: destructive request, not irreversible yet
+        fontFamily: FONTS.bold,
     },
     dangerText: {
         color: '#FF3B30',

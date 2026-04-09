@@ -1,8 +1,9 @@
 // src/features/timeline/components/UserTimelineView.tsx
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Image, TouchableOpacity,
     LayoutRectangle, BackHandler, ActivityIndicator,
+    ScrollView, Pressable,
 } from 'react-native';
 import Animated, {
     useAnimatedStyle, interpolate, SharedValue,
@@ -12,12 +13,17 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBackground } from '@/contexts/BackgroundContext';
-import { COLORS, SPACING } from '@/theme/theme';
+import { COLORS, SPACING, FONTS } from '@/theme/theme';
 import TimelineCalendar from './TimelineCalendar';
 import MediaViewer from '@/components/ui/MediaViewer';
 import { MediaItem } from '@/types/mediaTypes';
 import { User, TimelineEvent } from '@/types/domain';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
+import {
+    fetchIncomingDeleteRequests,
+    respondToDeleteRequest,
+    MemoryDeleteRequest,
+} from '@/services/memoryDeleteService';
 
 
 const formatTimestamp = (isoTs: string): string => {
@@ -26,6 +32,15 @@ const formatTimestamp = (isoTs: string): string => {
         month: 'short', day: 'numeric', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
+};
+
+const timeAgo = (isoTs: string): string => {
+    const diff = Date.now() - new Date(isoTs).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
 };
 
 
@@ -46,8 +61,14 @@ export default function UserTimelineView({
     const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
     const [animationDone, setAnimationDone] = useState(false);
 
+    // ─── Delete requests panel state ──────────────────────────────────────
+    const [requestsPanelVisible, setRequestsPanelVisible] = useState(false);
+    const [deleteRequests, setDeleteRequests] = useState<MemoryDeleteRequest[]>([]);
+    const [requestsLoading, setRequestsLoading] = useState(false);
+    const [respondingId, setRespondingId] = useState<string | null>(null);
+    // ─────────────────────────────────────────────────────────────────────
 
-    const { liveTimelineEvents, timelineLoading } = useUserTimeline();
+    const { liveTimelineEvents } = useUserTimeline();
 
 
     useEffect(() => {
@@ -61,20 +82,59 @@ export default function UserTimelineView({
     useEffect(() => {
         if (!user) return;
         const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+            if (requestsPanelVisible) { setRequestsPanelVisible(false); return true; }
             if (mediaViewerVisible) { handleCloseMediaViewer(); return true; }
             onClose();
             return true;
         });
         return () => backHandler.remove();
-    }, [user, mediaViewerVisible, onClose]);
+    }, [user, mediaViewerVisible, requestsPanelVisible, onClose]);
+
+
+    // ── Load delete requests scoped to this user ─────────────────────────
+    const loadDeleteRequests = useCallback(async () => {
+        setRequestsLoading(true);
+        try {
+            const all = await fetchIncomingDeleteRequests();
+            // Filter to only requests from THIS specific user
+            const filtered = user
+                ? all.filter(r => r.requesterId === user.id)
+                : all;
+            setDeleteRequests(filtered);
+        } finally {
+            setRequestsLoading(false);
+        }
+    }, [user?.id]);
+
+
+    const handleOpenRequestsPanel = useCallback(() => {
+        setRequestsPanelVisible(true);
+        loadDeleteRequests();
+    }, [loadDeleteRequests]);
+
+
+    // ── Respond to a single request ───────────────────────────────────────
+    const handleRespond = useCallback(async (
+        request: MemoryDeleteRequest,
+        response: 'approved' | 'rejected',
+    ) => {
+        setRespondingId(request.id);
+        // Find the media URI from the local timeline events (for storage cleanup)
+        const allEvents = user ? (liveTimelineEvents[user.uniqueUserId] ?? []) : [];
+        const matchingEvent = allEvents.find((e: any) => e.id === request.sourceId) as any;
+        const mediaUri = matchingEvent?.uri ?? null;
+
+        const ok = await respondToDeleteRequest(request.id, response, mediaUri, request.sourceId);
+        if (ok) {
+            // Remove from local list immediately — optimistic
+            setDeleteRequests(prev => prev.filter(r => r.id !== request.id));
+        }
+        setRespondingId(null);
+    }, [user, liveTimelineEvents]);
+    // ─────────────────────────────────────────────────────────────────────
 
 
     // ── Single source of truth: user_timelines (HISTORY LAYER) ──────────────────
-    // liveTimelineEvents is populated by:
-    //   a) getTimelineForPair() on mount  → reads from user_timelines table
-    //   b) addTimelineEvent() on markAsSeen → optimistic insert for instant UI
-    // No dedup needed — user_timelines has UNIQUE(owner_id, source_id)
-    // All 4 types supported: photo, video, voice, text
     const mergedEvents = useMemo((): TimelineEvent[] => {
         if (!user) return [];
         return liveTimelineEvents[user.uniqueUserId] ?? [];
@@ -101,16 +161,11 @@ export default function UserTimelineView({
 
     const handleMediaPress = (event: TimelineEvent) => {
         const ev = event as any;
-
-
         const mediaItem = allUserMedia.find(item => item.id === ev.id);
-
-
         if (mediaItem) {
             setSelectedMedia(mediaItem);
             setMediaViewerVisible(true);
         } else {
-            // Fallback: build inline if lookup missed
             setSelectedMedia({
                 id: ev.id,
                 type: (ev.type === 'photo' || ev.type === 'image') ? 'photo' : ev.type,
@@ -172,13 +227,6 @@ export default function UserTimelineView({
 
     const renderContent = () => {
         if (!animationDone) return <View style={styles.loadingContainer} />;
-        if (timelineLoading) {
-            return (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#000" />
-                </View>
-            );
-        }
         if (mergedEvents.length > 0) {
             return (
                 <TimelineCalendar
@@ -195,6 +243,107 @@ export default function UserTimelineView({
             </View>
         );
     };
+
+
+    // ─── Delete Requests Panel ────────────────────────────────────────────
+    const renderRequestsPanel = () => {
+        if (!requestsPanelVisible) return null;
+
+        return (
+            <>
+                {/* Scrim — tap to close */}
+                <Pressable
+                    style={[StyleSheet.absoluteFill, styles.panelScrim]}
+                    onPress={() => setRequestsPanelVisible(false)}
+                />
+
+                {/* Panel card */}
+                <View
+                    style={[
+                        styles.requestsPanel,
+                        {
+                            top: TARGET_TOP + TARGET_SIZE + 16,
+                            right: 16,
+                        },
+                    ]}
+                >
+                    <Text style={styles.panelTitle}>Delete Requests</Text>
+
+                    {requestsLoading ? (
+                        <ActivityIndicator
+                            size="small"
+                            color="#000"
+                            style={{ marginVertical: 20 }}
+                        />
+                    ) : deleteRequests.length === 0 ? (
+                        <View style={styles.panelEmpty}>
+                            <Ionicons
+                                name="notifications-off-outline"
+                                size={28}
+                                color="rgba(0,0,0,0.2)"
+                            />
+                            <Text style={styles.panelEmptyText}>
+                                no delete requests yet
+                            </Text>
+                        </View>
+                    ) : (
+                        <ScrollView
+                            style={{ maxHeight: 320 }}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {deleteRequests.map(req => (
+                                <View key={req.id} style={styles.requestRow}>
+                                    <View style={styles.requestMeta}>
+                                        <Text style={styles.requestLabel} numberOfLines={1}>
+                                            Memory ID ···{req.sourceId.slice(-6)}
+                                        </Text>
+                                        <Text style={styles.requestTime}>
+                                            {timeAgo(req.createdAt)}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.requestActions}>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.actionBtn,
+                                                styles.approveBtn,
+                                                respondingId === req.id && styles.actionBtnDisabled,
+                                            ]}
+                                            onPress={() => handleRespond(req, 'approved')}
+                                            disabled={respondingId === req.id}
+                                            activeOpacity={0.7}
+                                        >
+                                            {respondingId === req.id ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <Text style={styles.actionBtnText}>Approve</Text>
+                                            )}
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.actionBtn,
+                                                styles.declineBtn,
+                                                respondingId === req.id && styles.actionBtnDisabled,
+                                            ]}
+                                            onPress={() => handleRespond(req, 'rejected')}
+                                            disabled={respondingId === req.id}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text style={[styles.actionBtnText, styles.declineBtnText]}>
+                                                Decline
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+                </View>
+            </>
+        );
+    };
+    // ─────────────────────────────────────────────────────────────────────
 
 
     return (
@@ -227,7 +376,7 @@ export default function UserTimelineView({
                 </Animated.View>
 
 
-                {/* Dominant color gradient banner — fades behind avatar and name */}
+                {/* Dominant color gradient banner */}
                 <Animated.View
                     style={[
                         headerTextAnimatedStyle,
@@ -251,7 +400,7 @@ export default function UserTimelineView({
                 </Animated.View>
 
 
-                {/* Avatar — touch-transparent, no pressable */}
+                {/* Avatar */}
                 <Animated.View
                     style={[
                         imageAnimatedStyle,
@@ -273,7 +422,7 @@ export default function UserTimelineView({
                 </Animated.View>
 
 
-                {/* Header name — touch-transparent */}
+                {/* Header name */}
                 <Animated.View
                     style={[
                         headerTextAnimatedStyle,
@@ -296,6 +445,49 @@ export default function UserTimelineView({
                         {user!.name}
                     </Text>
                 </Animated.View>
+
+
+                {/* ─── Bell icon — top-right of header ─────────────────────────── */}
+                <Animated.View
+                    style={[
+                        headerTextAnimatedStyle,
+                        {
+                            position: 'absolute',
+                            top: TARGET_TOP,
+                            right: 16,
+                            height: TARGET_SIZE,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 101,
+                        }
+                    ]}
+                >
+                    <TouchableOpacity
+                        onPress={handleOpenRequestsPanel}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        activeOpacity={0.65}
+                        style={styles.bellBtn}
+                    >
+                        <Ionicons
+                            name={deleteRequests.length > 0 ? 'notifications' : 'notifications-outline'}
+                            size={24}
+                            color="#000"
+                        />
+                        {/* Badge dot when there are requests */}
+                        {deleteRequests.length > 0 && (
+                            <View style={styles.bellBadge}>
+                                <Text style={styles.bellBadgeText}>
+                                    {deleteRequests.length > 9 ? '9+' : deleteRequests.length}
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                </Animated.View>
+
+
+                {/* ─── Requests panel (inline overlay) ──────────────────────────── */}
+                {renderRequestsPanel()}
+
             </View>
 
 
@@ -304,6 +496,7 @@ export default function UserTimelineView({
                 initialMediaItem={selectedMedia}
                 allMediaItems={allUserMedia}
                 onClose={handleCloseMediaViewer}
+                otherUserId={user.id}
             />
         </View>
     );
@@ -338,4 +531,125 @@ const styles = StyleSheet.create({
     closeBtnContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
     emptyText: { fontSize: 18, fontFamily: 'DancingScript-Regular', color: 'rgba(0,0,0,0.4)' },
+
+    // Bell button
+    bellBtn: {
+        width: 36,
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    bellBadge: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        minWidth: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: '#FF3B30',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 3,
+    },
+    bellBadgeText: {
+        color: '#fff',
+        fontSize: 9,
+        fontWeight: '700',
+        lineHeight: 11,
+    },
+
+    // Delete requests panel
+    panelScrim: {
+        zIndex: 200,
+        backgroundColor: 'transparent',
+    },
+    requestsPanel: {
+        position: 'absolute',
+        zIndex: 201,
+        width: 280,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
+        elevation: 16,
+    },
+    panelTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#1C1C1E',
+        letterSpacing: 0.3,
+        marginBottom: 12,
+        textTransform: 'uppercase',
+    },
+    panelEmpty: {
+        alignItems: 'center',
+        paddingVertical: 20,
+        gap: 8,
+    },
+    panelEmptyText: {
+        fontSize: 14,
+        color: 'rgba(0,0,0,0.35)',
+        fontFamily: 'DancingScript-Regular',
+        textAlign: 'center',
+    },
+
+    // Individual request row
+    requestRow: {
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(0,0,0,0.08)',
+    },
+    requestMeta: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    requestLabel: {
+        fontSize: 13,
+        color: '#1C1C1E',
+        fontWeight: '500',
+        flex: 1,
+        marginRight: 8,
+    },
+    requestTime: {
+        fontSize: 11,
+        color: 'rgba(0,0,0,0.4)',
+        fontWeight: '400',
+    },
+    requestActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    actionBtn: {
+        flex: 1,
+        paddingVertical: 8,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 34,
+    },
+    actionBtnDisabled: {
+        opacity: 0.5,
+    },
+    actionBtnText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#fff',
+    },
+    approveBtn: {
+        backgroundColor: '#34C759',
+    },
+    declineBtn: {
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.15)',
+    },
+    declineBtnText: {
+        color: '#1C1C1E',
+    },
 });
