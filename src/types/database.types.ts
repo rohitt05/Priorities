@@ -172,6 +172,54 @@ export type Database = {
                     },
                 ]
             }
+            memory_delete_requests: {
+                Row: {
+                    id: string
+                    requester_id: string
+                    other_user_id: string
+                    source_id: string
+                    status: string
+                    created_at: string
+                    expires_at: string
+                    resolved_at: string | null
+                }
+                Insert: {
+                    id?: string
+                    requester_id: string
+                    other_user_id: string
+                    source_id: string
+                    status?: string
+                    created_at?: string
+                    expires_at?: string
+                    resolved_at?: string | null
+                }
+                Update: {
+                    id?: string
+                    requester_id?: string
+                    other_user_id?: string
+                    source_id?: string
+                    status?: string
+                    created_at?: string
+                    expires_at?: string
+                    resolved_at?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "memory_delete_requests_requester_id_fkey"
+                        columns: ["requester_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "memory_delete_requests_other_user_id_fkey"
+                        columns: ["other_user_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
             message_reactions: {
                 Row: {
                     created_at: string
@@ -543,6 +591,10 @@ export type Database = {
             }
             block_user: {
                 Args: { p_blocked_id: string; p_blocker_id: string }
+                Returns: undefined
+            }
+            execute_memory_deletion: {
+                Args: { p_source_id: string }
                 Returns: undefined
             }
             get_my_priority_user_ids: {
