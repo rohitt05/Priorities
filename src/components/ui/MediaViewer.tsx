@@ -10,6 +10,7 @@ import {
     Animated,
     StatusBar,
     FlatList,
+    ListRenderItem,
     Dimensions,
     Platform,
     Alert,
@@ -31,7 +32,12 @@ import { initiateDeleteRequest } from '@/services/memoryDeleteService';
 
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
+
+// Typed AnimatedFlatList — avoids the `unknown` item type that
+// Animated.createAnimatedComponent strips when used without a generic.
+const AnimatedFlatList = Animated.createAnimatedComponent(
+    FlatList<MediaItem>
+);
 
 
 interface MediaViewerProps {
@@ -39,7 +45,6 @@ interface MediaViewerProps {
     initialMediaItem: MediaItem | null;
     allMediaItems: MediaItem[];
     onClose: () => void;
-    onDeleteItem?: (item: MediaItem) => void;
     // The Supabase UUID of the other user in this timeline pair.
     // Required to send a memory deletion request.
     otherUserId?: string;
@@ -51,7 +56,6 @@ export default function MediaViewer({
     initialMediaItem,
     allMediaItems,
     onClose,
-    onDeleteItem,
     otherUserId,
 }: MediaViewerProps) {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
@@ -89,7 +93,6 @@ export default function MediaViewer({
     // ─── Bottom sheet state ───────────────────────────────────────────────
     const [sheetVisible, setSheetVisible] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
     const [isRequestingDeletion, setIsRequestingDeletion] = useState(false);
 
     const openSheet = useCallback(() => {
@@ -109,7 +112,7 @@ export default function MediaViewer({
 
     const opacity = useRef(new Animated.Value(0)).current;
     const scrollX = useRef(new Animated.Value(0)).current;
-    const flatListRef = useRef<FlatList>(null);
+    const flatListRef = useRef<FlatList<MediaItem>>(null);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isListReady, setIsListReady] = useState(false);
@@ -191,33 +194,7 @@ export default function MediaViewer({
         }
     }, [allMediaItems, initialMediaItem]);
 
-    // ─── Delete (my own item) ─────────────────────────────────────────────
-    const handleDelete = useCallback(() => {
-        const item = allMediaItems[currentIndexRef.current] ?? initialMediaItem;
-        if (!item) return;
-        Alert.alert(
-            'Delete Memory',
-            'Remove this from your timeline? This cannot be undone.',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                        setIsDeleting(true);
-                        try {
-                            onDeleteItem?.(item);
-                        } finally {
-                            setIsDeleting(false);
-                            onClose();
-                        }
-                    },
-                },
-            ]
-        );
-    }, [allMediaItems, initialMediaItem, onDeleteItem, onClose]);
-
-    // ─── Request memory deletion (from other user's side) ────────────────
+    // ─── Request memory deletion (mutual consent — only path to delete) ───
     const handleRequestMemoryDeletion = useCallback(async () => {
         const item = allMediaItems[currentIndexRef.current] ?? initialMediaItem;
         if (!item || !otherUserId) return;
@@ -273,7 +250,9 @@ export default function MediaViewer({
     }, [allMediaItems, initialMediaItem, otherUserId, onClose]);
     // ─────────────────────────────────────────────────────────────────────
 
-    const renderItem = useCallback(({ item }: { item: MediaItem }) => (
+    // Typed as ListRenderItem<MediaItem> so the generic flows correctly
+    // into AnimatedFlatList — no more `unknown` item mismatch.
+    const renderItem = useCallback<ListRenderItem<MediaItem>>(({ item }) => (
         <TouchableWithoutFeedback onPress={handleMediaTap}>
             <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }}>
                 {item.type === 'photo' && (
@@ -295,7 +274,11 @@ export default function MediaViewer({
         </TouchableWithoutFeedback>
     ), [handleMediaTap]);
 
-    const keyExtractor = useCallback((item: MediaItem) => item.id, []);
+    // Typed to match (item: MediaItem) => string — satisfies FlatList<MediaItem>
+    const keyExtractor = useCallback<(item: MediaItem) => string>(
+        (item) => item.id,
+        []
+    );
 
     const onViewableItemsChanged = useCallback(
         ({ viewableItems }: any) => {
@@ -346,7 +329,7 @@ export default function MediaViewer({
                     scrollToOverflowEnabled
                 />
 
-                {/* Header row: close on left, dots on right */}
+                {/* Header row: close on left, timestamp centre, dots on right */}
                 <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
                     <TouchableOpacity
                         style={styles.headerBtn}
@@ -388,10 +371,8 @@ export default function MediaViewer({
                     visible={sheetVisible}
                     onClose={closeSheet}
                     onDownload={handleDownload}
-                    onDelete={handleDelete}
                     onRequestMemoryDeletion={handleRequestMemoryDeletion}
                     isSaving={isSaving}
-                    isDeleting={isDeleting}
                     canRequestDeletion={canRequestDeletion}
                     isRequestingDeletion={isRequestingDeletion}
                 />
