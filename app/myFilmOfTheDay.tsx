@@ -279,6 +279,10 @@ export default function MyFilmOfTheDay() {
 
     // ── Load my films ──────────────────────────────────────────
     useEffect(() => {
+        console.warn(`[MountTracker] myFilmOfTheDay mounted`);
+    }, []);
+
+    useEffect(() => {
         (async () => {
             setIsLoading(true);
             try {

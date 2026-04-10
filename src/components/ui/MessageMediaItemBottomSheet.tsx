@@ -23,14 +23,12 @@ interface MessageMediaItemBottomSheetProps {
     visible: boolean;
     onClose: () => void;
     onDownload: () => void;
-    onDelete: () => void;
-    // NEW — request the other user to delete this memory
+    onDelete?: () => void;
     onRequestMemoryDeletion?: () => void;
     isSaving?: boolean;
     isDeleting?: boolean;
-    // Show the request row only for memories that belong to the other user
-    canRequestDeletion?: boolean;
     isRequestingDeletion?: boolean;
+    canRequestDeletion?: boolean;
 }
 
 export default function MessageMediaItemBottomSheet({
@@ -41,8 +39,8 @@ export default function MessageMediaItemBottomSheet({
     onRequestMemoryDeletion,
     isSaving = false,
     isDeleting = false,
-    canRequestDeletion = false,
     isRequestingDeletion = false,
+    canRequestDeletion = false,
 }: MessageMediaItemBottomSheetProps) {
     const insets = useSafeAreaInsets();
     const translateY = useSharedValue(SHEET_HEIGHT);
@@ -115,8 +113,8 @@ export default function MessageMediaItemBottomSheet({
 
                 <View style={styles.separator} />
 
-                {/* Request Memory Deletion — only shown when the media belongs to the other user */}
-                {canRequestDeletion && (
+                {/* Request Memory Deletion — always use request logic now */}
+                {onRequestMemoryDeletion && (
                     <>
                         <TouchableOpacity
                             style={[styles.row, busy && styles.rowDisabled]}
@@ -133,26 +131,8 @@ export default function MessageMediaItemBottomSheet({
                                 {isRequestingDeletion ? 'Sending Request…' : 'Request Memory Deletion'}
                             </Text>
                         </TouchableOpacity>
-                        <View style={styles.separator} />
                     </>
                 )}
-
-                {/* Delete (my own media) */}
-                <TouchableOpacity
-                    style={[styles.row, busy && styles.rowDisabled]}
-                    onPress={() => {
-                        if (!busy) {
-                            onClose();
-                            setTimeout(() => onDelete(), 300);
-                        }
-                    }}
-                    disabled={busy}
-                    activeOpacity={0.55}
-                >
-                    <Text style={[styles.rowText, styles.dangerText]}>
-                        {isDeleting ? 'Deleting…' : 'Delete'}
-                    </Text>
-                </TouchableOpacity>
             </Animated.View>
         </Animated.View>
     );

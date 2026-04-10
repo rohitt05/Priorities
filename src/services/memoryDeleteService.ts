@@ -78,13 +78,16 @@ export const initiateDeleteRequest = async (
 
     if (myExisting) return 'already_pending';
 
-    // ── Insert new delete request
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
     const { error } = await supabase
         .from('memory_delete_requests')
         .insert({
             requester_id: myId,
             other_user_id: otherUserId,
             source_id: sourceId,
+            expires_at: expiresAt.toISOString(),
         });
 
     if (error) {
@@ -147,7 +150,33 @@ export const fetchIncomingDeleteRequests = async (): Promise<MemoryDeleteRequest
         requesterId: r.requester_id,
         otherUserId: r.other_user_id,
         sourceId: r.source_id,
-        status: r.status,
+        status: r.status as DeleteRequestStatus,
+        createdAt: r.created_at,
+        expiresAt: r.expires_at,
+        resolvedAt: r.resolved_at,
+    }));
+};
+
+// ─── Fetch pending requests involving me (both incoming & outgoing) ───────
+export const fetchCombinedDeleteRequests = async (): Promise<MemoryDeleteRequest[]> => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const myId = sessionData?.session?.user?.id;
+    if (!myId) return [];
+
+    const { data, error } = await supabase
+        .from('memory_delete_requests')
+        .select('*')
+        .or(`requester_id.eq.${myId},other_user_id.eq.${myId}`)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString());
+
+    if (error) return [];
+    return (data ?? []).map(r => ({
+        id: r.id,
+        requesterId: r.requester_id,
+        otherUserId: r.other_user_id,
+        sourceId: r.source_id,
+        status: r.status as DeleteRequestStatus,
         createdAt: r.created_at,
         expiresAt: r.expires_at,
         resolvedAt: r.resolved_at,
@@ -176,7 +205,7 @@ export const getDeleteRequestForMemory = async (
         requesterId: data.requester_id,
         otherUserId: data.other_user_id,
         sourceId: data.source_id,
-        status: data.status,
+        status: data.status as DeleteRequestStatus,
         createdAt: data.created_at,
         expiresAt: data.expires_at,
         resolvedAt: data.resolved_at,

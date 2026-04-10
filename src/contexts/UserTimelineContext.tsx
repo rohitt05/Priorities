@@ -37,6 +37,7 @@ interface UserTimelineContextType {
     liveTimelineEvents: Record<string, TimelineEvent[]>;
     timelineLoading: boolean;
     loadMoreEvents: (userId: string, uniqueUserId: string) => void;
+    refreshTimeline: (user: any) => void;
     paginationMeta: Record<string, PaginationMeta>;
 }
 
@@ -234,11 +235,11 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         priorities, setPriorities,
         scrollToUserIndex, flatListRef,
         liveTimelineEvents, timelineLoading,
-        loadMoreEvents, paginationMeta,
+        loadMoreEvents, refreshTimeline: fetchTimelineForUser, paginationMeta,
     }), [
         expandedUser, priorities, scrollToUserIndex,
         liveTimelineEvents, timelineLoading,
-        loadMoreEvents, paginationMeta,
+        loadMoreEvents, fetchTimelineForUser, paginationMeta,
     ]);
 
     return (

@@ -104,110 +104,90 @@ export default function AudioPlayer({
 
     return (
         <View style={styles.outerContainer}>
-            <View style={styles.container}>
-                {/* Minimal Label */}
-                <Text style={[styles.title, { color: themeColor + '60' }]}>Voice Note</Text>
+            <BlurView intensity={40} tint="dark" style={styles.capsule}>
+                
+                {/* Play Button */}
+                <TouchableOpacity 
+                    onPress={handlePlayPause} 
+                    activeOpacity={0.8}
+                    style={styles.playBtn}
+                >
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color="#fff" />
+                </TouchableOpacity>
 
-                {/* Modern Visualizer Circle */}
-                <View style={styles.visualizerContainer}>
-                    <Animated.View style={[
-                        styles.pulseCircle,
-                        { 
-                            transform: [{ scale: pulseAnim }], 
-                            opacity: isPlaying ? 0.15 : 0.05,
-                            backgroundColor: themeColor
-                        }
-                    ]} />
-                    <TouchableOpacity 
-                        onPress={handlePlayPause} 
-                        style={[styles.playButton, { backgroundColor: themeColor + '10' }]}
-                    >
-                        <Ionicons name={isPlaying ? 'pause' : 'play'} size={32} color={themeColor} />
-                    </TouchableOpacity>
-                </View>
-
-                {/* Progress Bar Area */}
-                <View style={styles.progressSection}>
+                {/* Scrubber / Waveform area */}
+                <View style={styles.scrubberContainer}>
                     <View style={styles.barContainer}>
                         <View style={styles.barBackground} />
-                        <View style={[styles.barFill, { width: `${progressValue}%`, backgroundColor: themeColor }]} />
-                    </View>
-                    <View style={styles.timeRow}>
-                        <Text style={[styles.timeLabel, { color: themeColor }]}>{formatTime(position)}</Text>
-                        <Text style={[styles.timeLabel, { color: themeColor }]}>{formatTime(duration || mediaItem.durationSec || 0)}</Text>
+                        <Animated.View style={[
+                            styles.barFill, 
+                            { width: `${progressValue}%` }
+                        ]} />
                     </View>
                 </View>
-            </View>
+
+                {/* Time Indicator */}
+                <Text style={styles.timeLabel}>
+                    {formatTime(position)} / {formatTime(duration || mediaItem.durationSec || 0)}
+                </Text>
+            </BlurView>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
     outerContainer: {
+        flex: 1,
         width: '100%',
         alignItems: 'center',
+        justifyContent: 'center',
     },
-    container: {
-        width: '100%',
-        backgroundColor: 'rgba(255, 255, 255, 0.5)',
-        borderRadius: 40,
-        padding: 30,
+    capsule: {
+        flexDirection: 'row',
         alignItems: 'center',
+        width: SCREEN_WIDTH * 0.85,
+        height: 64,
+        borderRadius: 32,
+        paddingHorizontal: 16,
+        overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.8)',
+        borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(0,0,0,0.3)',
     },
-    title: {
-        fontSize: 12,
-        textTransform: 'uppercase',
-        letterSpacing: 3,
-        fontFamily: FONTS.bold,
-        marginBottom: 35,
-    },
-    visualizerContainer: {
-        width: 130,
-        height: 130,
-        justifyContent: 'center',
+    playBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.15)',
         alignItems: 'center',
-        marginBottom: 35,
-    },
-    pulseCircle: {
-        position: 'absolute',
-        width: 120,
-        height: 120,
-        borderRadius: 60,
-    },
-    playButton: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
         justifyContent: 'center',
-        alignItems: 'center',
+        marginRight: 12,
     },
-    progressSection: {
-        width: '100%',
+    scrubberContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        marginRight: 12,
     },
     barContainer: {
         width: '100%',
-        height: 3,
-        borderRadius: 1.5,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         overflow: 'hidden',
-        marginBottom: 8,
     },
     barBackground: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0, 0, 0, 0.05)',
     },
     barFill: {
         height: '100%',
-        borderRadius: 1.5,
-    },
-    timeRow: {
-        width: '100%',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        borderRadius: 3,
+        backgroundColor: '#fff',
     },
     timeLabel: {
-        fontSize: 11,
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 12,
         fontFamily: FONTS.bold,
-    }
+        minWidth: 64,
+        textAlign: 'right',
+    },
 });

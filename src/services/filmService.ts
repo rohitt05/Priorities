@@ -1,26 +1,61 @@
 // src/services/filmService.ts
 import { supabase } from '@/lib/supabase';
 import { Film, Profile } from '@/types/domain';
+import { extractCacheKey, getCachedUrl, setCachedUrl } from './signedUrlCache';
+
 
 const FILM_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
-// ── Re-signs a Supabase Storage signed URL so it never expires ───────────────
+
+// ── Re-signs a Supabase Storage signed URL — with in-memory caching ──────────
 const refreshSignedUrl = async (uri: string | null | undefined): Promise<string | undefined> => {
     if (!uri) return undefined;
-    if (!uri.includes('/storage/v1/object/sign/')) return uri ?? undefined;
-    const match = uri.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
-    if (!match) return uri;
-    const [, bucket, path] = match;
+
+    // Public URLs never need signing — return immediately
+    if (uri.startsWith('https://') && !uri.includes('/storage/v1/object/sign/')) {
+        return uri;
+    }
+
+    // ✅ Cache hit — skip the API call entirely
+    const cacheKey = extractCacheKey(uri);
+    if (cacheKey) {
+        const cached = getCachedUrl(cacheKey);
+        if (cached) return cached;
+    }
+
+    // Cache miss → extract bucket + path and generate a new signed URL
+    let bucket: string;
+    let path: string;
+
+    if (uri.includes('/storage/v1/object/sign/')) {
+        const match = uri.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
+        if (!match) return uri;
+        bucket = match[1];
+        path = match[2];
+    } else {
+        // Raw storage path — shouldn't happen in filmService but handle gracefully
+        return uri;
+    }
+
     const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
-    if (error || !data?.signedUrl) return uri;
+    if (error || !data?.signedUrl) {
+        console.warn(`[filmService] refreshSignedUrl failed for bucket=${bucket}, path=${path}`, error);
+        return uri;
+    }
+
+    // ✅ Store in cache for 55 minutes
+    if (cacheKey) setCachedUrl(cacheKey, data.signedUrl);
+
     return data.signedUrl;
 };
+
 
 // ── Shared type for a film enriched with viewers + likes ─────────────────────
 export interface FilmWithMeta extends Film {
     viewers: Profile[];
     likedByIds: Set<string>;
 }
+
 
 // ── Internal helper: fetch viewers + likes for a list of film IDs ────────────
 const fetchFilmMeta = async (
@@ -64,6 +99,7 @@ const fetchFilmMeta = async (
 
     return { viewersByFilm, likedByFilm };
 };
+
 
 export const filmService = {
 
@@ -239,11 +275,25 @@ export const filmService = {
 
     // ── Get a fresh signed URL for a storage path ────────────────────────────
     getSignedUrl: async (path: string, expiresIn = 3600): Promise<string> => {
+        const cacheKey = `films/${path}`;
+        const cached = getCachedUrl(cacheKey);
+        if (cached) return cached;
+
         const { data, error } = await supabase.storage
             .from('films')
             .createSignedUrl(path, expiresIn);
-        if (error) throw error;
-        return data.signedUrl;
+        if (error) {
+            console.warn(`[filmService] getSignedUrl failed for: ${path}`, error);
+            throw error;
+        }
+
+        if (data?.signedUrl) {
+            setCachedUrl(cacheKey, data.signedUrl);
+            return data.signedUrl;
+        } else {
+            console.warn(`[filmService] getSignedUrl returned no data for: ${path}`);
+            return '';
+        }
     },
 
     // ── Delete a film ────────────────────────────────────────────────────────

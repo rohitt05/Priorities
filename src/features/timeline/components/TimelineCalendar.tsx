@@ -10,7 +10,9 @@ import {
 } from '@/features/timeline/utils/timelineCalendarLogic';
 import { TimelineEvent } from '@/types/domain';
 import SmartVideoTile from '@/components/ui/SmartVideoTile';
-import { useBackground } from '@/contexts/BackgroundContext'; // ← ADD THIS
+import { useBackground } from '@/contexts/BackgroundContext';
+import { Feather } from '@expo/vector-icons';
+import { COLORS } from '@/theme/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -97,6 +99,10 @@ export default function TimelineCalendar({
                         isVisible={shouldAutoplay}
                         style={{ width: '100%', height: '100%' }}
                     />
+                ) : item.type === 'voice' ? (
+                    <View style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: item.bg || (dark ? '#222' : '#ddd') }}>
+                        <Feather name="mic" size={24} color={COLORS.primary} />
+                    </View>
                 ) : item.uri ? (
                     <Image
                         source={{ uri: item.uri }}

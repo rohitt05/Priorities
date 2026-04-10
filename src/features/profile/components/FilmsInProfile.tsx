@@ -1,6 +1,6 @@
 // src/features/profile/components/FilmsInProfile.tsx
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
@@ -14,6 +14,7 @@ const { width } = Dimensions.get('window');
 
 const TIMELINE_ITEM_WIDTH = width * 0.40;
 const SINGLE_ITEM_HEIGHT = TIMELINE_ITEM_WIDTH * 1.3;
+const STALE_MS = 5 * 60 * 1000; // 5 minutes — don't re-fetch if data is still fresh
 
 interface FilmsInProfileProps {
     userUUID: string;       // creator_id UUID — NOT the @handle
@@ -28,14 +29,38 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
     const [viewerVisible, setViewerVisible] = useState(false);
     const [initialViewerIndex, setInitialViewerIndex] = useState(0);
 
+    // ── Stale-time ref — tracks when we last fetched for this userUUID ────────
+    const lastFetchedAt = useRef<number>(0);
+    const lastFetchedUUID = useRef<string>('');
+
     // ── Fetch ALL films for this profile (no 24hr cutoff) ────────────────────
     useEffect(() => {
+        console.warn(`[MountTracker] FilmsInProfile mounted for userUUID: ${userUUID}`);
+    }, []);
+    useEffect(() => {
+        console.log('[FilmsInProfile] MOUNTED');
+        return () => console.log('[FilmsInProfile] UNMOUNTED');
+    }, []);
+
+    useEffect(() => {
         if (!userUUID) return;
+
+        const now = Date.now();
+        const isSameUser = lastFetchedUUID.current === userUUID;
+        const isStillFresh = now - lastFetchedAt.current < STALE_MS;
+
+        // Skip the network call if we already have data for this user fetched recently
+        if (isSameUser && isStillFresh && films.length > 0) return;
+
         setLoading(true);
         setFilms([]);
         filmService
             .getAllFilmsByUserId(userUUID)
-            .then(setFilms)
+            .then((data) => {
+                setFilms(data);
+                lastFetchedAt.current = Date.now();
+                lastFetchedUUID.current = userUUID;
+            })
             .catch(() => setFilms([]))
             .finally(() => setLoading(false));
     }, [userUUID]);
@@ -67,7 +92,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
             .map((key) => ({
                 dateKey: key,
                 timestamp: groups[key][0].createdAt,
-                films: groups[key], // already sorted desc from service
+                films: groups[key],
             }))
             .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }, [films]);
@@ -178,10 +203,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
         );
     };
 
-    // Still loading — show nothing (no flicker)
     if (loading) return null;
-
-    // Loaded but empty — hide entire section
     if (groupedFilms.length === 0) return null;
 
     return (
@@ -200,7 +222,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                 <View style={styles.centerLine} />
 
                 {groupedFilms.map((group, index) => {
-                    const isEven = index % 2 === 0; // Even → media on left, date on right
+                    const isEven = index % 2 === 0;
 
                     return (
                         <View key={group.dateKey} style={styles.timelineRow}>
@@ -239,6 +261,8 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                 isOwner={isOwner}
                 onDeleteSuccess={(id) => {
                     setFilms(prev => prev.filter(f => f.id !== id));
+                    // Reset stale timer so next open re-fetches the updated list
+                    lastFetchedAt.current = 0;
                 }}
             />
         </View>

@@ -140,10 +140,16 @@ function ProfileScreenContent() {
         }
     }, []);
 
+    const lastFetch = React.useRef(0);
     // ── Main profile fetch + access check together ────────────────────────────
     useFocusEffect(
         React.useCallback(() => {
             if (!authId) return;
+
+            // ✅ 5-minute guard — prevent excessive re-fetching on focus
+            if (Date.now() - lastFetch.current < 5 * 60 * 1000) return;
+            lastFetch.current = Date.now();
+
             let isMounted = true;
 
             const fetchProfiles = async () => {

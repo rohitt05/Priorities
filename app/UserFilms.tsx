@@ -173,6 +173,10 @@ export default function UserFilms() {
 
     // ── Load their films via service (24hr filter applied inside) ─
     useEffect(() => {
+        console.warn(`[MountTracker] UserFilms mounted for userId: ${userId}`);
+    }, []);
+
+    useEffect(() => {
         if (!userId) return;
         (async () => {
             setIsLoading(true);

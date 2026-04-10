@@ -68,6 +68,9 @@
         "projectId": "212072fd-d39c-4750-84bc-d851918340ca"
       }
     },
+    "experiments": {
+      "reactStrictMode": false
+    },
     "owner": "rohitt05"
   }
 }

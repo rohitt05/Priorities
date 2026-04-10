@@ -20,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import { FONTS } from '@/theme/theme';
 import { supabase } from '@/lib/supabase';
+import { getCachedUrl, setCachedUrl } from '@/services/signedUrlCache';
 
 export type RecordingRect = {
     x: number;
@@ -205,13 +206,21 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
             }
 
             // 7-day signed URL (bucket is private)
-            const { data: signedData, error: signedError } = await supabase.storage
-                .from('messages')
-                .createSignedUrl(fileName, 60 * 60 * 24 * 7);
+            const cacheKey = `messages/${fileName}`;
+            const cached = getCachedUrl(cacheKey);
+            let signedUrl = cached;
 
-            if (signedError || !signedData?.signedUrl) {
-                console.error('[VoiceNote] Failed to get signed URL:', signedError);
-                return;
+            if (!signedUrl) {
+                const { data: signedData, error: signedError } = await supabase.storage
+                    .from('messages')
+                    .createSignedUrl(fileName, 60 * 60 * 24 * 7);
+
+                if (signedError || !signedData?.signedUrl) {
+                    console.error('[VoiceNote] Failed to get signed URL:', signedError);
+                    return;
+                }
+                signedUrl = signedData.signedUrl;
+                setCachedUrl(cacheKey, signedUrl);
             }
 
             const { error: insertError } = await supabase
@@ -220,7 +229,7 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
                     sender_id: senderId,
                     receiver_id: receiverId,
                     type: 'voice',
-                    uri: signedData.signedUrl,
+                    uri: signedUrl,
                     duration_sec: durationSec,
                     disappeared: false,
                 });

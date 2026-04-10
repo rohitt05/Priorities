@@ -251,7 +251,7 @@ interface PriorityCardProps {
     isActive: boolean;
     onOptionsPress: (anchor: AnchorPosition) => void;
     unreadMedia: Message | null;
-    sentStatus: string;
+    sentStatus: { status: string; timestamp: string } | null;
 }
 
 const PriorityCard = React.memo(
@@ -385,9 +385,15 @@ const PriorityCard = React.memo(
                             }}
                         />
                     )}
-                    {!recordingForThisCard && !unreadMedia && sentStatus !== 'none' && isActive && (
-                        <SeenIndicator status={sentStatus} size={LAYOUT.IMAGE_SIZE} userName={item.name} />
-                    )}
+                    {(() => {
+                        if (recordingForThisCard || unreadMedia || !sentStatus || sentStatus.status === 'none' || !isActive) return null;
+                        
+                        // Only show if seen/reacted within the last 30 minutes
+                        const diff = Date.now() - new Date(sentStatus.timestamp).getTime();
+                        if (diff > 30 * 60 * 1000) return null;
+
+                        return <SeenIndicator status={sentStatus.status} size={LAYOUT.IMAGE_SIZE} userName={item.name} />;
+                    })()}
                 </View>
 
                 <ViewMessageModal
@@ -409,7 +415,8 @@ const PriorityCard = React.memo(
         prev.item.hasNewPost === next.item.hasNewPost &&
         prev.item.profilePicture === next.item.profilePicture &&
         prev.unreadMedia?.id === next.unreadMedia?.id &&
-        prev.sentStatus === next.sentStatus
+        prev.sentStatus?.status === next.sentStatus?.status &&
+        prev.sentStatus?.timestamp === next.sentStatus?.timestamp
 );
 PriorityCard.displayName = 'PriorityCard';
 
@@ -536,7 +543,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const renderItem = useCallback(({ item, index }: any) => {
         // unreadMessages[item.id] is a single Message object (or undefined) — pass directly
         const unreadMedia = unreadMessages[item.id] ?? null;
-        const sentStatus = myLastSentStatus[item.id] ?? 'none';
+        const sentStatus = myLastSentStatus[item.id] ?? null;
         return (
             <PriorityCard
                 item={item}

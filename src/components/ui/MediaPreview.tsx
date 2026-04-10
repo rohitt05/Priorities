@@ -22,6 +22,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS } from '@/theme/theme';
 import PostSuccessFlash from '@/components/ui/PostSuccessFlash';
+import { getCachedUrl, setCachedUrl } from '@/services/signedUrlCache';
 
 const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 0;
 
@@ -208,12 +209,21 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
         }
 
         // ── Get signed URL ────────────────────────────────────────────────
-        const { data: signedData, error: signedError } = await supabase.storage
-            .from('messages')
-            .createSignedUrl(filePath, 60 * 60 * 24 * 7);
-        if (signedError || !signedData?.signedUrl) {
-            Alert.alert('Error', 'Failed to process media. Please try again.');
-            return;
+        const cacheKey = `messages/${filePath}`;
+        const cached = getCachedUrl(cacheKey);
+        let signedUrl = cached;
+
+        if (!signedUrl) {
+            const { data: signedData, error: signedError } = await supabase.storage
+                .from('messages')
+                .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+            
+            if (signedError || !signedData?.signedUrl) {
+                Alert.alert('Error', 'Failed to process media. Please try again.');
+                return;
+            }
+            signedUrl = signedData.signedUrl;
+            setCachedUrl(cacheKey, signedUrl);
         }
 
         // ── Insert into messages table ────────────────────────────────────
@@ -221,7 +231,7 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
             sender_id: senderId,
             receiver_id: receiverId,
             type: isVideoFile ? 'video' : 'photo',
-            uri: signedData.signedUrl,
+            uri: signedUrl,
             duration_sec: isVideoFile ? Math.round(duration) || null : null,
             disappeared: false,
         });
@@ -248,19 +258,28 @@ const MediaPreviewContent: React.FC<MediaPreviewProps> = ({
                 return;
             }
 
-            const { data: signedData, error: signedError } = await supabase.storage
-                .from('films')
-                .createSignedUrl(fileName, 60 * 60 * 24 * 30);
-            if (signedError || !signedData?.signedUrl) {
-                Alert.alert('Error', 'Failed to get signed URL.');
-                return;
+            const cacheKey = `films/${fileName}`;
+            const cached = getCachedUrl(cacheKey);
+            let signedUrl = cached;
+
+            if (!signedUrl) {
+                const { data: signedData, error: signedError } = await supabase.storage
+                    .from('films')
+                    .createSignedUrl(fileName, 60 * 60 * 24 * 30);
+                
+                if (signedError || !signedData?.signedUrl) {
+                    console.warn(`[MediaPreview] postAsFilm createSignedUrl failed for fileName=${fileName}`, signedError);
+                    Alert.alert('Error', 'Failed to get signed URL.');
+                    return;
+                }
+                signedUrl = signedData.signedUrl;
+                setCachedUrl(cacheKey, signedUrl);
             }
 
             const { error: insertError } = await supabase.from('films').insert({
                 creator_id: senderId,
                 type: isVideoFile ? 'video' : 'image',
-                uri: signedData.signedUrl,
-                overlay_data: null,
+                uri: signedUrl,
             });
             if (insertError) {
                 Alert.alert('Error', insertError.message);

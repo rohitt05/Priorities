@@ -3,12 +3,13 @@ import React, { createContext, useContext, useState, useCallback, useMemo, React
 import { Image } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { TimelineEvent, Message } from '@/types/domain';
+import { getCachedUrl, setCachedUrl } from '@/services/signedUrlCache';
 
 export type UnreadMedia = Message;
 
 interface MediaInboxContextType {
     unreadMessages: Record<string, Message>;
-    myLastSentStatus: Record<string, string>; // 'none' | 'sent' | 'seen' | emoji
+    myLastSentStatus: Record<string, { status: string; timestamp: string }>; // 'none' | 'sent' | 'seen' | emoji + time
     markAsSeen: (userId: string) => Promise<void>;
     reactToMessage: (userId: string, emoji: string) => Promise<void>;
     addTimelineEvent: (event: TimelineEvent) => void;
@@ -38,6 +39,10 @@ const refreshSignedUrl = async (uri: string | null | undefined): Promise<string 
     const parsed = extractStoragePath(uri);
     if (!parsed) return uri;
 
+    // ✅ Cache hit
+    const cached = getCachedUrl(`${parsed.bucket}/${parsed.path}`);
+    if (cached) return cached;
+
     const { data, error } = await supabase.storage
         .from(parsed.bucket)
         .createSignedUrl(parsed.path, 60 * 60);
@@ -46,6 +51,10 @@ const refreshSignedUrl = async (uri: string | null | undefined): Promise<string 
         console.warn('[MediaInbox] Failed to refresh signed URL, using original:', error?.message);
         return uri;
     }
+
+    // ✅ Cache set
+    setCachedUrl(`${parsed.bucket}/${parsed.path}`, data.signedUrl);
+
     return data.signedUrl;
 };
 
@@ -60,7 +69,7 @@ const prefetchIfImage = (uri: string | undefined, type: string) => {
 export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     const [unreadQueues, setUnreadQueues] = useState<Record<string, Message[]>>({});
     const [unreadMessages, setUnreadMessages] = useState<Record<string, Message>>({});
-    const [myLastSentStatus, setMyLastSentStatus] = useState<Record<string, string>>({});
+    const [myLastSentStatus, setMyLastSentStatus] = useState<Record<string, { status: string; timestamp: string }>>({});
     const [timelineEvents, setTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
 
     // ── Keep a ref of sent message IDs → receiver, so realtime can map back ─
@@ -121,23 +130,28 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         // Join with message_reactions to get emoji if reacted
         const { data: sentData, error: sentError } = await supabase
             .from('messages')
-            .select('id, receiver_id, seen_at, message_reactions(emoji)')
+            .select('id, receiver_id, sent_at, seen_at, message_reactions(emoji, created_at)')
             .eq('sender_id', myId)
             .eq('disappeared', false)
             .order('sent_at', { ascending: false });
 
         if (!sentError && sentData) {
-            const statusMap: Record<string, string> = {};
+            const statusMap: Record<string, { status: string; timestamp: string }> = {};
             const newSentMap: Record<string, string> = {};
 
             sentData.forEach((row: any) => {
-                // Track sent message ID → receiver for realtime reaction mapping
                 newSentMap[row.id] = row.receiver_id;
 
                 if (!statusMap[row.receiver_id]) {
-                    // Prefer emoji reaction over seen/sent
-                    const reaction = row.message_reactions?.[0]?.emoji;
-                    statusMap[row.receiver_id] = reaction || (row.seen_at ? 'seen' : 'sent');
+                    const reactionRow = row.message_reactions?.[0];
+                    if (reactionRow) {
+                        statusMap[row.receiver_id] = { status: reactionRow.emoji, timestamp: reactionRow.created_at };
+                    } else {
+                        statusMap[row.receiver_id] = { 
+                            status: row.seen_at ? 'seen' : 'sent', 
+                            timestamp: row.seen_at || row.sent_at 
+                        };
+                    }
                 }
             });
 
@@ -217,10 +231,9 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                         if (row.seen_at) {
                             setMyLastSentStatus(prev => {
                                 const current = prev[row.receiver_id];
-                                // Don't overwrite an emoji reaction with 'seen'
-                                const isEmoji = current && current !== 'sent' && current !== 'seen' && current !== 'none';
+                                const isEmoji = current && current.status !== 'sent' && current.status !== 'seen' && current.status !== 'none';
                                 if (isEmoji) return prev;
-                                return { ...prev, [row.receiver_id]: 'seen' };
+                                return { ...prev, [row.receiver_id]: { status: 'seen', timestamp: row.seen_at } };
                             });
                         }
                     }
@@ -244,7 +257,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
 
                         setMyLastSentStatus(prev => ({
                             ...prev,
-                            [receiverId]: row.emoji,
+                            [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
                         }));
                     }
                 )
@@ -264,7 +277,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
 
                         setMyLastSentStatus(prev => ({
                             ...prev,
-                            [receiverId]: row.emoji,
+                            [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
                         }));
                     }
                 )
@@ -427,12 +440,14 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
 
     // ── Sent status helpers ───────────────────────────────────────────────
     const recordMessageSent = useCallback((userId: string) => {
-        setMyLastSentStatus(prev => ({ ...prev, [userId]: 'sent' }));
+        setMyLastSentStatus(prev => ({ ...prev, [userId]: { status: 'sent', timestamp: new Date().toISOString() } }));
     }, []);
 
     const simulateCounterpartSeen = useCallback((userId: string) => {
         setMyLastSentStatus(prev => {
-            if (prev[userId] === 'sent') return { ...prev, [userId]: 'seen' };
+            if (prev[userId]?.status === 'sent') {
+                return { ...prev, [userId]: { status: 'seen', timestamp: new Date().toISOString() } };
+            }
             return prev;
         });
     }, []);
@@ -444,8 +459,8 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
             const next = { ...prev };
             let changed = false;
             unreadUserIds.forEach(uid => {
-                if (next[uid] !== 'none' && next[uid] !== undefined) {
-                    next[uid] = 'none';
+                if (next[uid] && next[uid].status !== 'none') {
+                    next[uid] = { status: 'none', timestamp: new Date().toISOString() };
                     changed = true;
                 }
             });
