@@ -15,8 +15,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rohitt05.priorities",
+      "deploymentTarget": "15.1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Priorities needs your microphone for voice and video calls",
+        "NSCameraUsageDescription": "Priorities needs your camera for video calls"
       }
     },
     "android": {
@@ -33,7 +36,10 @@
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO"
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_CONNECT"
       ],
       "package": "com.rohitt05.priorities"
     },
@@ -61,7 +67,19 @@
       "expo-audio",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-mail-composer"
+      "expo-mail-composer",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
