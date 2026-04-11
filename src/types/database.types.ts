@@ -6,11 +6,7 @@ export type Json =
     | { [key: string]: Json | undefined }
     | Json[]
 
-
-
 export type Database = {
-    // Allows to automatically instantiate createClient with right options
-    // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
     __InternalSupabase: {
         PostgrestVersion: "14.4"
     }
@@ -46,6 +42,73 @@ export type Database = {
                     {
                         foreignKeyName: "blocked_users_blocker_id_fkey"
                         columns: ["blocker_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                ]
+            }
+            call_sessions: {
+                Row: {
+                    answered_at: string | null
+                    call_type: string
+                    callee_id: string
+                    caller_id: string
+                    created_at: string | null
+                    duration_sec: number | null
+                    ended_at: string | null
+                    ended_by: string | null
+                    id: string
+                    room_name: string
+                    started_at: string | null
+                    status: string
+                }
+                Insert: {
+                    answered_at?: string | null
+                    call_type: string
+                    callee_id: string
+                    caller_id: string
+                    created_at?: string | null
+                    duration_sec?: number | null
+                    ended_at?: string | null
+                    ended_by?: string | null
+                    id?: string
+                    room_name: string
+                    started_at?: string | null
+                    status?: string
+                }
+                Update: {
+                    answered_at?: string | null
+                    call_type?: string
+                    callee_id?: string
+                    caller_id?: string
+                    created_at?: string | null
+                    duration_sec?: number | null
+                    ended_at?: string | null
+                    ended_by?: string | null
+                    id?: string
+                    room_name?: string
+                    started_at?: string | null
+                    status?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "call_sessions_callee_id_fkey"
+                        columns: ["callee_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "call_sessions_caller_id_fkey"
+                        columns: ["caller_id"]
+                        isOneToOne: false
+                        referencedRelation: "profiles"
+                        referencedColumns: ["id"]
+                    },
+                    {
+                        foreignKeyName: "call_sessions_ended_by_fkey"
+                        columns: ["ended_by"]
                         isOneToOne: false
                         referencedRelation: "profiles"
                         referencedColumns: ["id"]
@@ -174,51 +237,36 @@ export type Database = {
             }
             memory_delete_requests: {
                 Row: {
-                    id: string
-                    requester_id: string
-                    other_user_id: string
-                    source_id: string
-                    status: string
                     created_at: string
                     expires_at: string
+                    id: string
+                    other_user_id: string
+                    requester_id: string
                     resolved_at: string | null
+                    source_id: string
+                    status: string
                 }
                 Insert: {
+                    created_at?: string
+                    expires_at?: string
                     id?: string
-                    requester_id: string
                     other_user_id: string
+                    requester_id: string
+                    resolved_at?: string | null
                     source_id: string
                     status?: string
-                    created_at?: string
-                    expires_at?: string
-                    resolved_at?: string | null
                 }
                 Update: {
-                    id?: string
-                    requester_id?: string
-                    other_user_id?: string
-                    source_id?: string
-                    status?: string
                     created_at?: string
                     expires_at?: string
+                    id?: string
+                    other_user_id?: string
+                    requester_id?: string
                     resolved_at?: string | null
+                    source_id?: string
+                    status?: string
                 }
-                Relationships: [
-                    {
-                        foreignKeyName: "memory_delete_requests_requester_id_fkey"
-                        columns: ["requester_id"]
-                        isOneToOne: false
-                        referencedRelation: "profiles"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "memory_delete_requests_other_user_id_fkey"
-                        columns: ["other_user_id"]
-                        isOneToOne: false
-                        referencedRelation: "profiles"
-                        referencedColumns: ["id"]
-                    },
-                ]
+                Relationships: []
             }
             message_reactions: {
                 Row: {
@@ -271,7 +319,6 @@ export type Database = {
                     text_content: string | null
                     type: string
                     uri: string | null
-                    reaction: string | null
                 }
                 Insert: {
                     disappeared?: boolean
@@ -284,7 +331,6 @@ export type Database = {
                     text_content?: string | null
                     type: string
                     uri?: string | null
-                    reaction?: string | null
                 }
                 Update: {
                     disappeared?: boolean
@@ -297,7 +343,6 @@ export type Database = {
                     text_content?: string | null
                     type?: string
                     uri?: string | null
-                    reaction?: string | null
                 }
                 Relationships: [
                     {
@@ -400,69 +445,6 @@ export type Database = {
                     },
                 ]
             }
-            user_timelines: {
-                Row: {
-                    id: string
-                    created_at: string
-                    owner_id: string
-                    other_user_id: string
-                    source_id: string
-                    source_type: string
-                    media_type: string
-                    uri: string | null
-                    thumb_uri: string | null
-                    duration_sec: number | null
-                    sender: string
-                    text_content: string | null
-                    seen_at: string | null
-                }
-                Insert: {
-                    id?: string
-                    created_at?: string
-                    owner_id: string
-                    other_user_id: string
-                    source_id: string
-                    source_type: string
-                    media_type: string
-                    uri?: string | null
-                    thumb_uri?: string | null
-                    duration_sec?: number | null
-                    sender: string
-                    text_content?: string | null
-                    seen_at?: string | null
-                }
-                Update: {
-                    id?: string
-                    created_at?: string
-                    owner_id?: string
-                    other_user_id?: string
-                    source_id?: string
-                    source_type?: string
-                    media_type?: string
-                    uri?: string | null
-                    thumb_uri?: string | null
-                    duration_sec?: number | null
-                    sender?: string
-                    text_content?: string | null
-                    seen_at?: string | null
-                }
-                Relationships: [
-                    {
-                        foreignKeyName: "user_timelines_owner_id_fkey"
-                        columns: ["owner_id"]
-                        isOneToOne: false
-                        referencedRelation: "profiles"
-                        referencedColumns: ["id"]
-                    },
-                    {
-                        foreignKeyName: "user_timelines_other_user_id_fkey"
-                        columns: ["other_user_id"]
-                        isOneToOne: false
-                        referencedRelation: "profiles"
-                        referencedColumns: ["id"]
-                    },
-                ]
-            }
             priority_requests: {
                 Row: {
                     created_at: string
@@ -558,6 +540,54 @@ export type Database = {
                     },
                 ]
             }
+            user_timelines: {
+                Row: {
+                    created_at: string
+                    duration_sec: number | null
+                    id: string
+                    media_type: string
+                    other_user_id: string
+                    owner_id: string
+                    seen_at: string
+                    sender: string
+                    source_id: string
+                    source_type: string
+                    text_content: string | null
+                    thumb_uri: string | null
+                    uri: string | null
+                }
+                Insert: {
+                    created_at?: string
+                    duration_sec?: number | null
+                    id?: string
+                    media_type: string
+                    other_user_id: string
+                    owner_id: string
+                    seen_at?: string
+                    sender: string
+                    source_id: string
+                    source_type: string
+                    text_content?: string | null
+                    thumb_uri?: string | null
+                    uri?: string | null
+                }
+                Update: {
+                    created_at?: string
+                    duration_sec?: number | null
+                    id?: string
+                    media_type?: string
+                    other_user_id?: string
+                    owner_id?: string
+                    seen_at?: string
+                    sender?: string
+                    source_id?: string
+                    source_type?: string
+                    text_content?: string | null
+                    thumb_uri?: string | null
+                    uri?: string | null
+                }
+                Relationships: []
+            }
         }
         Views: {
             [_ in never]: never
@@ -565,9 +595,9 @@ export type Database = {
         Functions: {
             accept_partner_request: {
                 Args: {
+                    p_receiver_id: string
                     p_request_id: string
                     p_sender_id: string
-                    p_receiver_id: string
                 }
                 Returns: undefined
             }
@@ -601,11 +631,13 @@ export type Database = {
                 Args: { viewer_id: string }
                 Returns: string[]
             }
+            is_handle_available: { Args: { handle: string }; Returns: boolean }
+            no_block_exists: {
+                Args: { user_a: string; user_b: string }
+                Returns: boolean
+            }
             remove_partner: {
-                Args: {
-                    p_my_id: string
-                    p_partner_id: string
-                }
+                Args: { p_my_id: string; p_partner_id: string }
                 Returns: undefined
             }
             remove_priority: {
@@ -622,15 +654,8 @@ export type Database = {
     }
 }
 
-
-
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
-
-
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
-
-
 
 export type Tables<
     DefaultSchemaTableNameOrOptions extends
@@ -661,8 +686,6 @@ export type Tables<
     : never
     : never
 
-
-
 export type TablesInsert<
     DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -687,8 +710,6 @@ export type TablesInsert<
     ? I
     : never
     : never
-
-
 
 export type TablesUpdate<
     DefaultSchemaTableNameOrOptions extends
@@ -715,8 +736,6 @@ export type TablesUpdate<
     : never
     : never
 
-
-
 export type Enums<
     DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
@@ -734,8 +753,6 @@ export type Enums<
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
-
-
 export type CompositeTypes<
     PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
@@ -752,8 +769,6 @@ export type CompositeTypes<
     : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
-
 
 export const Constants = {
     public: {

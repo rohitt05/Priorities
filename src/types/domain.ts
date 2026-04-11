@@ -96,3 +96,18 @@ export interface TimelineEvent extends Message {
     text?: string; // Text content for notes
     title?: string; // Title for audio messages
 }
+
+export interface CallSession {
+    id: string;
+    room_name: string;
+    caller_id: string;
+    callee_id: string;
+    call_type: 'voice' | 'video';
+    status: 'ringing' | 'active' | 'ended' | 'declined' | 'missed' | 'busy';
+    started_at: string;
+    answered_at: string | null;
+    ended_at: string | null;
+    duration_sec: number | null;
+    ended_by: string | null;
+    created_at: string;
+}
