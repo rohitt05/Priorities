@@ -25,10 +25,7 @@ import FilmMedia from '@/features/film-my-day/components/FilmMedia';
 import FilmStoryModal from '@/features/film-my-day/components/FilmStoryModal';
 import { getColors } from 'react-native-image-colors';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import Animated, {
-    useSharedValue, useAnimatedStyle, withTiming,
-    runOnJS,
-} from 'react-native-reanimated';
+import Animated, { runOnJS } from 'react-native-reanimated';
 import {
     FilmCanvas,
     buildCardLayout,
@@ -70,10 +67,11 @@ const DoodleUnderline = React.memo(({ color, width = 160 }: { color: string; wid
 DoodleUnderline.displayName = 'DoodleUnderline';
 
 // ── FilmBubble — tap only, no long press ──────────────────────
-const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress }: {
+const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress, accent }: {
     film: FilmWithMeta; x: number; y: number; r: number;
     isActive: boolean; isVisible: boolean;
     onPress: () => void;
+    accent: string;
 }) => {
     const size = r * 2;
     const isVideo = film.type === 'video';
@@ -93,7 +91,7 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress }: 
                         left: x - r, top: y - r,
                         width: size, height: size, borderRadius: r,
                         borderWidth: isActive ? 2.5 : 1,
-                        borderColor: isActive ? COLORS.primary : 'rgba(67,61,53,0.18)',
+                        borderColor: isActive ? accent : 'rgba(67,61,53,0.18)',
                         shadowOpacity: isActive ? 0.25 : 0.1,
                         shadowRadius: isActive ? 16 : 8,
                         opacity: isExpired ? 0.4 : 1,
@@ -103,7 +101,7 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress }: 
                         uri={film.uri}
                         type={isVideo ? 'video' : 'image'}
                         isPlaying={isActive && isVideo}
-                        accent={COLORS.primary}
+                        accent={accent}
                         resizeMode="cover"
                     />
                     <LinearGradient
@@ -112,7 +110,7 @@ const FilmBubble = React.memo(({ film, x, y, r, isActive, isVisible, onPress }: 
                         pointerEvents="none"
                     />
                     {isActive && (
-                        <View style={[styles.activeDot, { backgroundColor: COLORS.primary }]} />
+                        <View style={[styles.activeDot, { backgroundColor: accent }]} />
                     )}
                 </Animated.View>
             </GestureDetector>
@@ -351,6 +349,7 @@ export default function UserFilms() {
                                 x={p.x} y={p.y} r={r}
                                 isActive={i === activeIdx}
                                 isVisible={visibleIndices.includes(i)}
+                                accent={accent}
                                 onPress={() => {
                                     setActiveIdx(i);
                                     updateBg(i);

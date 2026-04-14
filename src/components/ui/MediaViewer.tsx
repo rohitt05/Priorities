@@ -164,7 +164,7 @@ export default function MediaViewer({
 
     // ─── Drag down to close logic ───
     const panY = useRef(new Animated.Value(0)).current;
-    
+
     const panResponder = useRef(
         PanResponder.create({
             onMoveShouldSetPanResponder: (evt, gestureState) => {
@@ -285,7 +285,7 @@ export default function MediaViewer({
                 otherUserId,
                 item.uri,
             );
-            
+
             switch (result) {
                 case 'requested':
                     setFlashMsg({ title: 'Request Sent ✓', desc: 'They will see your request.' });
@@ -371,28 +371,28 @@ export default function MediaViewer({
                     style={[StyleSheet.absoluteFill, { transform: [{ translateY: panY }] }]}
                 >
                     <AnimatedFlatList
-                    ref={flatListRef}
-                    data={allMediaItems}
-                    renderItem={renderItem}
-                    keyExtractor={keyExtractor}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={viewabilityConfig.current}
-                    scrollEventThrottle={16}
-                    onScroll={Animated.event(
-                        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                        { useNativeDriver: false }
-                    )}
-                    getItemLayout={(_: any, index: number) => ({
-                        length: SCREEN_WIDTH,
-                        offset: SCREEN_WIDTH * index,
-                        index,
-                    })}
-                    initialScrollIndex={0}
-                    scrollToOverflowEnabled
-                />
+                        ref={flatListRef}
+                        data={allMediaItems}
+                        renderItem={renderItem}
+                        keyExtractor={keyExtractor}
+                        horizontal
+                        pagingEnabled
+                        showsHorizontalScrollIndicator={false}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig.current}
+                        scrollEventThrottle={16}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                            { useNativeDriver: false }
+                        )}
+                        getItemLayout={(_: any, index: number) => ({
+                            length: SCREEN_WIDTH,
+                            offset: SCREEN_WIDTH * index,
+                            index,
+                        })}
+                        initialScrollIndex={0}
+                        scrollToOverflowEnabled
+                    />
 
                     {/* Info Bar at the bottom */}
                     <Animated.View style={[styles.bottomBar, { opacity: headerOpacity }]} pointerEvents="box-none">
@@ -461,16 +461,16 @@ export default function MediaViewer({
                             <Text style={styles.customModalDesc}>
                                 You are asking them to delete this memory from both timelines.
                             </Text>
-                            
+
                             <View style={styles.customModalActions}>
-                                <TouchableOpacity 
-                                    style={[styles.customModalBtn, { backgroundColor: 'rgba(0,0,0,0.05)' }]} 
+                                <TouchableOpacity
+                                    style={[styles.customModalBtn, { backgroundColor: 'rgba(0,0,0,0.05)' }]}
                                     onPress={() => setShowDeleteConfirm(false)}
                                 >
                                     <Text style={[styles.customModalBtnText, { color: '#8E8E93' }]}>Cancel</Text>
                                 </TouchableOpacity>
-                                
-                                <TouchableOpacity 
+
+                                <TouchableOpacity
                                     style={[styles.customModalBtn, { backgroundColor: '#FF3B30' }]}
                                     onPress={executeDeleteRequest}
                                 >

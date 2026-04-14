@@ -20,6 +20,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
 import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
+import { usePreferences } from '@/contexts/PreferencesContext';
 import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
@@ -94,8 +95,8 @@ function SettingsScreenContent() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
+    const { hapticsEnabled, setHapticsEnabled } = usePreferences();
     const [pushEnabled, setPushEnabled] = useState(true);
-    const [hapticsEnabled, setHapticsEnabled] = useState(true);
     const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);

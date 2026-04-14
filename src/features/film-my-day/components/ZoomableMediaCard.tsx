@@ -56,21 +56,21 @@ const ZoomableMediaCard: React.FC<ZoomableMediaCardProps> = ({
         .minDuration(300)
         .onStart(() => {
             runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
-            
+
             // 1. Calculate the target scale (95% width)
             const modalScale = (SW * 0.95) / width;
-            
+
             // 2. Fly to Center logic:
             const targetPivotCenterX = -tx.value / sc.value;
             const targetPivotCenterY = -ty.value / sc.value;
-            
+
             const cardCenterX = pos.x + width / 2;
             const cardCenterY = pos.y + height / 2;
-            
+
             translateX.value = withSpring(targetPivotCenterX - cardCenterX, SPRING_CONFIG);
             translateY.value = withSpring(targetPivotCenterY - cardCenterY, SPRING_CONFIG);
-            
-            scale.value = withSpring(modalScale / sc.value, SPRING_CONFIG); 
+
+            scale.value = withSpring(modalScale / sc.value, SPRING_CONFIG);
             borderRadius.value = withSpring(15, SPRING_CONFIG);
             backdropOpacity.value = withTiming(0, { duration: 300 }); // Remove backdrop opacity
             zIndex.value = 9999;
@@ -113,12 +113,12 @@ const ZoomableMediaCard: React.FC<ZoomableMediaCardProps> = ({
         <GestureDetector gesture={longPressGesture}>
             <Animated.View style={[styles.wrapper, { zIndex: zIndex.value }]}>
                 <Animated.View style={[styles.card, animatedStyle]}>
-                    <Animated.View style={[StyleSheet.absoluteFill, { 
-                        borderRadius: borderRadius.value, 
+                    <Animated.View style={[StyleSheet.absoluteFill, {
+                        borderRadius: borderRadius.value,
                         overflow: 'hidden',
-                        backgroundColor: 'transparent' 
+                        backgroundColor: 'transparent'
                     }]}>
-                            {children}
+                        {children}
                     </Animated.View>
                 </Animated.View>
             </Animated.View>

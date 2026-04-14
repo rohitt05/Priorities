@@ -17,7 +17,7 @@ export async function startCall(
             caller_id: currentUserId,
             callee_id: otherUserId,
             call_type: callType,
-            // status defaults to 'ringing' automatically (set in your DB schema)
+            status: 'ringing',
         })
         .select('id, room_name')
         .single();
@@ -27,7 +27,13 @@ export async function startCall(
     }
 
     // STEP B — Get LiveKit token from your deployed Edge Function
+    const { data: authData } = await supabase.auth.getSession();
+    const token = authData.session?.access_token;
+
     const { data, error: tokenError } = await supabase.functions.invoke('livekit-token', {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
         body: {
             room_name: session.room_name,
             call_session_id: session.id,
@@ -49,7 +55,13 @@ export async function startCall(
 // ─── Callee accepts the call ────────────────────────────────────────────────
 // Call this when the callee taps ACCEPT on the incoming call screen
 export async function acceptCall(roomName: string, callSessionId: string) {
+    const { data: authData } = await supabase.auth.getSession();
+    const token = authData.session?.access_token;
+
     const { data, error } = await supabase.functions.invoke('livekit-token', {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
         body: {
             room_name: roomName,
             call_session_id: callSessionId,
@@ -83,7 +95,13 @@ export async function declineCall(callSessionId: string) {
 // ─── Either side ends the call (Step 3) ─────────────────────────────────────
 // Leave LiveKit room FIRST in your UI component, THEN call this
 export async function endCall(callSessionId: string) {
+    const { data: authData } = await supabase.auth.getSession();
+    const token = authData.session?.access_token;
+
     const { data, error } = await supabase.functions.invoke('end-call', {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
         body: { call_session_id: callSessionId },
     });
 

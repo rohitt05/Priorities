@@ -12,6 +12,7 @@ interface FilmMediaProps {
     isActive?: boolean;
     isPlaying?: boolean;
     isMuted?: boolean;
+    accent?: string;
     onReady?: () => void;
     onDuration?: (durationMs: number) => void;
     onComplete?: () => void;
@@ -26,6 +27,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     isActive = false,
     isPlaying = false,
     isMuted = false,
+    accent,
     onReady,
     onDuration,
     onComplete,
@@ -44,7 +46,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
         // If it's a video but not active, render a lightweight thumbnail
         if (!isActive) {
              return (
-                <View style={[styles.container, style]}>
+                <View style={[styles.container, style, accent ? { backgroundColor: accent } : null]}>
                     {thumbnail ? (
                         <Image
                             source={{ uri: thumbnail }}
@@ -53,7 +55,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
                             transition={300}
                         />
                     ) : (
-                        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1C1C1E' }]} />
+                        <View style={[StyleSheet.absoluteFill, { backgroundColor: accent || '#1C1C1E' }]} />
                     )}
                 </View>
              );
@@ -75,7 +77,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     }
 
     return (
-        <View style={[styles.container, style]}>
+        <View style={[styles.container, style, accent ? { backgroundColor: accent } : null]}>
             <Image
                 source={{ uri }}
                 style={StyleSheet.absoluteFill}

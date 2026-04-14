@@ -141,7 +141,7 @@ export const timelineService = {
                 id: row.source_id,
                 senderId: row.sender === 'me' ? myId : theirId,
                 receiverId: row.sender === 'me' ? theirId : myId,
-                type: row.media_type as TimelineEvent['type'],
+                type: row.media_type as any,
                 uri: freshUri,
                 thumbUri: row.thumb_uri ?? freshUri,
                 durationSec: row.duration_sec ?? undefined,

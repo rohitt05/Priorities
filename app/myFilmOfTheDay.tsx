@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS } from '@/theme/theme';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { getMyPriorities } from '@/services/priorityService';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -83,6 +84,7 @@ interface ViewerOverlayProps {
     likedByIds: Set<string>;
     visible: boolean;
     onDismiss: () => void;
+    priorityMap: Record<string, string>;
 }
 
 function buildAvatarRingPositions(count: number): { x: number; y: number }[] {
@@ -100,8 +102,8 @@ function buildAvatarRingPositions(count: number): { x: number; y: number }[] {
 
 const AVATAR_SIZE = 52;
 
-const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
-    viewer: Profile; hasLiked: boolean; x: number; y: number; delay: number;
+const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay, savedName }: {
+    viewer: Profile; hasLiked: boolean; x: number; y: number; delay: number; savedName?: string;
 }) => {
     const scale = useSharedValue(0);
     const opacity = useSharedValue(0);
@@ -119,7 +121,7 @@ const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
         opacity: opacity.value,
     }));
 
-    const label = viewer.relationship || 'Friend';
+    const label = savedName || viewer.name?.split(' ')[0] || 'Friend';
 
     return (
         <Animated.View style={[styles.avatarItem, { left: x - AVATAR_SIZE / 2, top: y - AVATAR_SIZE / 2 }, style]}>
@@ -137,7 +139,7 @@ const ViewerAvatar = React.memo(({ viewer, hasLiked, x, y, delay }: {
 });
 ViewerAvatar.displayName = 'ViewerAvatar';
 
-const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: ViewerOverlayProps) => {
+const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss, priorityMap }: ViewerOverlayProps) => {
     const bgOpacity = useSharedValue(0);
     const positions = useMemo(() => buildAvatarRingPositions(viewers.length), [viewers.length]);
 
@@ -171,6 +173,7 @@ const ViewerOverlay = React.memo(({ viewers, likedByIds, visible, onDismiss }: V
                         x={positions[i]?.x ?? SW / 2}
                         y={positions[i]?.y ?? SH / 2}
                         delay={i * 35}
+                        savedName={priorityMap[v.id]}
                     />
                 ))
             )}
@@ -260,6 +263,7 @@ export default function MyFilmOfTheDay() {
     const [showViewers, setShowViewers] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [modalIndex, setModalIndex] = useState(0);
+    const [priorityMap, setPriorityMap] = useState<Record<string, string>>({});
 
     const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const recordedIds = useRef<Set<string>>(new Set());
@@ -291,6 +295,14 @@ export default function MyFilmOfTheDay() {
                 if (!myId) { setIsLoading(false); return; }
                 const result = await filmService.getMyFilms(myId);
                 setFilms(result);
+
+                // Fetch priorities to get saved names
+                const plist = await getMyPriorities(myId);
+                const pmap: Record<string, string> = {};
+                plist.forEach(p => {
+                    if (p.relationship) pmap[p.id] = p.relationship;
+                });
+                setPriorityMap(pmap);
             } catch (e) {
                 console.error('[myFilmOfTheDay] load error:', e);
             } finally {
@@ -484,6 +496,7 @@ export default function MyFilmOfTheDay() {
                 likedByIds={activeFilm?.likedByIds ?? new Set()}
                 visible={showViewers}
                 onDismiss={() => setShowViewers(false)}
+                priorityMap={priorityMap}
             />
 
             <FilmStoryModal

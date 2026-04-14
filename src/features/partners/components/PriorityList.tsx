@@ -38,6 +38,8 @@ import { TapHoldProvider, TapHoldContext, TapHoldImage } from '@/contexts/TapHol
 import { useVoiceNoteRecording } from '@/contexts/VoiceNoteRecordingContext';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
 import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
+import { supabase } from '@/lib/supabase';
+import { startCall } from '@/services/callService';
 
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 
@@ -131,7 +133,7 @@ const CurvedText = React.memo(({ text, width, color, isActive }: { text: string;
 });
 CurvedText.displayName = 'CurvedText';
 
-const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
+const CallIcons = React.memo(({ visible, onVideoCall, onVoiceCall }: { visible: boolean; onVideoCall: () => void; onVoiceCall: () => void }) => {
     const scale = useSharedValue(visible ? 1 : 0);
     const opacity = useSharedValue(visible ? 1 : 0);
 
@@ -149,11 +151,23 @@ const CallIcons = React.memo(({ visible }: { visible: boolean }) => {
 
     return (
         <Animated.View style={[styles.callIconsContainer, animatedStyle]}>
-            <TouchableOpacity activeOpacity={0.9} style={styles.callIconBubble} accessibilityLabel="Video call" accessibilityRole="button">
+            <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.callIconBubble}
+                onPress={(e) => { e.stopPropagation(); onVideoCall(); }}
+                accessibilityLabel="Video call"
+                accessibilityRole="button"
+            >
                 <MaterialCommunityIcons name="video-outline" size={20} color={COLORS.text} />
             </TouchableOpacity>
             <View style={styles.callIconSpacer} />
-            <TouchableOpacity activeOpacity={0.9} style={styles.callIconBubble} accessibilityLabel="Voice call" accessibilityRole="button">
+            <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.callIconBubble}
+                onPress={(e) => { e.stopPropagation(); onVoiceCall(); }}
+                accessibilityLabel="Voice call"
+                accessibilityRole="button"
+            >
                 <Feather name="phone-call" size={19} color={COLORS.text} />
             </TouchableOpacity>
         </Animated.View>
@@ -252,10 +266,11 @@ interface PriorityCardProps {
     onOptionsPress: (anchor: AnchorPosition) => void;
     unreadMedia: Message | null;
     sentStatus: { status: string; timestamp: string } | null;
+    currentUserId: string | null;
 }
 
 const PriorityCard = React.memo(
-    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus }: PriorityCardProps) => {
+    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId }: PriorityCardProps) => {
         const dominantColor = item.dominantColor || COLORS.primary;
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
@@ -295,6 +310,52 @@ const PriorityCard = React.memo(
         const handleSendStatus = useCallback(() => {
             recordMessageSent(item.id);
         }, [item.id, recordMessageSent]);
+
+        const handleVideoCall = useCallback(async () => {
+            if (!currentUserId) return;
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            try {
+                const callInfo = await startCall(currentUserId, item.id, 'video');
+                router.push({
+                    pathname: '/outgoing-call' as any,
+                    params: {
+                        receiverId: item.id,
+                        receiverName: item.name,
+                        receiverPic: item.profilePicture,
+                        roomName: callInfo.roomName,
+                        sessionId: callInfo.sessionId,
+                        callType: 'video',
+                        token: callInfo.token,
+                        livekitUrl: callInfo.livekitUrl
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to start video call:', err);
+            }
+        }, [currentUserId, item.id, item.name, item.profilePicture, router]);
+
+        const handleVoiceCall = useCallback(async () => {
+            if (!currentUserId) return;
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            try {
+                const callInfo = await startCall(currentUserId, item.id, 'voice');
+                router.push({
+                    pathname: '/outgoing-call' as any,
+                    params: {
+                        receiverId: item.id,
+                        receiverName: item.name,
+                        receiverPic: item.profilePicture,
+                        roomName: callInfo.roomName,
+                        sessionId: callInfo.sessionId,
+                        callType: 'voice',
+                        token: callInfo.token,
+                        livekitUrl: callInfo.livekitUrl
+                    }
+                });
+            } catch (err) {
+                console.error('Failed to start voice call:', err);
+            }
+        }, [currentUserId, item.id, item.name, item.profilePicture, router]);
 
         const singleTap = Gesture.Tap().onEnd(() => runOnJS(handleSingleTap)());
         const doubleTap = Gesture.Tap().numberOfTaps(2).onEnd(() => runOnJS(handleDoubleTap)());
@@ -371,7 +432,13 @@ const PriorityCard = React.memo(
                         </Animated.View>
                     </GestureDetector>
 
-                    {!recordingForThisCard && <CallIcons visible={isActive} />}
+                    {!recordingForThisCard && (
+                        <CallIcons
+                            visible={isActive}
+                            onVideoCall={handleVideoCall}
+                            onVoiceCall={handleVoiceCall}
+                        />
+                    )}
                     {!recordingForThisCard && isActive && (
                         <OptionsButton size={LAYOUT.IMAGE_SIZE} onPress={onOptionsPress} />
                     )}
@@ -387,7 +454,7 @@ const PriorityCard = React.memo(
                     )}
                     {(() => {
                         if (recordingForThisCard || unreadMedia || !sentStatus || sentStatus.status === 'none' || !isActive) return null;
-                        
+
                         // Only show if seen/reacted within the last 30 minutes
                         const diff = Date.now() - new Date(sentStatus.timestamp).getTime();
                         if (diff > 30 * 60 * 1000) return null;
@@ -469,12 +536,17 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const [selectedUser, setSelectedUser] = useState<PriorityUserWithPost | null>(null);
     const [pinnedId, setPinnedId] = useState<string | null>(null);
     const [menuAnchor, setMenuAnchor] = useState<AnchorPosition | null>(null);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const flatListRef = useRef<GHFlatList>(null);
 
     const { unreadMessages, myLastSentStatus } = useMediaInbox();
 
     useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) setCurrentUserId(user.id);
+        });
+
         AsyncStorage.getItem(PINNED_KEY).then(val => { if (val) setPinnedId(val); });
     }, []);
 
@@ -551,9 +623,10 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
                 onOptionsPress={(anchor: AnchorPosition) => openPinSheetForUser(item, anchor)}
                 unreadMedia={unreadMedia}
                 sentStatus={sentStatus}
+                currentUserId={currentUserId}
             />
         );
-    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus]);
+    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId]);
 
     const leftUnread = useMemo(() => {
         let count = 0;

@@ -90,7 +90,7 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
                         thumbnail={film.thumbnail}
                         type={film.type as 'image' | 'video'}
                     />
-                    
+
 
                 </View>
 

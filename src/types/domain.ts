@@ -1,4 +1,4 @@
-export type MediaType = 'photo' | 'video' | 'voice';
+export type MediaType = 'photo' | 'video' | 'voice' | 'video_call' | 'voice_call' | 'image';
 
 /**
  * Profile: Aligns with 'profiles' table (Supabase/Auth extension)

@@ -1,3 +1,34 @@
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
+import { registerGlobals } from '@livekit/react-native-webrtc';
+registerGlobals();
+import { TextEncoder, TextDecoder } from 'text-encoding';
+if (typeof global.TextEncoder === 'undefined') {
+    // @ts-ignore
+    global.TextEncoder = TextEncoder;
+}
+if (typeof global.TextDecoder === 'undefined') {
+    // @ts-ignore
+    global.TextDecoder = TextDecoder;
+}
+if (typeof DOMException === 'undefined') {
+    // @ts-ignore
+    global.DOMException = class extends Error {
+        constructor(message: string, name: string) {
+            super(message);
+            this.name = name;
+        }
+    };
+}
+if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'undefined') {
+    // @ts-ignore
+    navigator.userAgent = 'ReactNative';
+}
+if (typeof global !== 'undefined' && (global as any).event === 'undefined') {
+    // @ts-ignore
+    (global as any).event = undefined;
+}
+
 import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -10,6 +41,8 @@ import { Session } from '@supabase/supabase-js';
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
+import { PreferencesProvider } from '@/contexts/PreferencesContext';
+import { useIncomingCall } from '@/features/calls/useIncomingCall';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -17,6 +50,7 @@ export default function Layout() {
     const [session, setSession] = useState<Session | null>(null);
     const [sessionLoaded, setSessionLoaded] = useState(false);
     const segments = useSegments();
+    useIncomingCall(session?.user?.id);
 
     const [loaded, error] = useFonts({
         'DancingScript-Regular': require('../assets/fonts/DancingScript-Regular.ttf'),
@@ -66,13 +100,15 @@ export default function Layout() {
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <BackgroundProvider>
-                <PrioritiesRefreshProvider>
-                    <VoiceNoteRecordingProvider>
-                        <Stack screenOptions={{ headerShown: false }} />
-                    </VoiceNoteRecordingProvider>
-                </PrioritiesRefreshProvider>
-            </BackgroundProvider>
+            <PreferencesProvider>
+                <BackgroundProvider>
+                    <PrioritiesRefreshProvider>
+                        <VoiceNoteRecordingProvider>
+                            <Stack screenOptions={{ headerShown: false }} />
+                        </VoiceNoteRecordingProvider>
+                    </PrioritiesRefreshProvider>
+                </BackgroundProvider>
+            </PreferencesProvider>
         </GestureHandlerRootView>
     );
 }

@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { signIn } from '@/services/authService';
 import { router } from 'expo-router';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -34,6 +35,7 @@ export default function SignInScreen() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(20)).current;
@@ -53,16 +55,16 @@ export default function SignInScreen() {
 
     const handleSignIn = async () => {
         if (!email || !password) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Warning);
             return;
         }
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         Keyboard.dismiss();
         setLoading(true);
         try {
             await signIn(email, password);
         } catch (error: any) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Error);
             Alert.alert('Sign In Failed', error.message);
         } finally {
             setLoading(false);
@@ -137,7 +139,7 @@ export default function SignInScreen() {
                             />
                             <TouchableOpacity
                                 onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
                                     setShowPassword(prev => !prev);
                                 }}
                                 style={styles.eyeButton}
@@ -171,7 +173,7 @@ export default function SignInScreen() {
             <TouchableOpacity
                 style={styles.linkButton}
                 onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
                     router.push('/auth/signup');
                 }}
                 activeOpacity={0.6}
