@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, Image, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
+import { getAvatarSource } from '@/utils/getMediaSource';
 import { FONTS } from '@/theme/theme';
 import { Profile } from '@/types/domain';
 import Animated, {
@@ -66,7 +68,7 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewers, likedByIds, ac
                                     <View style={styles.avatarWrapper}>
                                         <View style={styles.avatarContainer}>
                                             <Image
-                                                source={{ uri: user.profilePicture }}
+                                                source={getAvatarSource(user.profilePicture)}
                                                 style={styles.avatar}
                                             />
                                         </View>

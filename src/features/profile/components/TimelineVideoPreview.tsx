@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SharedValue } from 'react-native-reanimated';
+import { getImageSource } from '@/utils/getMediaSource';
 
 interface TimelineVideoPreviewProps {
     uri: string;
@@ -20,7 +21,7 @@ export default function TimelineVideoPreview({ thumbnailUri, style }: TimelineVi
         <View style={style}>
             {/* Show static cached thumbnail */}
             <Image
-                source={{ uri: thumbnailUri }}
+                source={getImageSource(thumbnailUri)}
                 style={StyleSheet.absoluteFillObject}
                 contentFit="cover"
                 cachePolicy="memory-disk"

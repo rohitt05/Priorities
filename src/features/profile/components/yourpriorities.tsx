@@ -13,6 +13,7 @@ import { COLORS, SPACING, FONTS, FONT_SIZES } from '@/theme/theme';
 import { getMyPriorities } from '@/services/priorityService';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 type Priority = {
     id: string;
@@ -162,7 +163,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         {u.profilePicture ? (
                                             <>
                                                 <Image
-                                                    source={{ uri: u.profilePicture }}
+                                                    source={getAvatarSource(u.profilePicture)}
                                                     style={styles.avatarImage}
                                                     contentFit="cover"
                                                     cachePolicy="memory-disk"

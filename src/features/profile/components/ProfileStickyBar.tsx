@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/theme/theme';
 import { User } from '@/types/domain';
 import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 
 
@@ -93,7 +94,7 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
         <View style={[styles.container, { height: headerHeight, paddingTop: insets.top }]} pointerEvents="box-none">
             <Reanimated.View style={[StyleSheet.absoluteFill, barBgStyle]} pointerEvents="none">
                 <Reanimated.Image
-                    source={{ uri: user.profilePicture }}
+                    source={getAvatarSource(user.profilePicture)}
                     style={StyleSheet.absoluteFill}
                     resizeMode="cover"
                 />

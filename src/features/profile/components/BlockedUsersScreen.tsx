@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { COLORS, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
 import { getBlockedUsers, unblockUser, BlockedUser } from '@/services/blockService';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 const BlockedUsersScreen = () => {
     const router = useRouter();
@@ -74,7 +75,7 @@ const BlockedUsersScreen = () => {
                 <View style={styles.userInfo}>
                     {item.profilePicture ? (
                         <Image
-                            source={{ uri: item.profilePicture }}
+                            source={getAvatarSource(item.profilePicture)}
                             style={styles.avatar}
                             contentFit="cover"
                             cachePolicy="memory-disk"

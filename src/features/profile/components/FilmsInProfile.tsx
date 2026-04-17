@@ -9,6 +9,7 @@ import { MediaItem } from '@/types/mediaTypes';
 import ProfileMediaModal from './ProfileMediaModal';
 import TimelineVideoPreview from './TimelineVideoPreview';
 import { SharedValue } from 'react-native-reanimated';
+import { getImageSource } from '@/utils/getMediaSource';
 
 const { width } = Dimensions.get('window');
 
@@ -128,7 +129,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                         />
                     ) : (
                         <Image
-                            source={{ uri: film.thumbnail ?? film.uri }}
+                            source={getImageSource(film.thumbnail ?? film.uri)}
                             style={styles.mediaThumbnail}
                             contentFit="cover"
                             cachePolicy="memory-disk"
@@ -157,7 +158,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                                 />
                             ) : (
                                 <Image
-                                    source={{ uri: film.thumbnail ?? film.uri }}
+                                    source={getImageSource(film.thumbnail ?? film.uri)}
                                     style={styles.mediaThumbnail}
                                     contentFit="cover"
                                     cachePolicy="memory-disk"
@@ -191,7 +192,7 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
                             />
                         ) : (
                             <Image
-                                source={{ uri: film.thumbnail ?? film.uri }}
+                                source={getImageSource(film.thumbnail ?? film.uri)}
                                 style={styles.mediaThumbnail}
                                 contentFit="cover"
                                 cachePolicy="memory-disk"

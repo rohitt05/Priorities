@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { getFilmSource } from '@/utils/getMediaSource';
 
 interface FilmVideoPlayerProps {
     uri: string;
@@ -33,7 +34,7 @@ const FilmVideoPlayer: React.FC<FilmVideoPlayerProps> = ({
 
     const firedRef = useRef({ ready: false, duration: false });
 
-    const player = useVideoPlayer(uri, (p) => {
+    const player = useVideoPlayer(getFilmSource(uri), (p) => {
         p.loop = false;
         p.muted = isMuted;
         p.volume = isMuted ? 0 : 1;

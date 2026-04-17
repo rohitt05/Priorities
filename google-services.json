@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "571727903713",
+    "project_id": "priorities-ccc6c",
+    "storage_bucket": "priorities-ccc6c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:571727903713:android:45e81648b6d5774a0d30a0",
+        "android_client_info": {
+          "package_name": "com.rohitt05.priorities"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDz2ft7PYGYd2SUtHo2bSsFv6469L7bCZ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

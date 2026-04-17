@@ -1,6 +1,6 @@
 import React, { useEffect, useState, memo } from 'react';
 import { DrawnArrowItem } from '@/components/ui/DrawnArrowItem';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/contexts/SelectionContext';
 import * as Haptics from 'expo-haptics';
 import { User } from '@/types/userTypes';
 

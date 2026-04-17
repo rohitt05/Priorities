@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { User } from '@/types/domain';
 import { sendPriorityRequest } from '@/services/priorityService';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 // ✅ Type lives here — imported by profile.tsx, no circular deps
 export type HeaderAccessState = 'loading' | 'allowed' | 'pending' | 'locked';
@@ -68,10 +69,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
     const isLocked = accessState === 'locked' || accessState === 'pending';
 
+    const rawAvatarSource = getAvatarSource(user.profilePicture);
+    const resolvedAvatarSource =
+        typeof rawAvatarSource === 'string' ? { uri: rawAvatarSource } : rawAvatarSource;
+
     return (
         <Reanimated.View style={[styles.imageHeader, headerAnimatedStyle]}>
             <Reanimated.Image
-                source={{ uri: user.profilePicture }}
+                source={resolvedAvatarSource}
                 style={[styles.profileImage, imageScaleStyle]}
                 resizeMode="cover"
             />

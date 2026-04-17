@@ -492,6 +492,7 @@ export type Database = {
                     birthday: string | null
                     created_at: string
                     dominant_color: string | null
+                    expo_push_token: string | null
                     gender: string | null
                     id: string
                     name: string
@@ -506,6 +507,7 @@ export type Database = {
                     birthday?: string | null
                     created_at?: string
                     dominant_color?: string | null
+                    expo_push_token?: string | null
                     gender?: string | null
                     id: string
                     name: string
@@ -520,6 +522,7 @@ export type Database = {
                     birthday?: string | null
                     created_at?: string
                     dominant_color?: string | null
+                    expo_push_token?: string | null
                     gender?: string | null
                     id?: string
                     name?: string

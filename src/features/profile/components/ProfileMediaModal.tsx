@@ -16,6 +16,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { MediaItem } from '@/types/mediaTypes';
 import MediaOptionsBottomSheet from './MediaOptionsBottomSheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFilmSource, getImageSource } from '@/utils/getMediaSource';
 
 const { width, height } = Dimensions.get('window');
 
@@ -33,7 +34,7 @@ const CardVideoPlayer = ({ uri, thumbUri, isFocused }: { uri: string, thumbUri?:
         return (
             <View style={{ flex: 1 }}>
                 <Image
-                    source={{ uri: thumbUri || uri }}
+                    source={getImageSource(thumbUri || uri)}
                     style={styles.media}
                     contentFit="cover"
                     cachePolicy="memory-disk"
@@ -51,7 +52,7 @@ const CardVideoPlayer = ({ uri, thumbUri, isFocused }: { uri: string, thumbUri?:
 };
 
 const ActiveVideoPlayer = ({ uri, thumbUri }: { uri: string, thumbUri?: string }) => {
-    const player = useVideoPlayer({ uri }, p => {
+    const player = useVideoPlayer(getFilmSource(uri), p => {
         p.loop = true;
         p.timeUpdateEventInterval = 0.1;
         p.play();
@@ -132,7 +133,7 @@ const ActiveVideoPlayer = ({ uri, thumbUri }: { uri: string, thumbUri?: string }
             {!isLoaded && (
                 <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000' }]}>
                     <Image
-                        source={{ uri: thumbUri || uri }}
+                        source={getImageSource(thumbUri || uri)}
                         style={styles.media}
                         contentFit="cover"
                         cachePolicy="memory-disk"
@@ -213,7 +214,7 @@ const MediaPageItem = ({ item, isFocused, formatHeaderDate }: { item: MediaItem,
                     />
                 ) : (
                     <Image
-                        source={{ uri: item.uri }}
+                        source={getImageSource(item.uri)}
                         style={styles.media}
                         contentFit="cover"
                         cachePolicy="memory-disk"

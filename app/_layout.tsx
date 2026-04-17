@@ -43,6 +43,7 @@ import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { useIncomingCall } from '@/features/calls/useIncomingCall';
+import { registerForPushNotificationsAsync } from '@/services/pushNotificationService';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,10 +64,16 @@ export default function Layout() {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session);
             setSessionLoaded(true);
+            if (session?.user?.id) {
+                registerForPushNotificationsAsync(session.user.id);
+            }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session);
+            if (session?.user?.id) {
+                registerForPushNotificationsAsync(session.user.id);
+            }
         });
 
         return () => subscription.unsubscribe();

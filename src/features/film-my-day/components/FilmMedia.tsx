@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import FilmVideoPlayer from './FilmVideoPlayer';
+import { getFilmSource, getImageSource } from '@/utils/getMediaSource';
 
 interface FilmMediaProps {
     uri: string;
@@ -49,7 +50,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
                 <View style={[styles.container, style, accent ? { backgroundColor: accent } : null]}>
                     {thumbnail ? (
                         <Image
-                            source={{ uri: thumbnail }}
+                            source={getImageSource(thumbnail)}
                             style={StyleSheet.absoluteFill}
                             contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
                             transition={300}
@@ -64,7 +65,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
         // Only mount the native video player when truly active
         return (
             <FilmVideoPlayer
-                uri={uri}
+                uri={getFilmSource(uri) as string}
                 style={style}
                 resizeMode={resizeMode}
                 isPlaying={isPlaying}
@@ -79,7 +80,7 @@ const FilmMedia: React.FC<FilmMediaProps> = ({
     return (
         <View style={[styles.container, style, accent ? { backgroundColor: accent } : null]}>
             <Image
-                source={{ uri }}
+                source={getImageSource(uri)}
                 style={StyleSheet.absoluteFill}
                 contentFit={resizeMode === 'cover' ? 'cover' : 'contain'}
                 transition={300}

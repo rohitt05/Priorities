@@ -220,9 +220,6 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
     } else if (type === 'voice') {
         accentColor = '#007AFF';
         iconName = 'mic';
-    } else if (type === 'note') {
-        accentColor = '#FF9500';
-        iconName = 'chatbubble';
     }
 
     return (

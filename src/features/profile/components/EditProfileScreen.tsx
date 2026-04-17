@@ -23,6 +23,7 @@ import { COLORS, FONTS } from '@/theme/theme';
 import * as ImagePicker from 'expo-image-picker';
 import DatePicker from 'react-native-date-picker';
 import { updateProfile, uploadProfilePicture } from '@/services/profileService';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 const { height } = Dimensions.get('window');
 
@@ -235,7 +236,7 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
                     <View style={{ flex: HERO_FLEX, position: 'relative' }}>
                         {profileImage ? (
                             <Image
-                                source={{ uri: profileImage }}
+                                source={getAvatarSource(profileImage)}
                                 style={StyleSheet.absoluteFillObject}
                                 resizeMode="cover"
                             />
