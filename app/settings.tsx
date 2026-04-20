@@ -25,7 +25,7 @@ import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
-import { signOut } from '@/services/authService';
+import { signOut, deleteAccount } from '@/services/authService';
 
 const { width } = Dimensions.get('window');
 
@@ -101,6 +101,7 @@ function SettingsScreenContent() {
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -154,9 +155,6 @@ function SettingsScreenContent() {
         outputRange: [prevBgColor, bgColor],
     });
 
-    const headerColorHeavy = currentUser ? hexToRgba(currentUser.dominantColor, 0.95) : 'rgba(240, 239, 233, 0.95)';
-    const headerColorLight = currentUser ? hexToRgba(currentUser.dominantColor, 0) : 'rgba(240, 239, 233, 0)';
-
     const handleOpenLink = async (url: string) => {
         try {
             await WebBrowser.openBrowserAsync(url);
@@ -186,24 +184,65 @@ function SettingsScreenContent() {
         }
     };
 
-    const HEADER_HEIGHT = 60 + insets.top; // Approximate height
+    const handleDeleteAccount = () => {
+        Alert.alert(
+            'delete account',
+            'this is permanent. your profile, films and priorities will be deleted forever. memories you shared with others will remain in their timelines.',
+            [
+                {
+                    text: 'cancel',
+                    style: 'cancel',
+                },
+                {
+                    text: 'delete permanently',
+                    style: 'destructive',
+                    onPress: () => {
+                        Alert.alert(
+                            'are you sure?',
+                            'this cannot be undone.',
+                            [
+                                { text: 'go back', style: 'cancel' },
+                                {
+                                    text: 'yes, delete my account',
+                                    style: 'destructive',
+                                    onPress: async () => {
+                                        setIsDeleting(true);
+                                        try {
+                                            await deleteAccount();
+                                            // auth state listener in root _layout.tsx
+                                            // fires automatically when session is cleared
+                                            // and navigates user to auth screen
+                                        } catch (e: any) {
+                                            setIsDeleting(false);
+                                            Alert.alert(
+                                                'something went wrong',
+                                                e?.message || 'please try again or contact support.'
+                                            );
+                                        }
+                                    },
+                                },
+                            ]
+                        );
+                    },
+                },
+            ]
+        );
+    };
+
+    const HEADER_HEIGHT = 60 + insets.top;
 
     return (
         <View style={styles.container}>
-            {/* Main Background */}
             <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]} />
 
-            {/* Content ScrollView - goes UNDER the header */}
             <ScrollView
                 style={styles.content}
                 contentContainerStyle={[
                     styles.contentContainer,
-                    { paddingTop: HEADER_HEIGHT + SPACING.md } // Add padding so content starts below header
+                    { paddingTop: HEADER_HEIGHT + SPACING.md }
                 ]}
                 showsVerticalScrollIndicator={false}
             >
-                {/* Profile Card Removed */}
-
                 <Section title="account">
                     <SettingsRow
                         icon="person-outline"
@@ -242,49 +281,66 @@ function SettingsScreenContent() {
                         right="none"
                     />
                 </Section>
+
                 <Section title="support">
-                    <SettingsRow 
-                        icon="help-circle-outline" 
-                        label="help" 
-                        onPress={handleSupportEmail} 
+                    <SettingsRow
+                        icon="help-circle-outline"
+                        label="help"
+                        onPress={handleSupportEmail}
                     />
                     <View style={styles.divider} />
-                    <SettingsRow 
-                        icon="document-text-outline" 
-                        label="terms" 
-                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/terms')} 
+                    <SettingsRow
+                        icon="document-text-outline"
+                        label="terms"
+                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/terms')}
                     />
                     <View style={styles.divider} />
-                    <SettingsRow 
-                        icon="shield-checkmark-outline" 
-                        label="privacy" 
-                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/privacy')} 
+                    <SettingsRow
+                        icon="shield-checkmark-outline"
+                        label="privacy"
+                        onPress={() => handleOpenLink('https://getyourpriorities.vercel.app/privacy')}
                     />
                 </Section>
 
-                <TouchableOpacity activeOpacity={0.8} style={styles.dangerButton} onPress={async () => {
-                    try {
-                        await signOut();
-                    } catch (e) {
-                        console.error("Sign out failed", e);
-                    }
-                }}>
+                {/* SIGN OUT */}
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.dangerButton}
+                    onPress={async () => {
+                        try {
+                            await signOut();
+                        } catch (e) {
+                            console.error('Sign out failed', e);
+                        }
+                    }}
+                >
                     <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
                     <Text style={styles.dangerText}>sign out</Text>
+                </TouchableOpacity>
+
+                {/* DELETE ACCOUNT */}
+                <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[styles.dangerButton, styles.deleteButton]}
+                    onPress={handleDeleteAccount}
+                    disabled={isDeleting}
+                >
+                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
+                    <Text style={[styles.dangerText, styles.deleteText]}>
+                        {isDeleting ? 'deleting…' : 'delete account'}
+                    </Text>
                 </TouchableOpacity>
 
                 <Text style={styles.footer}>priorities</Text>
             </ScrollView>
 
-            {/* Transparent Gradient Header Overlay */}
+            {/* Header */}
             <View style={[styles.headerWrapper, { paddingTop: insets.top }]}>
-                {/* The gradient background itself */}
                 <LinearGradient
                     colors={['rgba(240, 239, 233, 0.95)', 'rgba(240, 239, 233, 0.95)', 'rgba(240, 239, 233, 0)']}
                     locations={[0, 0.6, 1]}
                     style={StyleSheet.absoluteFill}
                 />
-
                 <View style={styles.header}>
                     <TouchableOpacity style={styles.iconButton} hitSlop={12} onPress={() => router.back()}>
                         <Ionicons name="chevron-back" size={24} color={COLORS.text} />
@@ -322,34 +378,26 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
+    container: { flex: 1 },
     headerWrapper: {
         position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
+        top: 0, left: 0, right: 0,
         zIndex: 100,
-        paddingBottom: SPACING.lg, // Extra space for gradient fade at bottom
+        paddingBottom: SPACING.lg,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: SPACING.xl,
-        paddingTop: SPACING.sm, // Adjust based on your header visual preference
+        paddingTop: SPACING.sm,
         height: 50,
     },
     iconButton: {
-        width: 40,
-        height: 40,
+        width: 40, height: 40,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    rightSpacer: {
-        width: 40,
-        height: 40,
-    },
+    rightSpacer: { width: 40, height: 40 },
     title: {
         flex: 1,
         textAlign: 'center',
@@ -359,16 +407,12 @@ const styles = StyleSheet.create({
         color: COLORS.text,
         textTransform: 'lowercase',
     },
-    content: {
-        flex: 1,
-    },
+    content: { flex: 1 },
     contentContainer: {
         paddingHorizontal: SPACING.xl,
         paddingBottom: SPACING.xxl,
     },
-    section: {
-        marginTop: SPACING.xl,
-    },
+    section: { marginTop: SPACING.xl },
     sectionTitle: {
         fontSize: 12,
         fontFamily: FONTS.bold,
@@ -386,9 +430,7 @@ const styles = StyleSheet.create({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: COLORS.border,
     },
-    cardInner: {
-        paddingVertical: 8,
-    },
+    cardInner: { paddingVertical: 8 },
     row: {
         paddingHorizontal: SPACING.lg,
         paddingVertical: 12,
@@ -403,8 +445,7 @@ const styles = StyleSheet.create({
         paddingRight: 12,
     },
     rowIconWrap: {
-        width: 34,
-        height: 34,
+        width: 34, height: 34,
         borderRadius: 12,
         backgroundColor: 'rgba(44,39,32,0.06)',
         borderWidth: StyleSheet.hairlineWidth,
@@ -413,9 +454,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginRight: 12,
     },
-    rowTextWrap: {
-        flex: 1,
-    },
+    rowTextWrap: { flex: 1 },
     rowLabel: {
         fontSize: FONT_SIZES.md,
         fontFamily: FONTS.bold,
@@ -457,6 +496,15 @@ const styles = StyleSheet.create({
         color: COLORS.error,
         textTransform: 'lowercase',
         letterSpacing: 0.4,
+    },
+    // Delete account button — slightly more aggressive red tint
+    deleteButton: {
+        marginTop: SPACING.sm,
+        borderColor: 'rgba(180, 30, 30, 0.18)',
+        backgroundColor: 'rgba(255, 235, 235, 0.45)',
+    },
+    deleteText: {
+        color: '#B41E1E',
     },
     footer: {
         marginTop: SPACING.xl,

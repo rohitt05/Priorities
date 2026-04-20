@@ -7,8 +7,8 @@ export async function signUp(
     email: string,
     password: string,
     name: string,
-    uniqueUserId: string,       // @handle chosen on signup screen
-    dominantColor: string       // randomly picked from PALETTE on signup screen
+    uniqueUserId: string,
+    dominantColor: string
 ) {
     const { data, error } = await supabase.auth.signUp({
         email,
@@ -56,7 +56,6 @@ export async function getCurrentUserId(): Promise<string> {
 }
 
 // ─── LISTEN TO AUTH STATE CHANGES ─────────────────────────
-// Use this in your root _layout.tsx to redirect on login/logout
 export function onAuthStateChange(
     callback: (event: string, session: any) => void
 ) {
@@ -64,15 +63,38 @@ export function onAuthStateChange(
 }
 
 // ─── VERIFY CURRENT PASSWORD ───────────────────────────────
-// Re-authenticates with current credentials to confirm identity before password change
 export async function verifyCurrentPassword(email: string, password: string): Promise<void> {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error('Current password is incorrect.');
 }
 
 // ─── CHANGE PASSWORD ───────────────────────────────────────
-// Updates the authenticated user's password — user must already be logged in
 export async function changePassword(newPassword: string): Promise<void> {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) throw error;
+}
+
+// ─── DELETE ACCOUNT ────────────────────────────────────────
+// Calls the delete-account Edge Function (service role).
+// Order of operations:
+//   1. Edge Function verifies JWT
+//   2. Calls delete_account() SQL RPC → collects storage paths,
+//      clears PII, deletes own rows, returns paths
+//   3. Edge Function deletes all storage files (3 buckets)
+//   4. Edge Function calls admin.deleteUser() → cascades DB cleanup
+//   5. We sign out locally → auth listener navigates to auth screen
+export async function deleteAccount(): Promise<void> {
+    const session = await getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
+
+    const { data, error } = await supabase.functions.invoke('delete-account', {
+        headers: {
+            Authorization: `Bearer ${session.access_token}`,
+        },
+    });
+
+    if (error) throw new Error(error.message || 'Account deletion failed.');
+
+    // Clear local session after server confirms deletion
+    await supabase.auth.signOut();
 }

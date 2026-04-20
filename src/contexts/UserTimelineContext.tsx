@@ -5,7 +5,7 @@ import React, {
 } from 'react';
 import { LayoutRectangle, FlatList } from 'react-native';
 import Animated, {
-    useSharedValue, withTiming, Easing, runOnJS
+    useSharedValue, withTiming, withSpring, Easing, runOnJS
 } from 'react-native-reanimated';
 import { useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -185,11 +185,13 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         fetchTimelineForUser(user);
 
         clearAnimSafety();
-        animSafetyTimeout.current = setTimeout(() => setIsAnimating(false), 600);
+        animSafetyTimeout.current = setTimeout(() => setIsAnimating(false), 800);
 
-        expandAnim.value = withTiming(1, {
-            duration: 400,
-            easing: Easing.bezier(0.25, 0.1, 0.25, 1)
+        expandAnim.value = withSpring(1, {
+            damping: 15,
+            stiffness: 120,
+            mass: 0.5, // much lighter feel
+            overshootClamping: true,
         }, (finished) => {
             if (finished) {
                 runOnJS(clearAnimSafety)();
@@ -208,17 +210,24 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
             setExpandedUser(null);
             setOriginLayout(null);
             setIsAnimating(false);
-        }, 550);
+        }, 800);
 
-        expandAnim.value = withTiming(0, {
-            duration: 350,
-            easing: Easing.bezier(0.25, 0.1, 0.25, 1)
+        // High stiffness + high damping = Organic feeling of a spring with NONE of the bounce.
+        expandAnim.value = withSpring(0, {
+            stiffness: 150,
+            damping: 24,
+            mass: 0.6,
+            overshootClamping: true, // Prevents jumps past 0
+            energyThreshold: 0.01,
         }, (finished) => {
             if (finished) {
                 runOnJS(clearAnimSafety)();
-                runOnJS(setExpandedUser)(null);
-                runOnJS(setOriginLayout)(null);
-                runOnJS(setIsAnimating)(false);
+                // Minimal delay to ensure the UI paints the '0' state fully
+                setTimeout(() => {
+                    runOnJS(setExpandedUser)(null);
+                    runOnJS(setOriginLayout)(null);
+                    runOnJS(setIsAnimating)(false);
+                }, 8);
             }
         });
     };

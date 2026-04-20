@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     StyleSheet,
@@ -27,7 +27,8 @@ import Animated, {
     withTiming,
     interpolate,
     runOnJS,
-    SharedValue
+    SharedValue,
+    Extrapolation
 } from 'react-native-reanimated';
 import { usePriorityUsers } from '@/hooks/usePriorityUsers';
 
@@ -113,10 +114,14 @@ const TimelineItem = React.memo(({
         ]
     }));
     const scaleStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-    const itemVisibilityStyle = useAnimatedStyle(() => ({ opacity: isSelected ? 0 : 1 }));
+    const itemVisibilityStyle = useAnimatedStyle(() => ({
+        opacity: isSelected ? 0 : 1
+    }));
+
+    const containerRef = useRef<View>(null);
 
     return (
-        <View style={{ width: w, height: h, position: 'relative', zIndex: 1 }}>
+        <View ref={containerRef} style={{ width: w, height: h, position: 'relative', zIndex: 1 }}>
             <Animated.View style={[{ width: '100%', height: '100%' }, itemVisibilityStyle]}>
                 <Animated.View style={[styles.bubbleContainer, bubbleStyle]}>
                     <View style={styles.bubbleContent}>
@@ -130,8 +135,8 @@ const TimelineItem = React.memo(({
                     onPressOut={handlePressOut}
                     onLongPress={handleLongPress}
                     delayLongPress={300}
-                    onPress={(e) => {
-                        (e.target as any).measureInWindow((x: number, y: number, width: number, height: number) => {
+                    onPress={() => {
+                        containerRef.current?.measureInWindow((x: number, y: number, width: number, height: number) => {
                             onExpand(user, { x, y, width, height });
                         });
                     }}

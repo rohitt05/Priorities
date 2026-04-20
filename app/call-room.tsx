@@ -141,9 +141,9 @@ export default function CallRoom() {
                     token={params.token}
                     connect={true}
                     audio={true}
-                    video={{
+                    video={params.callType === 'video' ? {
                         resolution: VideoPresets.h1080.resolution,
-                    }}
+                    } : false}
                     onDisconnected={handleDisconnect}
                 >
                     <RoomContent
@@ -172,11 +172,11 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
     ]);
     const room = useRoomContext();
     const localParticipant = room.localParticipant;
-    const [isMicEnabled, setIsMicEnabled] = useState(localParticipant.isMicrophoneEnabled);
-    const [isCameraEnabled, setIsCameraEnabled] = useState(localParticipant.isCameraEnabled);
-
     const localTrack = tracks.find(t => t.participant.isLocal);
     const remoteTrack = tracks.find(t => !t.participant.isLocal);
+
+    const isMicEnabled = localParticipant?.isMicrophoneEnabled ?? false;
+    const isCameraEnabled = localParticipant?.isCameraEnabled ?? false;
 
     // Draggable PiP State
     const translateX = useSharedValue(SCREEN_WIDTH - PIP_WIDTH - 20);
@@ -202,15 +202,13 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
     }));
 
     const toggleMic = async () => {
-        const enabled = !isMicEnabled;
-        await localParticipant.setMicrophoneEnabled(enabled);
-        setIsMicEnabled(enabled);
+        const enabled = !localParticipant?.isMicrophoneEnabled;
+        await localParticipant?.setMicrophoneEnabled(enabled);
     };
 
     const toggleCamera = async () => {
-        const enabled = !isCameraEnabled;
-        await localParticipant.setCameraEnabled(enabled);
-        setIsCameraEnabled(enabled);
+        const enabled = !localParticipant?.isCameraEnabled;
+        await localParticipant?.setCameraEnabled(enabled);
     };
 
     const switchCamera = async () => {

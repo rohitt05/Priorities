@@ -6,7 +6,7 @@ import {
     ScrollView, Pressable,
 } from 'react-native';
 import Animated, {
-    useAnimatedStyle, interpolate, SharedValue,
+    useAnimatedStyle, interpolate, SharedValue, Extrapolation
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -91,9 +91,7 @@ export default function UserTimelineView({
 
     useEffect(() => {
         if (!user) return;
-        setAnimationDone(false);
-        const timer = setTimeout(() => setAnimationDone(true), 420);
-        return () => clearTimeout(timer);
+        // Content rendering is now instantaneous, managed by opacity interpolations.
     }, [user?.uniqueUserId]);
 
 
@@ -226,26 +224,35 @@ export default function UserTimelineView({
 
 
     const contentAnimatedStyle = useAnimatedStyle(() => {
-        const opacity = interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]);
-        const translateY = interpolate(expandAnim.value, [0, 1], [50, 0]);
+        // Earlier fade and smaller slide for a lighter feel
+        const opacity = interpolate(expandAnim.value, [0.3, 1], [0, 1], Extrapolation.CLAMP);
+        const translateY = interpolate(expandAnim.value, [0, 1], [30, 0], Extrapolation.CLAMP);
         return { opacity, transform: [{ translateY }] };
     });
 
 
-    const imageAnimatedStyle = useAnimatedStyle(() => ({
-        top: interpolate(expandAnim.value, [0, 1], [originLayout.y, TARGET_TOP]),
-        left: interpolate(expandAnim.value, [0, 1], [originLayout.x, TARGET_LEFT]),
-        width: interpolate(expandAnim.value, [0, 1], [originLayout.width, TARGET_SIZE]),
-        height: interpolate(expandAnim.value, [0, 1], [originLayout.height, TARGET_SIZE]),
-        borderRadius: interpolate(
-            expandAnim.value, [0, 1],
-            [Math.min(originLayout.width, originLayout.height) / 2, TARGET_SIZE / 2]
-        ),
-    }));
+    const imageAnimatedStyle = useAnimatedStyle(() => {
+        const value = expandAnim.value;
+        const w = interpolate(value, [0, 1], [originLayout.width, TARGET_SIZE], Extrapolation.CLAMP);
+        const h = interpolate(value, [0, 1], [originLayout.height, TARGET_SIZE], Extrapolation.CLAMP);
+        
+        // Organic Scale Pulse: slightly 'stretches' in the middle of flight for fluidity
+        const scale = interpolate(value, [0, 0.5, 1], [1, 1.05, 1], Extrapolation.CLAMP);
+
+        return {
+            top: interpolate(value, [0, 1], [originLayout.y, TARGET_TOP], Extrapolation.CLAMP),
+            left: interpolate(value, [0, 1], [originLayout.x, TARGET_LEFT], Extrapolation.CLAMP),
+            width: w,
+            height: h,
+            transform: [{ scale }],
+            borderRadius: Math.min(w, h) / 2,
+        };
+    });
 
 
     const headerTextAnimatedStyle = useAnimatedStyle(() => ({
-        opacity: interpolate(expandAnim.value, [0, 0.8, 1], [0, 0, 1]),
+        // Faster vanish on exit to reduce visual clutter
+        opacity: interpolate(expandAnim.value, [0.6, 1], [0, 1], Extrapolation.CLAMP),
     }));
 
 
@@ -255,7 +262,6 @@ export default function UserTimelineView({
 
 
     const renderContent = () => {
-        if (!animationDone) return <View style={styles.loadingContainer} />;
         if (mergedEvents.length > 0) {
             return (
                 <TimelineCalendar
