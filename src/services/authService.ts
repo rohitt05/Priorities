@@ -83,18 +83,15 @@ export async function changePassword(newPassword: string): Promise<void> {
 //   3. Edge Function deletes all storage files (3 buckets)
 //   4. Edge Function calls admin.deleteUser() → cascades DB cleanup
 //   5. We sign out locally → auth listener navigates to auth screen
+// ─── DELETE ACCOUNT ────────────────────────────────────────
 export async function deleteAccount(): Promise<void> {
     const session = await getSession();
     if (!session?.access_token) throw new Error('Not authenticated');
 
-    const { data, error } = await supabase.functions.invoke('delete-account', {
-        headers: {
-            Authorization: `Bearer ${session.access_token}`,
-        },
-    });
+    // ✅ No custom headers — invoke() auto-attaches the session JWT
+    const { data, error } = await supabase.functions.invoke('delete-account');
 
     if (error) throw new Error(error.message || 'Account deletion failed.');
 
-    // Clear local session after server confirms deletion
     await supabase.auth.signOut();
 }
