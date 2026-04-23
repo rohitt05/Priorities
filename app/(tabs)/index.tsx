@@ -29,7 +29,11 @@ export default function HomeScreen() {
     useEffect(() => {
         const loadPriorities = async () => {
             try {
-                const userId = await getCurrentUserId();
+                const userId = await getCurrentUserId().catch(() => null);
+                if (!userId) {
+                    // Auth not ready yet or redirect handled by Layout
+                    return; 
+                }
 
                 const real = await getMyPriorities(userId);
                 const pending = await getOutgoingPendingRequests(userId);

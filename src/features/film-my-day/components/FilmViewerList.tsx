@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { StyleSheet, View, Text, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { getAvatarSource } from '@/utils/getMediaSource';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { FONTS } from '@/theme/theme';
 import { Profile } from '@/types/domain';
 import Animated, {
@@ -67,8 +68,8 @@ const FilmViewerList: React.FC<FilmViewerListProps> = ({ viewers, likedByIds, ac
                                 <View key={user.id} style={[styles.viewerItem, { zIndex: viewers.length - idx }]}>
                                     <View style={styles.avatarWrapper}>
                                         <View style={styles.avatarContainer}>
-                                            <Image
-                                                source={getAvatarSource(user.profilePicture)}
+                                            <UserAvatar
+                                                uri={user.profilePicture}
                                                 style={styles.avatar}
                                             />
                                         </View>

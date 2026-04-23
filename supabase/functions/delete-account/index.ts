@@ -81,15 +81,16 @@ Deno.serve(async (req: Request) => {
         // 5. Delete Auth User (Cascades to Profiles)
         console.log("Deleting user from auth.users...");
         const { error: deleteUserError } = await adminSupabase.auth.admin.deleteUser(userId);
+
         if (deleteUserError) {
-            console.error("Auth user deletion (admin) failed:", deleteUserError);
-            return new Response(JSON.stringify({ error: "User deletion failed", details: deleteUserError.message }), {
+            console.error("Auth user deletion failed:", deleteUserError);
+            return new Response(JSON.stringify({ error: "Auth user deletion failed", details: deleteUserError.message }), {
                 status: 500,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
         }
 
-        console.log("Auth user deleted. Proceeding to best-effort storage cleanup.");
+        console.log("Auth user deletion successful. Finalizing best-effort storage cleanup...");
 
         // 6. Best-effort storage cleanup
         const cleanupStorage = async () => {

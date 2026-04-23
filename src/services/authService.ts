@@ -8,7 +8,9 @@ export async function signUp(
     password: string,
     name: string,
     uniqueUserId: string,
-    dominantColor: string
+    dominantColor: string,
+    gender: string,
+    profilePicture: string
 ) {
     const { data, error } = await supabase.auth.signUp({
         email,
@@ -18,6 +20,8 @@ export async function signUp(
                 name,
                 unique_user_id: uniqueUserId,
                 dominant_color: dominantColor,
+                gender,
+                profile_picture: profilePicture,
             },
         },
     });
@@ -94,4 +98,20 @@ export async function deleteAccount(): Promise<void> {
     if (error) throw new Error(error.message || 'Account deletion failed.');
 
     await supabase.auth.signOut();
+}
+
+// ─── CHECK IF EMAIL IS AVAILABLE ──────────────────────────
+// Queries the auth.users via a SECURITY DEFINER RPC.
+// Returns true if free, false if already taken.
+export async function isEmailAvailable(email: string): Promise<boolean> {
+    const { data, error } = await (supabase as any)
+        .rpc('is_email_available', { p_email: email.trim().toLowerCase() });
+    
+    if (error) {
+        console.warn('Email check error:', error.message);
+        // Fallback to true to not block users if RPC is missing, 
+        // though signup will still fail on DB level if taken.
+        return true; 
+    }
+    return data === true;
 }

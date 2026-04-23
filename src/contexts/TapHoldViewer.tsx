@@ -3,6 +3,8 @@ import { View, StyleSheet, Dimensions, Modal, TouchableWithoutFeedback, Touchabl
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
+import { SvgXml } from 'react-native-svg';
+import { FACE_SVGS } from '../constants/Avatars';
 
 import { PinchZoomProvider, usePinchZoom } from '@/contexts/PinchZoomContext';
 
@@ -18,16 +20,23 @@ export const TapHoldContext = createContext<TapHoldContextType | undefined>(unde
 
 const ZoomableImageContent = React.memo(({ uri }: { uri: string }) => {
     const { ZoomableHeader } = usePinchZoom();
+    const isDefault = uri?.startsWith('default:');
 
     return (
         <ZoomableHeader style={{ flex: 1, width: '100%', height: '100%' }}>
-            <ExpoImage
-                source={uri}
-                cachePolicy="memory-disk"
-                style={styles.fullImage}
-                contentFit="cover"
-                transition={120}
-            />
+            {isDefault ? (
+                <View style={[styles.fullImage, { backgroundColor: '#F0EFE9', justifyContent: 'center', alignItems: 'center' }]}>
+                    <SvgXml xml={FACE_SVGS[parseInt(uri.split(':')[1], 10)]} width="100%" height="100%" />
+                </View>
+            ) : (
+                <ExpoImage
+                    source={uri}
+                    cachePolicy="memory-disk"
+                    style={styles.fullImage}
+                    contentFit="cover"
+                    transition={120}
+                />
+            )}
         </ZoomableHeader>
     );
 });
@@ -90,9 +99,24 @@ export const TapHoldProvider = ({ children }: { children: ReactNode }) => {
 
 // 2. SIMPLIFIED IMAGE COMPONENT (No gestures here anymore)
 export const TapHoldImage = ({ source, style }: { source: { uri: string }; style?: any }) => {
+    if (!source?.uri) return <View style={[style, { backgroundColor: '#F0EFE9' }]} />;
+
+    const isDefault = source.uri?.startsWith('default:');
+
     React.useEffect(() => {
-        ExpoImage.prefetch(source.uri, { cachePolicy: 'disk' }).catch(() => { });
-    }, [source.uri]);
+        if (!isDefault) {
+            ExpoImage.prefetch(source.uri, { cachePolicy: 'disk' }).catch(() => { });
+        }
+    }, [source.uri, isDefault]);
+
+    if (isDefault) {
+        const index = parseInt(source.uri.split(':')[1], 10);
+        return (
+            <View style={[style, { justifyContent: 'center', alignItems: 'center' }]}>
+                <SvgXml xml={FACE_SVGS[index]} width="100%" height="100%" />
+            </View>
+        );
+    }
 
     return <ExpoImage source={source.uri} cachePolicy="disk" style={style} contentFit="cover" />;
 };

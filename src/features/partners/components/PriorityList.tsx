@@ -68,6 +68,27 @@ const Z_INDEX = {
 
 const BLOB_PATH = 'M46.3,-76.3C59.5,-69.1,69.7,-56.3,77.3,-42.3C84.9,-28.3,89.9,-13.1,88.6,1.4C87.3,15.9,79.7,29.7,70.3,41.9C60.9,54.1,49.7,64.7,37.1,71.2C24.5,77.7,10.5,80.1,-2.9,78.8C-16.3,77.5,-29.1,72.5,-41.4,65.6C-53.7,58.7,-65.5,49.9,-74.1,38.6C-82.7,27.3,-88.1,13.5,-86.9,0.3C-85.7,-12.9,-77.9,-25.5,-68.2,-36.2C-58.5,-46.9,-46.9,-55.7,-34.5,-63.3C-22.1,-70.9,-8.9,-77.3,5.6,-78.7C20.1,-80.1,40.2,-76.5,46.3,-76.3Z';
 
+// ─── Birthday Utility ────────────────────────────────────────────────────────
+/** Returns true if the ISO date string (YYYY-MM-DD) matches today's month and day */
+const isBirthdayToday = (birthday?: string): boolean => {
+    if (!birthday) return false;
+    const today = new Date();
+    // Robust parsing: extract digits from the string (handles YYYY-MM-DD, MM-DD, and trailing times)
+    const digits = birthday.match(/\d+/g);
+    if (!digits || digits.length < 2) return false;
+
+    let month, day;
+    if (digits[0].length === 4) { // YYYY-MM-DD
+        month = parseInt(digits[1], 10);
+        day = parseInt(digits[2], 10);
+    } else { // MM-DD or DD-MM (assume month first)
+        month = parseInt(digits[0], 10);
+        day = parseInt(digits[1], 10);
+    }
+
+    return today.getMonth() + 1 === month && today.getDate() === day;
+};
+
 export interface PriorityListProps {
     priorities: PriorityUserWithPost[];
     onColorChange?: (color: string) => void;
@@ -242,7 +263,6 @@ const UnreadIndicator = React.memo(({ type, size, onPress }: { type: MediaType; 
 UnreadIndicator.displayName = 'UnreadIndicator';
 
 const SeenIndicator = React.memo(({ status, size, userName }: { status: string; size: number; userName: string }) => {
-    // -30 deg is top-right; buttonRadius 20 makes it sit nicely on the inner edge
     const position = useMemo(() => calculateOptionsButtonPosition(size, -30, 20), [size]);
     const isEmoji = status !== 'sent' && status !== 'seen';
 
@@ -257,6 +277,18 @@ const SeenIndicator = React.memo(({ status, size, userName }: { status: string; 
 });
 SeenIndicator.displayName = 'SeenIndicator';
 
+// ─── Birthday Indicator ───────────────────────────────────────────────────────
+// Positioned at bottom-right of the card circle (45°), avoids overlapping with unread/options
+const BirthdayIndicator = React.memo(({ size }: { size: number }) => {
+    const position = useMemo(() => calculateOptionsButtonPosition(size, 45, 22), [size]);
+    return (
+        <View style={[styles.birthdayBubble, position]} pointerEvents="none">
+            <Text style={styles.birthdayEmoji}>🎂</Text>
+        </View>
+    );
+});
+BirthdayIndicator.displayName = 'BirthdayIndicator';
+
 interface PriorityCardProps {
     item: any;
     isActive: boolean;
@@ -264,10 +296,11 @@ interface PriorityCardProps {
     unreadMedia: Message | null;
     sentStatus: { status: string; timestamp: string } | null;
     currentUserId: string | null;
+    isBirthday: boolean;
 }
 
 const PriorityCard = React.memo(
-    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId }: PriorityCardProps) => {
+    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId, isBirthday }: PriorityCardProps) => {
         const dominantColor = item.dominantColor || COLORS.primary;
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
@@ -283,6 +316,9 @@ const PriorityCard = React.memo(
         const recordingForThisCard = isGlobalRecording && activeSourceId === item.id;
 
         const [viewingMedia, setViewingMedia] = useState(false);
+
+        // When it's their birthday, show "Happy Birthday!" on the curved text arc
+        const curvedLabel = isBirthday ? `Happy Birthday ${item.name}!` : item.name;
 
         const handleSingleTap = useCallback(() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
@@ -378,7 +414,7 @@ const PriorityCard = React.memo(
             return (
                 <View style={styles.cardContainer}>
                     <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-                    <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
+                    <CurvedText text={curvedLabel} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
                     <View style={styles.imageWrapper}>
                         <Animated.View
                             style={[{
@@ -408,7 +444,8 @@ const PriorityCard = React.memo(
                 </GestureDetector>
 
                 <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-                <CurvedText text={item.name} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
+                {/* Birthday: curved text shows "Happy Birthday [Name]!" instead of just the name */}
+                <CurvedText text={curvedLabel} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
 
                 <View style={styles.imageWrapper}>
                     <GestureDetector gesture={composedGesture}>
@@ -449,6 +486,10 @@ const PriorityCard = React.memo(
                             }}
                         />
                     )}
+                    {/* Birthday cake bubble — shown when active, even if unread media exists (now that positions don't overlap) */}
+                    {!recordingForThisCard && isBirthday && isActive && (
+                        <BirthdayIndicator size={LAYOUT.IMAGE_SIZE} />
+                    )}
                     {(() => {
                         if (recordingForThisCard || unreadMedia || !sentStatus || sentStatus.status === 'none' || !isActive) return null;
 
@@ -480,7 +521,8 @@ const PriorityCard = React.memo(
         prev.item.profilePicture === next.item.profilePicture &&
         prev.unreadMedia?.id === next.unreadMedia?.id &&
         prev.sentStatus?.status === next.sentStatus?.status &&
-        prev.sentStatus?.timestamp === next.sentStatus?.timestamp
+        prev.sentStatus?.timestamp === next.sentStatus?.timestamp &&
+        prev.isBirthday === next.isBirthday
 );
 PriorityCard.displayName = 'PriorityCard';
 
@@ -610,9 +652,9 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     }, [selectedUser, router]);
 
     const renderItem = useCallback(({ item, index }: any) => {
-        // unreadMessages[item.id] is a single Message object (or undefined) — pass directly
         const unreadMedia = unreadMessages[item.id] ?? null;
         const sentStatus = myLastSentStatus[item.id] ?? null;
+        const isBirthday = isBirthdayToday(item.birthday);
         return (
             <PriorityCard
                 item={item}
@@ -621,6 +663,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
                 unreadMedia={unreadMedia}
                 sentStatus={sentStatus}
                 currentUserId={currentUserId}
+                isBirthday={isBirthday}
             />
         );
     }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId]);
@@ -786,6 +829,25 @@ const styles = StyleSheet.create({
         textTransform: 'none',
         letterSpacing: 0,
         textShadowColor: 'transparent',
+    },
+    // ─── Birthday styles ───────────────────────────────────────────────────────
+    birthdayBubble: {
+        position: 'absolute',
+        zIndex: Z_INDEX.INDICATOR,
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(255, 255, 255, 0.92)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 3,
+        elevation: 4,
+    },
+    birthdayEmoji: {
+        fontSize: 20,
     },
 });
 

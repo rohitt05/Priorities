@@ -112,39 +112,39 @@ export async function uploadProfilePicture(
             throw new Error('No active auth session. Cannot upload profile picture.');
         }
 
-        // Timestamp in filename = always unique = always fresh INSERT
-        const path = `${realAuthId}/avatar_${Date.now()}.jpg`;
+        // 1. Get current profile to check for old image
+        const { data: currentProfile } = await supabase
+            .from('profiles')
+            .select('profile_picture')
+            .eq('id', realAuthId)
+            .single();
 
-        console.log('[uploadProfilePicture] Fetching file...');
+        const oldPicUrl = currentProfile?.profile_picture;
+
+        // 2. Upload new image
+        const path = `${realAuthId}/avatar_${Date.now()}.jpg`;
         const response = await fetch(localUri);
         const arrayBuffer = await response.arrayBuffer();
 
-        console.log('[uploadProfilePicture] Uploading...');
         const { error: uploadError } = await supabase.storage
             .from('profile-pictures')
-            .upload(path, arrayBuffer, {
-                contentType: 'image/jpeg',
-                upsert: false,
-            });
+            .upload(path, arrayBuffer, { contentType: 'image/jpeg' });
 
-        if (uploadError) {
-            console.error('[uploadProfilePicture] Upload Error:', uploadError);
-            throw uploadError;
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('profile-pictures').getPublicUrl(path);
+        const newUrl = `${data.publicUrl}?t=${Date.now()}`;
+
+        // 3. Update the profile
+        await updateProfile(realAuthId, { profile_picture: newUrl });
+
+        // 4. Cleanup old custom image
+        if (oldPicUrl?.includes(realAuthId) && oldPicUrl.includes('profile-pictures')) {
+            const oldPath = oldPicUrl.split('profile-pictures/')[1]?.split('?')[0];
+            if (oldPath) await supabase.storage.from('profile-pictures').remove([oldPath]);
         }
 
-        console.log('[uploadProfilePicture] Upload successful!');
-        const { data } = supabase.storage
-            .from('profile-pictures')
-            .getPublicUrl(path);
-
-        // Cache-bust so React Native re-fetches the new image immediately
-        const publicUrlWithCacheBust = `${data.publicUrl}?t=${Date.now()}`;
-        console.log('[uploadProfilePicture] Public URL:', publicUrlWithCacheBust);
-
-        await updateProfile(realAuthId, { profile_picture: publicUrlWithCacheBust });
-
-        console.log('[uploadProfilePicture] Profile updated successfully!');
-        return publicUrlWithCacheBust;
+        return newUrl;
     } catch (err) {
         console.error('[uploadProfilePicture] Exception:', err);
         throw err;

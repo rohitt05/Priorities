@@ -6,14 +6,14 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-import { signUp } from '@/services/authService';
+import { signUp, isEmailAvailable } from '@/services/authService';
 import { isHandleAvailable } from '@/services/profileService';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
 import { Ionicons } from '@expo/vector-icons';
-import DatePicker from 'react-native-date-picker';
+import { DatePickerBottomSheet } from '@/components/ui/DatePickerBottomSheet';
 import VerifyEmailScreen from './VerifyEmailScreen';
 import AuthCanvas from '@/features/film-my-day/components/canvas/AuthCanvas';
 import {
@@ -202,6 +202,10 @@ export default function SignUpScreen() {
     const [suggestOn, setSuggestOn] = useState(false);
     const [suggestions, setSuggestions] = useState<string[]>([]);
 
+    // ── Email availability ─────────────────────────────────────────────
+    const [emailStatus, setEmailStatus] = useState<AvailStatus>('idle');
+    const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const inputRef = useRef<TextInput>(null);
@@ -236,6 +240,33 @@ export default function SignUpScreen() {
         setHandle(sanitized);
         setHandleStatus('idle');
         checkHandleAvailability(sanitized);
+    };
+
+    // ── Debounced email availability check ────────────────────────────
+    const checkEmailAvailability = useCallback((value: string) => {
+        if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current);
+        const trimmed = value.trim();
+        if (!trimmed || !trimmed.includes('@')) { setEmailStatus('idle'); return; }
+        
+        setEmailStatus('checking');
+        emailDebounceRef.current = setTimeout(async () => {
+            try {
+                const available = await isEmailAvailable(trimmed);
+                setEmailStatus(available ? 'available' : 'taken');
+            } catch {
+                setEmailStatus('idle');
+            }
+        }, 600);
+    }, []);
+
+    const onEmailChange = (val: string) => {
+        setEmail(val);
+        setEmailStatus('idle');
+        
+        // Quick basic format check to avoid spamming the backend
+        if (val.includes('@') && val.length > 4) {
+            checkEmailAvailability(val);
+        }
     };
 
     // ── Toggle suggestions ─────────────────────────────────────────────
@@ -325,8 +356,23 @@ export default function SignUpScreen() {
                 }
             }
         }
-        if (currentStepObj.key === 'email' && (!email || !email.includes('@'))) {
-            return Alert.alert('Invalid', 'Valid email required');
+        if (currentStepObj.key === 'email') {
+            if (!email || !email.includes('@')) {
+                return Alert.alert('Invalid', 'Valid email required');
+            }
+            if (emailStatus === 'taken') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                return Alert.alert('Taken', 'This email is already registered');
+            }
+            if (emailStatus === 'checking') {
+                setLoading(true);
+                const available = await isEmailAvailable(email).catch(() => false);
+                setLoading(false);
+                if (!available) {
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    return Alert.alert('Taken', 'This email is already registered');
+                }
+            }
         }
         if (currentStepObj.key === 'password') {
             if (!pwRules.length || !pwRules.number || !pwRules.special) {
@@ -371,7 +417,10 @@ export default function SignUpScreen() {
             const colorIndex = (totalUsers * skipCount) % PALETTE.length;
             const deterministicColor = PALETTE[colorIndex];
 
-            const signupData = await signUp(email, password, name, handle, deterministicColor);
+            // Pick a random avatar from the 7 available (0-6)
+            const defaultAvatar = `default:${Math.floor(Math.random() * 7)}`;
+
+            const signupData = await signUp(email, password, name, handle, deterministicColor, gender as string, defaultAvatar);
             const user = signupData.user;
             const session = signupData.session;
 
@@ -399,6 +448,7 @@ export default function SignUpScreen() {
                 const profileUpdates: Record<string, any> = {
                     name,
                     dominant_color: deterministicColor,
+                    profile_picture: defaultAvatar,
                 };
                 if (birthdayDate) profileUpdates.birthday = formatDateForDB(birthdayDate);
                 if (gender) profileUpdates.gender = gender;
@@ -430,18 +480,19 @@ export default function SignUpScreen() {
     }
 
     // ── Handle availability icon ───────────────────────────────────────
-    const renderHandleStatus = () => {
-        if (handleStatus === 'idle' || !handle.trim()) return null;
-        if (handleStatus === 'checking') {
-            return <ActivityIndicator size="small" color={COLORS.primary} style={{ marginLeft: 8 }} />;
-        }
+    const renderStatusIcon = (status: AvailStatus, value: string) => {
         return (
-            <Ionicons
-                name={handleStatus === 'available' ? 'checkmark-circle' : 'close-circle'}
-                size={20}
-                color={handleStatus === 'available' ? '#4CAF50' : '#E53935'}
-                style={{ marginLeft: 8 }}
-            />
+            <View style={styles.statusIconContainer}>
+                {status === 'checking' ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (status !== 'idle' && value.trim()) ? (
+                    <Ionicons
+                        name={status === 'available' ? 'checkmark-circle' : 'close-circle'}
+                        size={20}
+                        color={status === 'available' ? '#4CAF50' : '#E53935'}
+                    />
+                ) : null}
+            </View>
         );
     };
 
@@ -476,7 +527,7 @@ export default function SignUpScreen() {
                                 autoCorrect={false}
                                 autoFocus
                             />
-                            {renderHandleStatus()}
+                            {renderStatusIcon(handleStatus, handle)}
                         </View>
                         {/* Shared underline for the row */}
                         <View style={styles.handleUnderline} />
@@ -521,17 +572,23 @@ export default function SignUpScreen() {
 
             case 'email':
                 return (
-                    <TextInput
-                        ref={inputRef}
-                        style={styles.input}
-                        placeholder="john@example.com"
-                        placeholderTextColor="rgba(44,39,32,0.4)"
-                        value={email}
-                        onChangeText={setEmail}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        autoFocus
-                    />
+                    <View>
+                        <View style={styles.handleRow}>
+                            <TextInput
+                                ref={inputRef}
+                                style={[styles.input, { flex: 1, borderBottomWidth: 0 }]}
+                                placeholder="john@example.com"
+                                placeholderTextColor="rgba(44,39,32,0.4)"
+                                value={email}
+                                onChangeText={onEmailChange}
+                                autoCapitalize="none"
+                                keyboardType="email-address"
+                                autoFocus
+                            />
+                            {renderStatusIcon(emailStatus, email)}
+                        </View>
+                        <View style={styles.handleUnderline} />
+                    </View>
                 );
 
             case 'password':
@@ -589,22 +646,18 @@ export default function SignUpScreen() {
                             </Text>
                             <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
                         </TouchableOpacity>
-                        <DatePicker
-                            modal
-                            open={showDatePicker}
+                        <DatePickerBottomSheet
+                            isVisible={showDatePicker}
+                            onClose={() => setShowDatePicker(false)}
                             date={birthdayDate ?? maxBirthdayDate}
-                            mode="date"
+                            onDateChange={setBirthdayDate}
                             maximumDate={maxBirthdayDate}
                             minimumDate={new Date(1900, 0, 1)}
-                            title="Select your birthday"
-                            confirmText="Confirm"
-                            cancelText="Cancel"
                             onConfirm={(date) => {
                                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                 setBirthdayDate(date);
                                 setShowDatePicker(false);
                             }}
-                            onCancel={() => setShowDatePicker(false)}
                         />
                     </View>
                 );
@@ -852,6 +905,14 @@ const styles = StyleSheet.create({
     handleRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    statusIconContainer: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
     },
     handleUnderline: {
         height: 1.5,

@@ -36,6 +36,7 @@ import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyP
 import { getCurrentUserId } from '@/services/authService';
 import ReceivedPriorityRequests from './ReceivedPriorityRequests';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 
 
@@ -106,7 +107,7 @@ const SearchResultCard = ({
                 style={styles.userInfoContainer}
                 onPress={() => onPress(item.unique_user_id)}
             >
-                <Image source={{ uri: item.profile_picture }} style={styles.resultAvatar} />
+                <UserAvatar uri={item.profile_picture} style={styles.resultAvatar} />
                 <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.name}</Text>
                     <Text style={styles.userId}>@{item.unique_user_id}</Text>

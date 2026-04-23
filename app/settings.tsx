@@ -101,7 +101,6 @@ function SettingsScreenContent() {
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -184,50 +183,6 @@ function SettingsScreenContent() {
         }
     };
 
-    const handleDeleteAccount = () => {
-        Alert.alert(
-            'delete account',
-            'this is permanent. your profile, films and priorities will be deleted forever. memories you shared with others will remain in their timelines.',
-            [
-                {
-                    text: 'cancel',
-                    style: 'cancel',
-                },
-                {
-                    text: 'delete permanently',
-                    style: 'destructive',
-                    onPress: () => {
-                        Alert.alert(
-                            'are you sure?',
-                            'this cannot be undone.',
-                            [
-                                { text: 'go back', style: 'cancel' },
-                                {
-                                    text: 'yes, delete my account',
-                                    style: 'destructive',
-                                    onPress: async () => {
-                                        setIsDeleting(true);
-                                        try {
-                                            await deleteAccount();
-                                            // auth state listener in root _layout.tsx
-                                            // fires automatically when session is cleared
-                                            // and navigates user to auth screen
-                                        } catch (e: any) {
-                                            setIsDeleting(false);
-                                            Alert.alert(
-                                                'something went wrong',
-                                                e?.message || 'please try again or contact support.'
-                                            );
-                                        }
-                                    },
-                                },
-                            ]
-                        );
-                    },
-                },
-            ]
-        );
-    };
 
     const HEADER_HEIGHT = 60 + insets.top;
 
@@ -318,18 +273,6 @@ function SettingsScreenContent() {
                     <Text style={styles.dangerText}>sign out</Text>
                 </TouchableOpacity>
 
-                {/* DELETE ACCOUNT */}
-                <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[styles.dangerButton, styles.deleteButton]}
-                    onPress={handleDeleteAccount}
-                    disabled={isDeleting}
-                >
-                    <BlurView intensity={20} tint="light" style={StyleSheet.absoluteFill} />
-                    <Text style={[styles.dangerText, styles.deleteText]}>
-                        {isDeleting ? 'deleting…' : 'delete account'}
-                    </Text>
-                </TouchableOpacity>
 
                 <Text style={styles.footer}>priorities</Text>
             </ScrollView>

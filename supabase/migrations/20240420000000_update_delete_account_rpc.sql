@@ -65,6 +65,9 @@ BEGIN
     -- Finally delete films (since they have many dependencies like likes/views handled above)
     DELETE FROM public.films WHERE creator_id = p_user_id;
 
+    -- 3.5 Delete the profile itself
+    DELETE FROM public.profiles WHERE id = p_user_id;
+
     -- 4. Construct the return JSONB for storage cleanup
     result := jsonb_build_object(
         'films', COALESCE(v_films, '{}'::TEXT[]),

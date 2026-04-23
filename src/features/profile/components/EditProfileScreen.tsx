@@ -24,6 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import DatePicker from 'react-native-date-picker';
 import { updateProfile, uploadProfilePicture } from '@/services/profileService';
 import { getAvatarSource } from '@/utils/getMediaSource';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const { height } = Dimensions.get('window');
 
@@ -234,17 +235,11 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
 
                     {/* --- HERO IMAGE (70%) --- */}
                     <View style={{ flex: HERO_FLEX, position: 'relative' }}>
-                        {profileImage ? (
-                            <Image
-                                source={getAvatarSource(profileImage)}
-                                style={StyleSheet.absoluteFillObject}
-                                resizeMode="cover"
-                            />
-                        ) : (
-                            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#E5E5EA', alignItems: 'center', justifyContent: 'center' }]}>
-                                <Feather name="image" size={48} color="#C7C7CC" />
-                            </View>
-                        )}
+                        <UserAvatar
+                            uri={profileImage}
+                            style={StyleSheet.absoluteFillObject}
+                            resizeMode="cover"
+                        />
 
                         {/* Header Actions */}
                         <View style={styles.headerOverlay}>

@@ -2,11 +2,14 @@
 import { supabase } from '@/lib/supabase';
 import { Tables } from '@/types/database.types';
 
+
 export type PriorityRow = Tables<'priorities'>;
 export type PriorityRequestRow = Tables<'priority_requests'>;
 
+
 // 24hr window in milliseconds
 const TEMP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 
 // ─── GET MY PRIORITY LIST ──────────────────────────────────
 export async function getMyPriorities(userId: string) {
@@ -25,13 +28,16 @@ export async function getMyPriorities(userId: string) {
                 name,
                 profile_picture,
                 dominant_color,
-                partner_id
+                partner_id,
+                birthday
             )
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: true });
 
+
     if (error) throw error;
+
 
     return (data ?? [])
         .filter((row) => row.profiles != null)
@@ -45,12 +51,14 @@ export async function getMyPriorities(userId: string) {
                 dominantColor: p.dominant_color,
                 relationship: (row as any).relationship ?? null,
                 partnerId: p.partner_id ?? null,
+                birthday: p.birthday ?? null,
                 rank: row.rank,
                 pinned: row.is_pinned,
                 priorityRowId: row.id,
             };
         });
 }
+
 
 // ─── SEND PRIORITY REQUEST ─────────────────────────────────
 export async function sendPriorityRequest(
@@ -68,11 +76,13 @@ export async function sendPriorityRequest(
         .select()
         .single();
 
+
     // 23505 = unique_violation — (sender_id, receiver_id) unique index
     // means a request already exists; treat as success
     if (error && error.code !== '23505') throw error;
     return data as PriorityRequestRow;
 }
+
 
 // ─── HAS PENDING REQUEST ───────────────────────────────────
 // Returns true if authId already has a pending outgoing request to targetId
@@ -87,10 +97,12 @@ export async function hasPendingRequest(
         .eq('receiver_id', receiverId)
         .maybeSingle();
 
+
     if (error) throw error;
     // Row exists with any status (pending/declined) — surface it to caller
     return data !== null && data.status === 'pending';
 }
+
 
 // ─── GET PENDING REQUESTS (for B's notification screen) ───
 export async function getIncomingRequests(userId: string) {
@@ -113,10 +125,13 @@ export async function getIncomingRequests(userId: string) {
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
 
+
     if (error) throw error;
+
 
     return (data ?? []).filter((req) => req.profiles != null);
 }
+
 
 // ─── GET OUTGOING PENDING REQUESTS (for A's temp carousel) ─
 export async function getOutgoingPendingRequests(userId: string) {
@@ -138,7 +153,9 @@ export async function getOutgoingPendingRequests(userId: string) {
         .eq('sender_id', userId)
         .eq('status', 'pending');
 
+
     if (error) throw error;
+
 
     const all = data ?? [];
     return all
@@ -160,6 +177,7 @@ export async function getOutgoingPendingRequests(userId: string) {
         });
 }
 
+
 // ─── ACCEPT REQUEST ────────────────────────────────────────
 export async function acceptPriorityRequest(
     requestId: string,
@@ -176,6 +194,7 @@ export async function acceptPriorityRequest(
     if (error) throw error;
 }
 
+
 // ─── DECLINE REQUEST ───────────────────────────────────────
 export async function declinePriorityRequest(requestId: string) {
     const { error } = await supabase
@@ -184,6 +203,7 @@ export async function declinePriorityRequest(requestId: string) {
         .eq('id', requestId);
     if (error) throw error;
 }
+
 
 // ─── UPDATE RANK ───────────────────────────────────────────
 export async function bumpRank(userId: string, priorityUserId: string) {
@@ -195,7 +215,9 @@ export async function bumpRank(userId: string, priorityUserId: string) {
         .single();
     if (fetchError) throw fetchError;
 
+
     const newRank = Math.max(1, (data.rank ?? 9) - 1);
+
 
     const { error: updateError } = await supabase
         .from('priorities')
@@ -203,6 +225,7 @@ export async function bumpRank(userId: string, priorityUserId: string) {
         .eq('id', data.id);
     if (updateError) throw updateError;
 }
+
 
 // ─── PIN / UNPIN ────────────────────────────────────────────
 export async function setPinned(userId: string, priorityUserId: string | null) {
@@ -212,7 +235,9 @@ export async function setPinned(userId: string, priorityUserId: string | null) {
         .eq('user_id', userId);
     if (clearError) throw clearError;
 
+
     if (!priorityUserId) return;
+
 
     const { error: pinError } = await supabase
         .from('priorities')
@@ -221,6 +246,7 @@ export async function setPinned(userId: string, priorityUserId: string | null) {
         .eq('priority_user_id', priorityUserId);
     if (pinError) throw pinError;
 }
+
 
 // ─── REMOVE PRIORITY (UNFRIEND) ────────────────────────────
 export async function removePriority(userId: string, priorityUserId: string) {
@@ -231,6 +257,7 @@ export async function removePriority(userId: string, priorityUserId: string) {
     if (error) throw error;
 }
 
+
 // ─── BLOCK USER ────────────────────────────────────────────
 export async function blockUser(blockerId: string, blockedId: string) {
     const { error } = await (supabase.rpc as any)('block_user', {
@@ -239,6 +266,7 @@ export async function blockUser(blockerId: string, blockedId: string) {
     });
     if (error) throw error;
 }
+
 
 // ─── CHECK MUTUAL PRIORITY ─────────────────────────────────
 export async function areMutualPriorities(

@@ -25,7 +25,8 @@ import * as SMS from 'expo-sms';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '@/types/userTypes';
 import { updateProfile } from '@/services/profileService';
-import { verifyCurrentPassword, changePassword } from '@/services/authService';
+import { verifyCurrentPassword, changePassword, deleteAccount } from '@/services/authService';
+import { CustomAlert } from '@/components/ui/CustomAlert';
 
 
 const { height } = Dimensions.get('window');
@@ -81,6 +82,8 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
     const [isSyncing, setIsSyncing] = useState(false);
     const [visibleCount, setVisibleCount] = useState(50);
+    const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const panY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
     const isScrolling = useRef(false);
@@ -405,6 +408,19 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
     };
 
 
+    const handleConfirmDelete = async () => {
+        setIsDeleteModalVisible(false);
+        setIsDeleting(true);
+        try {
+            await deleteAccount();
+            // Auth listener will handle redirection
+        } catch (err: any) {
+            setIsDeleting(false);
+            Alert.alert('error', err.message || 'failed to delete account. try again.');
+        }
+    };
+
+
     const SecurityOption = ({
         icon,
         label,
@@ -653,6 +669,23 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                                         <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
                                     </TouchableOpacity>
                                 </Link>
+
+                                <View style={styles.divider} />
+                                
+                                <TouchableOpacity 
+                                    style={styles.optionRow} 
+                                    onPress={() => setIsDeleteModalVisible(true)}
+                                    disabled={isDeleting}
+                                >
+                                    <View style={styles.optionLeft}>
+                                        <View style={[styles.iconContainer, { backgroundColor: 'rgba(180, 30, 30, 0.05)' }]}>
+                                            <Ionicons name="trash-outline" size={20} color="#B41E1E" />
+                                        </View>
+                                        <Text style={[styles.optionLabel, { color: '#B41E1E' }]}>
+                                            {isDeleting ? 'deleting account...' : 'delete account'}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
                             </View>
                             <View style={styles.infoGroup}>
                                 <Text style={styles.infoText}>
@@ -751,6 +784,17 @@ const SecurityBottomSheet = ({ isVisible, onClose, user }: SecurityBottomSheetPr
                     </ScrollView>
                 </Animated.View>
             </View>
+
+            <CustomAlert
+                visible={isDeleteModalVisible}
+                title="delete account?"
+                description="this is permanent. your profile, films and priorities will be deleted forever. memories you shared with others will remain in their timelines."
+                cancelText="go back"
+                confirmText="delete permanently"
+                isDestructive={true}
+                onCancel={() => setIsDeleteModalVisible(false)}
+                onConfirm={handleConfirmDelete}
+            />
         </Modal>
     );
 };

@@ -14,6 +14,7 @@ import { COLORS, FONTS } from '@/theme/theme';
 import { acceptPriorityRequest, declinePriorityRequest } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 
 
@@ -83,7 +84,7 @@ const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProp
     return (
         <Animated.View style={[styles.itemCard, animatedStyle]}>
             <View style={styles.avatarContainer}>
-                <Image source={{ uri: user.profile_picture }} style={styles.avatar} />
+                <UserAvatar uri={user.profile_picture} style={styles.avatar} />
             </View>
             <View style={styles.textContent}>
                 <Text style={styles.nameText}>{user.name}</Text>
