@@ -15,7 +15,8 @@ import Animated, {
     interpolate
 } from 'react-native-reanimated';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { hapticManager } from '@/hooks/useHapticFeedback';
 import {
     LiveKitRoom,
     useTracks,
@@ -67,7 +68,7 @@ export default function OutgoingCallScreen() {
 
         // Haptic ringing feedback loop
         const hapticInterval = setInterval(() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            hapticManager.impact(Haptics.ImpactFeedbackStyle.Light);
         }, 1500);
 
         const channel = supabase

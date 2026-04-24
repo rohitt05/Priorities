@@ -1,6 +1,6 @@
 import { useSharedValue, withSpring, withTiming, runOnJS, interpolate, Extrapolation, useAnimatedStyle } from 'react-native-reanimated';
 import { Gesture } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
+import { hapticManager } from '@/hooks/useHapticFeedback';
 import { TRIGGER_THRESHOLD, HEADER_HEIGHT } from '../utils/profileConstants';
 
 export const useProfilePull = (onTrigger: () => void) => {
@@ -8,7 +8,7 @@ export const useProfilePull = (onTrigger: () => void) => {
     const hasVibrated = useSharedValue(false);
 
     const triggerThresholdHaptic = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        hapticManager.impact();
     };
 
     const panGesture = Gesture.Pan()

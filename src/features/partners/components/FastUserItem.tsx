@@ -12,13 +12,13 @@ import Reanimated, {
     SharedValue,
     interpolate
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { hapticManager } from '@/hooks/useHapticFeedback';
 import { User } from '@/types/userTypes';
 import { FONTS } from '@/theme/theme'; // Ensure you have this
 
 const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
-    'worklet';
-    runOnJS(Haptics.impactAsync)(style);
+    hapticManager.impact(style);
 };
 
 interface FastUserItemProps {

@@ -16,7 +16,10 @@ import Animated, {
     SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { hapticManager } from '@/hooks/useHapticFeedback';
+
+const triggerLightImpact = () => hapticManager.impact(Haptics.ImpactFeedbackStyle.Light);
 import { COLORS, FONTS } from '@/theme/theme';
 import { Profile, PriorityUserWithPost } from '@/types/domain';
 
@@ -97,7 +100,7 @@ const FilmSwiperBlob: React.FC<FilmSwiperBlobProps> = ({ activeUser, onReveal, s
 
             if (event.translationY < SWIPE_THRESHOLD && !hasTriggered.value) {
                 hasTriggered.value = true;
-                runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+                runOnJS(triggerLightImpact)();
                 if (onReveal) runOnJS(onReveal)();
             }
         })

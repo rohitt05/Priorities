@@ -1,18 +1,40 @@
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { Platform } from 'react-native';
 
+const PUSH_PREF_KEY = 'pref_push_notifications_enabled';
+
+// ─── Notification handler — respects user preference ─────────────────────────
 Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
+    handleNotification: async () => {
+        try {
+            const pref = await AsyncStorage.getItem(PUSH_PREF_KEY);
+            // Default to true if no preference saved yet
+            const isEnabled = pref === null || pref === 'true';
+            return {
+                shouldShowAlert: isEnabled,
+                shouldPlaySound: isEnabled,
+                shouldSetBadge: false,
+                shouldShowBanner: isEnabled,
+                shouldShowList: isEnabled,
+            };
+        } catch {
+            // If AsyncStorage fails, default to showing notifications
+            return {
+                shouldShowAlert: true,
+                shouldPlaySound: true,
+                shouldSetBadge: false,
+                shouldShowBanner: true,
+                shouldShowList: true,
+            };
+        }
+    },
 });
+
+// ─── Register ─────────────────────────────────────────────────────────────────
 export async function registerForPushNotificationsAsync(userId: string) {
     console.log('[PushService] Starting push notification registration for user:', userId);
 
@@ -30,7 +52,7 @@ export async function registerForPushNotificationsAsync(userId: string) {
         console.log('[PushService] Is physical device. Checking permissions...');
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
-        
+
         if (existingStatus !== 'granted') {
             console.log('[PushService] Permissions not granted yet. Requesting...');
             const { status } = await Notifications.requestPermissionsAsync();
@@ -55,12 +77,9 @@ export async function registerForPushNotificationsAsync(userId: string) {
             }
 
             console.log('[PushService] Fetching Expo Push Token from server...');
-            const tokenData = await Notifications.getExpoPushTokenAsync({
-                projectId: projectId,
-            });
+            const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
             console.log('[PushService] Successfully got push token:', tokenData.data);
 
-            // Save the token to Supabase profiles table
             console.log('[PushService] Saving push token to Supabase...');
             const { error } = await supabase
                 .from('profiles')
@@ -77,5 +96,24 @@ export async function registerForPushNotificationsAsync(userId: string) {
         }
     } else {
         console.log('[PushService] Running on simulator/emulator. Push notifications require a physical device.');
+    }
+}
+
+// ─── Unregister — clears token from Supabase when user disables push ──────────
+export async function unregisterPushNotifications(userId: string) {
+    console.log('[PushService] Clearing push token for user:', userId);
+    try {
+        const { error } = await supabase
+            .from('profiles')
+            .update({ expo_push_token: null })
+            .eq('id', userId);
+
+        if (error) {
+            console.error('[PushService] Error clearing push token:', error);
+        } else {
+            console.log('[PushService] Push token cleared successfully.');
+        }
+    } catch (error) {
+        console.error('[PushService] CRITICAL Error clearing push token:', error);
     }
 }

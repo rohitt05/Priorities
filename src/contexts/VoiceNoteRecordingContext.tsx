@@ -16,7 +16,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only — calls go through hapticManager
+import { hapticManager } from '@/hooks/useHapticFeedback';
 import { Audio } from 'expo-av';
 import { FONTS } from '@/theme/theme';
 import { supabase } from '@/lib/supabase';
@@ -252,7 +253,7 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
             node.measureInWindow((x: number, y: number, width: number, height: number) => {
                 if (typeof x !== 'number' || typeof y !== 'number') return;
 
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
+                hapticManager.impact(Haptics.ImpactFeedbackStyle.Heavy);
                 setIsActive(true);
                 setActiveSourceId(params.sourceId);
                 setUri(params.uri);
@@ -275,9 +276,9 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
     }, [dragX]);
 
     const finish = useCallback((result: 'send' | 'delete' | 'cancel') => {
-        if (result === 'send') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-        else if (result === 'delete') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => { });
-        else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+        if (result === 'send') hapticManager.notification(Haptics.NotificationFeedbackType.Success);
+        else if (result === 'delete') hapticManager.notification(Haptics.NotificationFeedbackType.Error);
+        else hapticManager.impact(Haptics.ImpactFeedbackStyle.Light);
 
         stopTimer();
         stopPulse();

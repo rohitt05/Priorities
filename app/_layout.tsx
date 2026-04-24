@@ -43,7 +43,8 @@ import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { useIncomingCall } from '@/features/calls/useIncomingCall';
-import { registerForPushNotificationsAsync } from '@/services/pushNotificationService';
+import { registerForPushNotificationsAsync, unregisterPushNotifications } from '@/services/pushNotificationService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -61,18 +62,32 @@ export default function Layout() {
     });
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        const initSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
             setSession(session);
             setSessionLoaded(true);
             if (session?.user?.id) {
-                registerForPushNotificationsAsync(session.user.id);
+                const pushPref = await AsyncStorage.getItem('pref_push_notifications_enabled');
+                const isPushEnabled = pushPref === null || pushPref === 'true';
+                if (isPushEnabled) {
+                    registerForPushNotificationsAsync(session.user.id);
+                } else {
+                    unregisterPushNotifications(session.user.id);
+                }
             }
-        });
+        };
+        initSession();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             if (session?.user?.id) {
-                registerForPushNotificationsAsync(session.user.id);
+                const pushPref = await AsyncStorage.getItem('pref_push_notifications_enabled');
+                const isPushEnabled = pushPref === null || pushPref === 'true';
+                if (isPushEnabled) {
+                    registerForPushNotificationsAsync(session.user.id);
+                } else {
+                    unregisterPushNotifications(session.user.id);
+                }
             }
         });
 

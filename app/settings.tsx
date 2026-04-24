@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     StyleSheet,
@@ -26,6 +26,7 @@ import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
 import { signOut, deleteAccount } from '@/services/authService';
+import { registerForPushNotificationsAsync, unregisterPushNotifications } from '@/services/pushNotificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -95,12 +96,27 @@ function SettingsScreenContent() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
-    const { hapticsEnabled, setHapticsEnabled } = usePreferences();
-    const [pushEnabled, setPushEnabled] = useState(true);
+    const { hapticsEnabled, setHapticsEnabled, pushNotificationsEnabled, setPushNotificationsEnabled } = usePreferences();
     const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+    // Register or unregister push token whenever the preference changes
+    useEffect(() => {
+        const handlePushToggle = async () => {
+            const session = await supabase.auth.getSession();
+            const userId = session.data.session?.user?.id;
+            if (!userId) return;
+
+            if (pushNotificationsEnabled) {
+                registerForPushNotificationsAsync(userId);
+            } else {
+                unregisterPushNotifications(userId);
+            }
+        };
+        handlePushToggle();
+    }, [pushNotificationsEnabled]);
 
     useEffect(() => {
         const fetchUser = async () => {
@@ -218,7 +234,7 @@ function SettingsScreenContent() {
                     <SettingsRow
                         icon="notifications-outline"
                         label="push notifications"
-                        toggle={{ value: pushEnabled, onValueChange: setPushEnabled }}
+                        toggle={{ value: pushNotificationsEnabled, onValueChange: setPushNotificationsEnabled }}
                         right="none"
                     />
                     <View style={styles.divider} />

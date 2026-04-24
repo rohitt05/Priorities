@@ -25,7 +25,8 @@ import Reanimated, {
     Easing,
     type SharedValue,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 
@@ -64,6 +65,7 @@ export default function FloatingPartnerIcon({
 }: FloatingPartnerIconProps) {
     const router = useRouter();
     const translateY = useSharedValue(0);
+    const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
     const [showRemovalMenu, setShowRemovalMenu] = React.useState(false);
 
     useEffect(() => {
@@ -94,7 +96,7 @@ export default function FloatingPartnerIcon({
     const handlePress = () => {
         // Only navigate if this is the owner viewing their own profile
         if (!isOwner) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         router.push({
             pathname: '/profile',
             params: { userId: partnerUser.uniqueUserId },
@@ -104,7 +106,7 @@ export default function FloatingPartnerIcon({
     const handleLongPress = () => {
         // Only allow removal if this is the owner
         if (!isOwner) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         setShowRemovalMenu(true);
     };
 
@@ -182,7 +184,7 @@ export default function FloatingPartnerIcon({
                                         style={styles.menuItem}
                                         onPress={() => {
                                             setShowRemovalMenu(false);
-                                            Haptics.notificationAsync(
+                                            triggerNotificationHaptic(
                                                 Haptics.NotificationFeedbackType.Success
                                             );
                                             onRemove?.();

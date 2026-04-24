@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { supabase } from '@/lib/supabase';
 import { COLORS, FONTS, FONT_SIZES, SPACING } from '@/theme/theme';
 import AuthCanvas from '@/features/film-my-day/components/canvas/AuthCanvas';
@@ -33,14 +34,16 @@ interface VerifyEmailScreenProps {
 
 const VerifyEmailScreen: React.FC<VerifyEmailScreenProps> = ({ email, onSignInPress }) => {
 
+    const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
+
     const handleResend = async () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
         try {
             const { error } = await supabase.auth.resend({ type: 'signup', email });
             if (error) {
                 Alert.alert('Could not resend', error.message);
             } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
                 Alert.alert('Sent!', 'Verification email resent.');
             }
         } catch (err: any) {

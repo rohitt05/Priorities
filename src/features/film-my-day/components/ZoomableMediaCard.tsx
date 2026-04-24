@@ -8,7 +8,10 @@ import Animated, {
     runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { hapticManager } from '@/hooks/useHapticFeedback';
+
+const triggerImpact = (style: Haptics.ImpactFeedbackStyle) => hapticManager.impact(style);
 
 interface ZoomableMediaCardProps {
     children: React.ReactNode;
@@ -55,7 +58,7 @@ const ZoomableMediaCard: React.FC<ZoomableMediaCardProps> = ({
     const longPressGesture = Gesture.LongPress()
         .minDuration(300)
         .onStart(() => {
-            runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+            runOnJS(triggerImpact)(Haptics.ImpactFeedbackStyle.Medium);
 
             // 1. Calculate the target scale (95% width)
             const modalScale = (SW * 0.95) / width;

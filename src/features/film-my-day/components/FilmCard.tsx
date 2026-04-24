@@ -12,7 +12,10 @@ import { Film as UserFilm } from '@/types/domain';
 import { FONTS } from '@/theme/theme';
 import { formatRelativeTime } from '../utils/dateUtils';
 import FilmMedia from './FilmMedia';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { hapticManager } from '@/hooks/useHapticFeedback';
+
+const triggerImpact = (style: Haptics.ImpactFeedbackStyle) => hapticManager.impact(style);
 
 const { width: SW } = Dimensions.get('window');
 
@@ -53,7 +56,7 @@ const FilmCardBase: React.FC<FilmCardProps> = ({
         .maxDistance(8)
         .onBegin(() => {
             pressScale.value = withSpring(0.93, { damping: 15, stiffness: 400 });
-            runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
+            runOnJS(triggerImpact)(Haptics.ImpactFeedbackStyle.Medium);
         })
         .onFinalize((_, success) => {
             pressScale.value = withSpring(1, { damping: 12, stiffness: 300 });

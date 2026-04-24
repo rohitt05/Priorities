@@ -8,7 +8,8 @@ import {
     Animated as RNAnimated,
     View,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { getIncomingPartnerRequests } from '@/services/partnerService';
@@ -25,6 +26,7 @@ export const PartnerSection: React.FC<PartnerSectionProps> = ({
     onAddPartner,
 }) => {
     const [hasPendingRequest, setHasPendingRequest] = useState(false);
+    const { triggerSelectionHaptic } = useHapticFeedback();
 
     // Poll for incoming requests whenever this capsule is visible
     useEffect(() => {
@@ -51,7 +53,7 @@ export const PartnerSection: React.FC<PartnerSectionProps> = ({
             activeOpacity={0.85}
             style={[styles.addPartnerCapsule, { backgroundColor: animatedCapsuleColor }]}
             onPress={() => {
-                Haptics.selectionAsync();
+                triggerSelectionHaptic();
                 onAddPartner();
             }}
         >

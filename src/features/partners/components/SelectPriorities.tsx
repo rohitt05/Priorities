@@ -16,7 +16,8 @@ import { useBackground } from '@/contexts/BackgroundContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import users from '@/data/users.json';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { useRouter } from 'expo-router';
 import Animated, {
     useSharedValue,
@@ -205,6 +206,7 @@ const SelectPriorities: React.FC<SelectPrioritiesProps> = ({
 }) => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { triggerHaptic, triggerNotificationHaptic, triggerSelectionHaptic } = useHapticFeedback();
 
     // State
     const [selected, setSelected] = useState<string[]>([]);
@@ -253,7 +255,7 @@ const SelectPriorities: React.FC<SelectPrioritiesProps> = ({
     // --- CALLBACKS ---
 
     const toggle = useCallback((userId: string) => {
-        Haptics.selectionAsync();
+        triggerSelectionHaptic();
         setSelected((prev) => {
             const isSelected = prev.includes(userId);
             return isSelected ? prev.filter((x) => x !== userId) : [...prev, userId];
@@ -263,7 +265,7 @@ const SelectPriorities: React.FC<SelectPrioritiesProps> = ({
     const handleSelectAll = useCallback(() => {
         const allUserIds = users.map(u => u.id);
         const areAllSelected = selected.length === users.length;
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
         if (areAllSelected) {
             setSelected([]);
         } else {
@@ -272,7 +274,7 @@ const SelectPriorities: React.FC<SelectPrioritiesProps> = ({
     }, [selected.length]);
 
     const handleSend = () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
         if (onSent) {
             onSent(selected);
         } else {

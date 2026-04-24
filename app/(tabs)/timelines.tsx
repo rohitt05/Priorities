@@ -19,7 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
 import { User } from '@/types/domain';
 import { FONTS } from '@/theme/theme';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -81,6 +82,7 @@ const TimelineItem = React.memo(({
 }) => {
     const scale = useSharedValue(1);
     const bubbleOpacity = useSharedValue(0);
+    const { triggerHaptic } = useHapticFeedback();
 
     const rx = w / 2, ry = h / 2, cx = w / 2, cy = h / 2;
     const randomVal = hashToUnit(seedKey + ':angle');
@@ -102,7 +104,7 @@ const TimelineItem = React.memo(({
         bubbleOpacity.value = withTiming(0, { duration: 150 });
     };
     const handleLongPress = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         bubbleOpacity.value = withTiming(1, { duration: 200 });
     };
 

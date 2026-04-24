@@ -29,7 +29,8 @@ import Svg, { Path, Text as SvgText, TextPath, Defs } from 'react-native-svg';
 import { Feather, MaterialCommunityIcons, Entypo, Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Profile, PriorityUserWithPost, Message, MediaType } from '@/types/domain';
@@ -304,6 +305,7 @@ const PriorityCard = React.memo(
         const dominantColor = item.dominantColor || COLORS.primary;
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
+        const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
         const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800];
 
         const startCallVibration = () => { Vibration.vibrate(VIBRATION_PATTERN, true); };
@@ -321,7 +323,7 @@ const PriorityCard = React.memo(
         const curvedLabel = isBirthday ? `Happy Birthday ${item.name}!` : item.name;
 
         const handleSingleTap = useCallback(() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+            triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
             router.push({
                 pathname: '/FilmMyDay' as any,
                 params: {
@@ -332,7 +334,7 @@ const PriorityCard = React.memo(
         }, [item.id, item.name, router]);
 
         const handleDoubleTap = useCallback(() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
+            triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
             tapHoldContext?.showImage(item.profilePicture);
         }, [item.profilePicture, tapHoldContext]);
 
@@ -346,7 +348,7 @@ const PriorityCard = React.memo(
 
         const handleVideoCall = useCallback(async () => {
             if (!currentUserId) return;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
             try {
                 const callInfo = await startCall(currentUserId, item.id, 'video');
                 router.push({
@@ -369,7 +371,7 @@ const PriorityCard = React.memo(
 
         const handleVoiceCall = useCallback(async () => {
             if (!currentUserId) return;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
             try {
                 const callInfo = await startCall(currentUserId, item.id, 'voice');
                 router.push({
@@ -481,7 +483,7 @@ const PriorityCard = React.memo(
                             type={unreadMedia.type}
                             size={LAYOUT.IMAGE_SIZE}
                             onPress={() => {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
                                 setViewingMedia(true);
                             }}
                         />
@@ -647,7 +649,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const handleMicPress = useCallback(() => {
         setIsPinSheetVisible(false);
         if (!selectedUser) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         router.push({ pathname: '/VoiceMessage' as any, params: { recipient: selectedUser.name } });
     }, [selectedUser, router]);
 
