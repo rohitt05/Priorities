@@ -20,7 +20,7 @@ interface MediaInboxContextType {
 
 const MediaInboxContext = createContext<MediaInboxContextType | undefined>(undefined);
 
-// ── Extracts bucket + path from a Supabase signed URL ────────────────────
+// ── Extracts bucket + path from a Supabase signed URL ──────────────────
 const extractStoragePath = (signedUrl: string): { bucket: string; path: string } | null => {
     try {
         const match = signedUrl.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+?)(\?|$)/);
@@ -58,7 +58,7 @@ const refreshSignedUrl = async (uri: string | null | undefined): Promise<string 
     return data.signedUrl;
 };
 
-// ── Pre-fetches images into RN image cache ────────────────────────────────
+// ── Pre-fetches images into RN image cache ────────────────────────────
 const prefetchIfImage = (uri: string | undefined, type: string) => {
     if (!uri) return;
     if (type === 'photo' || type === 'image') {
@@ -72,11 +72,11 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     const [myLastSentStatus, setMyLastSentStatus] = useState<Record<string, { status: string; timestamp: string }>>({});
     const [timelineEvents, setTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
 
-    // ── Keep a ref of sent message IDs → receiver, so realtime can map back ─
+    // ── Keep a ref of sent message IDs → receiver, so realtime can map back ──
     // { message_id: receiver_id }
     const sentMessageMapRef = useRef<Record<string, string>>({});
 
-    // ── Fetch all unread messages + refresh signed URLs ───────────────────
+    // ── Fetch all unread messages + refresh signed URLs ─────────────────────
     const loadUnreadMessages = useCallback(async () => {
         const { data: sessionData } = await supabase.auth.getSession();
         const myId = sessionData?.session?.user?.id;
@@ -147,9 +147,9 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     if (reactionRow) {
                         statusMap[row.receiver_id] = { status: reactionRow.emoji, timestamp: reactionRow.created_at };
                     } else {
-                        statusMap[row.receiver_id] = { 
-                            status: row.seen_at ? 'seen' : 'sent', 
-                            timestamp: row.seen_at || row.sent_at 
+                        statusMap[row.receiver_id] = {
+                            status: row.seen_at ? 'seen' : 'sent',
+                            timestamp: row.seen_at || row.sent_at
                         };
                     }
                 }
@@ -160,7 +160,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         }
     }, []);
 
-    // ── Realtime subscription ─────────────────────────────────────────────
+    // ── Realtime subscription ───────────────────────────────────────────────
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
     useEffect(() => {
@@ -174,7 +174,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
             channelRef.current = supabase
                 .channel('messages-inbox')
 
-                // ── New message received ──────────────────────────────────
+                // ── New message received ────────────────────────────────────
                 .on(
                     'postgres_changes',
                     {
@@ -216,7 +216,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     }
                 )
 
-                // ── My sent message was seen ──────────────────────────────
+                // ── My sent message was seen ────────────────────────────────
                 .on(
                     'postgres_changes',
                     {
@@ -239,7 +239,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     }
                 )
 
-                // ── Someone reacted to my message ─────────────────────────
+                // ── Someone reacted to my message ─────────────────────────────
                 // Listens to INSERT on message_reactions (no user filter needed —
                 // Supabase RLS ensures we only get rows where the message belongs to us)
                 .on(
@@ -262,7 +262,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     }
                 )
 
-                // ── Someone changed their reaction (upsert triggers UPDATE) ─
+                // ── Someone changed their reaction (upsert triggers UPDATE) ──────────
                 .on(
                     'postgres_changes',
                     {
@@ -295,7 +295,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [loadUnreadMessages]);
 
-    // ── Add timeline event ────────────────────────────────────────────────
+    // ── Add timeline event ─────────────────────────────────────────────────
     const addTimelineEvent = useCallback((event: TimelineEvent) => {
         setTimelineEvents(prev => ({
             ...prev,
@@ -304,19 +304,19 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     // ── Mark as seen ──────────────────────────────────────────────────────
-    // 3-step operation:
-    //   1. UPDATE messages.seen_at  → sender gets realtime "seen" signal
-    //   2. INSERT user_timelines (2 rows) → permanent history layer written
-    //      Row A: owner_id = myId,        other_user_id = senderId, sender = 'them'
-    //      Row B: owner_id = senderId,    other_user_id = myId,     sender = 'me'
-    //   3. addTimelineEvent (optimistic)  → UI updates instantly
+    // 2-step operation (was 3 steps before the DB trigger):
+    //   1. UPDATE messages.seen_at   → sender gets realtime "seen" signal
+    //   2. INSERT user_timelines Row A (my perspective: sender = 'them')
+    //      The DB trigger mirror_timeline_for_sender() automatically writes
+    //      Row B (sender's perspective: sender = 'me') — no client trust needed.
+    //   3. addTimelineEvent (optimistic) → UI updates instantly
     const markAsSeen = useCallback(async (userId: string) => {
         const message = unreadMessages[userId];
         if (!message) return;
 
         const seenAt = new Date().toISOString();
 
-        // ── Step 1: Mark message as seen in delivery layer ────────────────
+        // ── Step 1: Mark message as seen in delivery layer ────────────────────
         supabase
             .from('messages')
             .update({ seen_at: seenAt })
@@ -325,15 +325,17 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                 if (error) console.error('[MediaInbox] Failed to mark seen:', error);
             });
 
-        // ── Step 2: Get my auth UUID for user_timelines insert ────────────
+        // ── Step 2: Get my auth UUID for user_timelines insert ─────────────────
         const { data: sessionData } = await supabase.auth.getSession();
         const myId = sessionData?.session?.user?.id;
 
         if (myId) {
-            // message.senderId is the sender's auth UUID (profiles.id = auth.users.id)
-            const rows = [
-                {
-                    // Row A — my perspective: they sent it to me
+            // Insert Row A only — my perspective (receiver).
+            // The DB trigger mirror_timeline_for_sender() automatically writes
+            // Row B (sender's perspective) without any client involvement.
+            supabase
+                .from('user_timelines')
+                .insert({
                     owner_id: myId,
                     other_user_id: message.senderId,
                     source_id: message.id,
@@ -343,34 +345,15 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     thumb_uri: null,
                     duration_sec: message.durationSec ?? null,
                     sender: 'them' as const,
-                    text_content: message.textContent ?? null,
+                    text_content: (message as any).textContent ?? null,
                     seen_at: seenAt,
-                },
-                {
-                    // Row B — sender's perspective: they sent it to me (from their view)
-                    owner_id: message.senderId,
-                    other_user_id: myId,
-                    source_id: message.id,
-                    source_type: 'message' as const,
-                    media_type: message.type,
-                    uri: message.uri ?? null,
-                    thumb_uri: null,
-                    duration_sec: message.durationSec ?? null,
-                    sender: 'me' as const,
-                    text_content: message.textContent ?? null,
-                    seen_at: seenAt,
-                },
-            ];
-
-            supabase
-                .from('user_timelines')
-                .insert(rows)
+                })
                 .then(({ error }) => {
                     if (error) console.error('[MediaInbox] user_timelines insert failed:', error);
                 });
         }
 
-        // ── Step 3: Optimistic local state → timeline updates instantly ───
+        // ── Step 3: Optimistic local state → timeline updates instantly ───────
         const updatedMessage: Message = { ...message, seenAt };
         const event: TimelineEvent = {
             ...updatedMessage,
@@ -411,7 +394,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         });
     }, [unreadMessages, addTimelineEvent]);
 
-    // ── React to message ──────────────────────────────────────────────────
+    // ── React to message ──────────────────────────────────────────────────────
     const reactToMessage = useCallback(async (userId: string, emoji: string) => {
         const message = unreadMessages[userId];
         if (!message) return;
@@ -438,7 +421,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
         // (no local state update needed here — the sender's realtime listener handles it)
     }, [unreadMessages]);
 
-    // ── Sent status helpers ───────────────────────────────────────────────
+    // ── Sent status helpers ──────────────────────────────────────────────────
     const recordMessageSent = useCallback((userId: string) => {
         setMyLastSentStatus(prev => ({ ...prev, [userId]: { status: 'sent', timestamp: new Date().toISOString() } }));
     }, []);
