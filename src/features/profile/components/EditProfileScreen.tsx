@@ -18,7 +18,7 @@ import {
     PanResponder,
     Easing
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, AntDesign } from '@expo/vector-icons';
 import { COLORS, FONTS } from '@/theme/theme';
 import * as ImagePicker from 'expo-image-picker';
 import DatePicker from 'react-native-date-picker';
@@ -166,7 +166,7 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
         setIsSaving(true);
         try {
             const dateString = birthday.toISOString().split('T')[0];
-            
+
             let finalPicUrl = user?.profilePicture;
             if (profileImage && !profileImage.startsWith('http')) {
                 finalPicUrl = await uploadProfilePicture(user.id, profileImage);
@@ -188,7 +188,7 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
             if (onSave) {
                 await onSave(newlyUpdatedUser);
             }
-            
+
             handleClose(); // Animate out on save
         } catch (error: any) {
             console.error('SAVE ERROR:', error);
@@ -264,7 +264,7 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
                             style={styles.floatingRepeatBtn}
                             activeOpacity={0.9}
                         >
-                            <Feather name="repeat" size={28} color={TEXT_COLOR} />
+                            <AntDesign name="plus" size={24} color="black" />
                         </TouchableOpacity>
 
                     </View>
@@ -292,15 +292,14 @@ const EditProfileScreen = ({ user, onBack, onSave }: EditProfileProps) => {
 
                             <View style={styles.divider} />
 
-                            {/* Birthday Input */}
-                            <TouchableOpacity onPress={() => setOpenDatePicker(true)} style={styles.inputGroup}>
+                            {/* Birthday (Locked) */}
+                            <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Birthday</Text>
-                                <View style={styles.dateButton}>
-                                    <Text style={styles.dateText}>
-                                        {birthday.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
+                                <Text style={[styles.dateText, { color: '#8E8E93', fontSize: 15 }]}>
+                                    {birthday.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                                </Text>
+                                <Feather name="lock" size={12} color="#8E8E93" style={{ marginLeft: 'auto' }} />
+                            </View>
 
                             <View style={styles.divider} />
 

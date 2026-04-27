@@ -70,8 +70,9 @@ export const timelineService = {
         const [filmsResult, timelineResult] = await Promise.all([
             supabase
                 .from('films')
-                .select('id, creator_id, type, uri, thumbnail, created_at')
+                .select('id, creator_id, type, uri, thumbnail, created_at, target_user_id')
                 .in('creator_id', [myId, theirId])
+                .or(`target_user_id.is.null,target_user_id.eq.${myId},target_user_id.eq.${theirId}`)
                 .order('created_at', { ascending: false })
                 .range(from, to),
 

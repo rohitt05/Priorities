@@ -582,6 +582,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const flatListRef = useRef<GHFlatList>(null);
 
     const { unreadMessages, myLastSentStatus } = useMediaInbox();
+    const { triggerHaptic } = useHapticFeedback();
 
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {

@@ -18,7 +18,6 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { User } from '@/types/domain';
 import { sendPriorityRequest } from '@/services/priorityService';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
-import { getAvatarSource } from '@/utils/getMediaSource';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 
 // ✅ Type lives here — imported by profile.tsx, no circular deps

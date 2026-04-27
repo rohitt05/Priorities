@@ -659,6 +659,7 @@ export default function SignUpScreen() {
                                 setShowDatePicker(false);
                             }}
                         />
+                        <Text style={styles.birthdayHint}>birthday can't be changed later</Text>
                     </View>
                 );
 
@@ -1143,5 +1144,12 @@ const styles = StyleSheet.create({
     signinTextBold: {
         fontFamily: FONTS.semibold,
         color: COLORS.primary,
+    },
+    birthdayHint: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: 'rgba(44,39,32,0.4)',
+        marginTop: 8,
+        marginLeft: 4,
     },
 });

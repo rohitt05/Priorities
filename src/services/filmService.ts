@@ -150,11 +150,15 @@ export const filmService = {
     getFilmsByUserId: async (userId: string): Promise<FilmWithMeta[]> => {
         const cutoff = new Date(Date.now() - FILM_LIFETIME_MS).toISOString();
 
+        const { data: sessionData } = await supabase.auth.getSession();
+        const myId = sessionData?.session?.user?.id;
+
         const { data, error } = await supabase
             .from('films')
             .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
             .eq('creator_id', userId)
             .gte('created_at', cutoff)
+            .or(`target_user_id.is.null,target_user_id.eq.${myId}`)
             .order('created_at', { ascending: true });
 
         if (error) throw error;
@@ -191,10 +195,14 @@ export const filmService = {
 
     // ── ALL films for a profile timeline — NO 24hr cutoff (FilmsInProfile) ───
     getAllFilmsByUserId: async (userUUID: string): Promise<FilmWithMeta[]> => {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const myId = sessionData?.session?.user?.id;
+
         const { data, error } = await supabase
             .from('films')
             .select('id, creator_id, type, uri, thumbnail, location, target_user_id, created_at')
             .eq('creator_id', userUUID)
+            .or(`target_user_id.is.null,target_user_id.eq.${myId}`)
             .order('created_at', { ascending: false });
 
         if (error) throw error;

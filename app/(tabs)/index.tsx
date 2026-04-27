@@ -131,6 +131,7 @@ export default function HomeScreen() {
                                     userId: activeUser.id,           // ← UUID, not uniqueUserId
                                     userName: activeUser.name,
                                     dominantColor: activeUser.dominantColor,
+                                    isPending: activeUser.isPending ? 'true' : 'false',
                                 }
                             });
                         }

@@ -134,9 +134,11 @@ FilmBubble.displayName = 'FilmBubble';
 export default function UserFilms() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { userId, userName, dominantColor } = useLocalSearchParams<{
-        userId: string; userName: string; dominantColor?: string;
+    const { userId, userName, dominantColor, isPending } = useLocalSearchParams<{
+        userId: string; userName: string; dominantColor?: string; isPending?: string;
     }>();
+
+    const pending = isPending === 'true';
 
     const accent = dominantColor
         ? decodeURIComponent(dominantColor as string)
@@ -175,7 +177,7 @@ export default function UserFilms() {
     }, []);
 
     useEffect(() => {
-        if (!userId) return;
+        if (!userId || pending) return;
         (async () => {
             setIsLoading(true);
             try {
@@ -279,11 +281,57 @@ export default function UserFilms() {
         </View>
     ), [insets.top, userName]);
 
-    if (isLoading) {
+    if (isLoading && !pending) {
         return (
             <View style={[styles.loadingContainer, { backgroundColor: rgba(accent, 0.18) }]}>
                 <ActivityIndicator size="large" color={accent} />
             </View>
+        );
+    }
+
+    if (pending) {
+        return (
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <FilmCanvas
+                    bgColors={[rgba(accent, 0.92), rgba(accent, 0.72), rgba(accent, 0.45)]}
+                    decoItems={decoItems}
+                    cardPositions={[]}
+                    defaultScale={DEF_SC}
+                    overlay={
+                        <>
+                            <View style={[styles.emptyOverlay, { paddingHorizontal: 40 }]} pointerEvents="none">
+                                <Text style={[
+                                    styles.emptyText,
+                                    {
+                                        fontFamily: 'DancingScript-Bold',
+                                        fontSize: 48,
+                                        color: '#433D35',
+                                        opacity: 0.95,
+                                        lineHeight: 56,
+                                        textAlign: 'center',
+                                        transform: [{ rotate: '-2deg' }],
+                                        textShadowColor: 'rgba(0,0,0,0.1)',
+                                        textShadowOffset: { width: 2, height: 2 },
+                                        textShadowRadius: 4,
+                                    }
+                                ]}>
+                                    naaah, they haven't yet decided if you are important enough for them to be added yet.
+                                </Text>
+                            </View>
+
+                            {/* Keep only the back button */}
+                            <Pressable
+                                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }}
+                                style={[styles.backBtn, { top: insets.top + 14 }]}
+                            >
+                                <Ionicons name="chevron-back" size={24} color="#433D35" />
+                            </Pressable>
+                        </>
+                    }
+                >
+                    {() => null}
+                </FilmCanvas>
+            </GestureHandlerRootView>
         );
     }
 
