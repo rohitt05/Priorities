@@ -68,14 +68,24 @@ export const timelineService = {
         const to = from + pageSize - 1;
 
         const [filmsResult, timelineResult] = await Promise.all([
+            // ── Double-Binding Filter (Relationship-Based Timeline spec) ──────────
+            // Only fetch films explicitly exchanged between this exact pair:
+            //   (I sent it to them) OR (they sent it to me)
+            //
+            // Broadcast films (target_user_id IS NULL) are intentionally excluded —
+            // they belong in the global feed (filmService), not the private timeline.
+            // Films sent to any third party are mathematically invisible here.
             supabase
                 .from('films')
                 .select('id, creator_id, type, uri, thumbnail, created_at, target_user_id')
-                .in('creator_id', [myId, theirId])
-                .or(`target_user_id.is.null,target_user_id.eq.${myId},target_user_id.eq.${theirId}`)
+                .or(
+                    `and(creator_id.eq.${myId},target_user_id.eq.${theirId}),` +
+                    `and(creator_id.eq.${theirId},target_user_id.eq.${myId})`
+                )
                 .order('created_at', { ascending: false })
                 .range(from, to),
 
+            // ── user_timelines: already pair-scoped by owner_id + other_user_id ──
             supabase
                 .from('user_timelines')
                 .select('id, source_id, media_type, uri, thumb_uri, duration_sec, sender, text_content, seen_at, created_at')
