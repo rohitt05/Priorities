@@ -14,7 +14,7 @@ import {
     TextInput,
     ActivityIndicator,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
     GestureHandlerRootView,
@@ -377,20 +377,10 @@ export default function AddPartnerModal({
 
         return (
             <View key={item.uniqueUserId} style={styles.userRow}>
-                {item.profilePicture ? (
-                    <Image
-                        source={{ uri: item.profilePicture }}
-                        style={styles.avatar}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                    />
-                ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <Text style={styles.avatarInitial}>
-                            {item.name?.[0]?.toUpperCase() || '?'}
-                        </Text>
-                    </View>
-                )}
+                <UserAvatar
+                    uri={item.profilePicture}
+                    style={styles.avatar}
+                />
                 <View style={styles.userInfo}>
                     <Text style={styles.userName}>{item.name}</Text>
                     <Text style={styles.userHandle}>@{item.uniqueUserId}</Text>
@@ -424,20 +414,10 @@ export default function AddPartnerModal({
         const isProcessing = processingId === req.id;
         return (
             <View key={req.id} style={styles.requestRow}>
-                {req.senderProfilePicture ? (
-                    <Image
-                        source={{ uri: req.senderProfilePicture }}
-                        style={styles.avatar}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                    />
-                ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <Text style={styles.avatarInitial}>
-                            {req.senderName?.[0]?.toUpperCase() || '?'}
-                        </Text>
-                    </View>
-                )}
+                <UserAvatar
+                    uri={req.senderProfilePicture}
+                    style={styles.avatar}
+                />
                 <View style={styles.requestTextBox}>
                     <Text style={styles.requestLine} numberOfLines={2}>
                         <Text style={styles.requestSenderName}>{req.senderName}</Text>

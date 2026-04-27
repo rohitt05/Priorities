@@ -13,16 +13,19 @@ import {
     ListRenderItem,
     Alert,
     PanResponder,
-    Image,
     Dimensions,
     Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getAvatarSource } from '@/utils/getMediaSource';
 import { Ionicons, Entypo } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useBackground } from '@/contexts/BackgroundContext';
 import { supabase } from '@/lib/supabase';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PhotoViewer from './PhotoViewer';
 import VideoPlayer from './VideoPlayer';
@@ -34,22 +37,39 @@ import { MediaItem } from '@/types/mediaTypes';
 import { initiateDeleteRequest } from '@/services/memoryDeleteService';
 
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 
 const formatDisplayDate = (dateStr?: string) => {
     if (!dateStr) return '';
-    // If it's already formatted like "Apr 9, 2026, 10:02 PM", we need to parse it back or just use it.
-    // However, the user wants dd/mm/yy format. 
-    // Since formatTimestamp was used before passing here, it might be a string.
-    // We'll try to parse it.
     try {
         const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return dateStr; // fallback if already a string we can't parse
-        const day = d.toLocaleDateString('en-US', { weekday: 'short' });
+        if (isNaN(d.getTime())) {
+            // fallback if it's already a formatted string that we can't parse
+            if (typeof dateStr === 'string' && dateStr.includes('2026')) {
+                const parts = dateStr.split('2026');
+                return (
+                    <Text>
+                        {parts[0]}<Text style={{fontWeight: '900'}}>26</Text>{parts[1]}
+                    </Text>
+                );
+            }
+            return dateStr;
+        }
+        
         const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const mm = d.toLocaleDateString('en-US', { month: 'short' });
         const yy = String(d.getFullYear()).slice(-2);
-        return `${dd}/${mm}/${yy} ${day}`;
+        const time = d.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+        }).toLowerCase();
+        
+        return (
+            <Text>
+                {dd} {mm} <Text style={{ fontWeight: '900' }}>{yy}</Text> {time}
+            </Text>
+        );
     } catch {
         return dateStr;
     }
@@ -69,6 +89,7 @@ interface MediaViewerProps {
     onClose: () => void;
     otherUserId?: string;
     otherUserProfilePic?: string;
+    onRefresh?: () => void;
 }
 
 export default function MediaViewer({
@@ -78,8 +99,10 @@ export default function MediaViewer({
     onClose,
     otherUserId,
     otherUserProfilePic,
+    onRefresh,
 }: MediaViewerProps) {
     const { bgColor, prevBgColor, colorAnim } = useBackground();
+    const insets = useSafeAreaInsets();
 
     // ─── Header + dots visibility ────────────────────────────────────────
     const headerOpacity = useRef(new Animated.Value(1)).current;
@@ -292,7 +315,8 @@ export default function MediaViewer({
                     break;
                 case 'auto_deleted':
                     setFlashMsg({ title: 'Memory Deleted', desc: 'Removed from both timelines.' });
-                    setTimeout(() => onClose(), 2000);
+                    if (onRefresh) onRefresh();
+                    setTimeout(() => onClose(), 1500);
                     break;
                 case 'already_pending':
                     setFlashMsg({ title: 'Already Sent', desc: 'Waiting for their response.' });
@@ -395,42 +419,64 @@ export default function MediaViewer({
                     />
 
                     {/* Info Bar at the bottom */}
-                    <Animated.View style={[styles.bottomBar, { opacity: headerOpacity }]} pointerEvents="box-none">
-                        <View style={styles.barLeftSection}>
-                            {currentItem?.sender === 'me' ? (
-                                myProfilePic ? (
-                                    <Image source={{ uri: myProfilePic }} style={styles.profileCircle} />
-                                ) : (
-                                    <View style={[styles.profileCircle, { backgroundColor: '#555' }]} />
-                                )
-                            ) : (
-                                otherUserProfilePic ? (
-                                    <Image source={{ uri: otherUserProfilePic }} style={styles.profileCircle} />
-                                ) : (
-                                    <View style={[styles.profileCircle, { backgroundColor: '#555' }]} />
-                                )
-                            )}
-                            <Text style={styles.senderSmallText}>
-                                {currentItem?.sender === 'me' ? 'me' : 'them'}
-                            </Text>
-                        </View>
+                    <Animated.View style={[styles.bottomBarContainer, { opacity: headerOpacity }]} pointerEvents="box-none">
+                        <LinearGradient
+                            colors={['transparent', 'rgba(0,0,0,0.8)']}
+                            style={StyleSheet.absoluteFill}
+                            pointerEvents="none"
+                        />
+                        <View style={{ paddingTop: 60, paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 46) : Math.max(insets.bottom, 16) }}>
+                            <View style={styles.bottomBarRow}>
+                                {/* Left: Profile + Name */}
+                                <View style={styles.leftSection}>
+                                    {currentItem?.sender === 'me' ? (
+                                        myProfilePic ? (
+                                            <Image 
+                                                source={getAvatarSource(myProfilePic)} 
+                                                style={styles.profileCircle} 
+                                                contentFit="cover"
+                                                cachePolicy="memory-disk"
+                                            />
+                                        ) : (
+                                            <View style={[styles.profileCircle, { backgroundColor: '#555' }]} />
+                                        )
+                                    ) : (
+                                        otherUserProfilePic ? (
+                                            <Image 
+                                                source={getAvatarSource(otherUserProfilePic)} 
+                                                style={styles.profileCircle} 
+                                                contentFit="cover"
+                                                cachePolicy="memory-disk"
+                                            />
+                                        ) : (
+                                            <View style={[styles.profileCircle, { backgroundColor: '#555' }]} />
+                                        )
+                                    )}
+                                    <Text style={styles.senderSmallText} numberOfLines={1}>
+                                        {currentItem?.sender === 'me' ? 'me' : 'them'}
+                                    </Text>
+                                </View>
 
-                        <View style={styles.barCenterSection}>
-                            <Text style={styles.barDateText}>
-                                {formatDisplayDate(currentItem?.timestamp)}
-                            </Text>
-                        </View>
+                                {/* Center: Absolute centered Date */}
+                                <View style={styles.absoluteCenter} pointerEvents="none">
+                                    <Text style={styles.barDateText} numberOfLines={1}>
+                                        {formatDisplayDate(currentItem?.timestamp)}
+                                    </Text>
+                                </View>
 
-                        <TouchableOpacity
-                            style={styles.barRightSection}
-                            onPress={openSheet}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                            <View style={styles.twoDotsContainer}>
-                                <View style={styles.tinyDot} />
-                                <View style={styles.tinyDot} />
+                                {/* Right: Dots button */}
+                                <TouchableOpacity
+                                    style={styles.rightSection}
+                                    onPress={openSheet}
+                                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                                >
+                                    <View style={styles.twoDotsContainer}>
+                                        <View style={styles.tinyDot} />
+                                        <View style={styles.tinyDot} />
+                                    </View>
+                                </TouchableOpacity>
                             </View>
-                        </TouchableOpacity>
+                        </View>
                     </Animated.View>
 
                 </Animated.View>
@@ -497,37 +543,46 @@ export default function MediaViewer({
 
 
 const styles = StyleSheet.create({
-    bottomBar: {
+    bottomBarContainer: {
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 40 : 24,
+        bottom: 0,
         left: 0,
         right: 0,
-        height: 60,
+        zIndex: 100,
+    },
+    bottomBarRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 24,
-        zIndex: 100,
+        height: 40,
     },
-    barLeftSection: {
-        flex: 1,
+    leftSection: {
         flexDirection: 'row',
         alignItems: 'center',
+        flexShrink: 1,
+        zIndex: 10,
     },
-    barCenterSection: {
-        flex: 2,
+    absoluteCenter: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 5,
     },
-    barRightSection: {
-        flex: 1,
+    rightSection: {
         alignItems: 'flex-end',
         justifyContent: 'center',
+        flexShrink: 0,
+        zIndex: 10,
     },
     profileCircle: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         marginRight: 8,
     },
     senderSmallText: {
@@ -538,10 +593,11 @@ const styles = StyleSheet.create({
         opacity: 0.9,
     },
     barDateText: {
-        color: 'rgba(255,255,255,0.85)',
+        color: 'rgba(255,255,255,0.7)',
         fontSize: 14,
-        fontWeight: '500',
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+        fontWeight: '600',
+        letterSpacing: 0.2,
+        textAlign: 'center',
     },
     twoDotsContainer: {
         flexDirection: 'row',

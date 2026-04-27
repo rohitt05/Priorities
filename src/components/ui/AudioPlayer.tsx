@@ -5,6 +5,7 @@ import { Audio } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import { BaseMediaProps, formatTime } from '@/types/mediaTypes';
 import { COLORS, FONTS, SPACING } from '@/theme/theme';
+import { getVoiceNoteSource } from '@/utils/getMediaSource';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -64,8 +65,9 @@ export default function AudioPlayer({
     const handlePlayPause = async () => {
         try {
             if (!soundRef.current && mediaItem.uri) {
+                const source = getVoiceNoteSource(mediaItem.uri);
                 const { sound } = await Audio.Sound.createAsync(
-                    { uri: mediaItem.uri },
+                    typeof source === 'number' ? source : { uri: source as string },
                     { shouldPlay: true },
                     (status: any) => {
                         if (status.isLoaded) {

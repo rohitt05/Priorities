@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import {
     View,
-    Image,
     StyleSheet,
     Dimensions,
     Animated,
@@ -9,6 +8,8 @@ import {
     PanResponderGestureState,
     Pressable
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getImageSource } from '@/utils/getMediaSource';
 import { BaseMediaProps } from '@/types/mediaTypes';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -93,10 +94,11 @@ export default function PhotoViewer({ mediaItem, onDragDown, onReady }: PhotoVie
                 style={styles.innerContainer}
             >
                 <Image
-                    source={{ uri: mediaItem.uri }}
+                    source={getImageSource(mediaItem.uri)}
                     style={styles.image}
-                    resizeMode="cover"
+                    contentFit="contain"
                     onLoad={onReady}
+                    cachePolicy="memory-disk"
                 />
             </Pressable>
         </Animated.View>

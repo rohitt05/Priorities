@@ -37,6 +37,7 @@ import { getCurrentUserId } from '@/services/authService';
 import ReceivedPriorityRequests from './ReceivedPriorityRequests';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { supabase } from '@/lib/supabase';
 
 
 
@@ -210,7 +211,29 @@ const FloatingSearch = () => {
     };
 
     useEffect(() => {
-        if (currentUserId) loadIncomingRequests();
+        if (!currentUserId) return;
+        
+        loadIncomingRequests();
+
+        const channel = supabase
+            .channel(`realtime_incoming_requests_${currentUserId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'priority_requests',
+                    filter: `receiver_id=eq.${currentUserId}`,
+                },
+                () => {
+                    loadIncomingRequests();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [currentUserId]);
 
 

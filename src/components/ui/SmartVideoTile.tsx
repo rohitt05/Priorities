@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';          // ← expo-image, not react-native
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { getFilmSource, getImageSource } from '@/utils/getMediaSource';
 
 interface SmartVideoTileProps {
     uri?: string;       // actual video .mp4 URL
@@ -18,7 +19,7 @@ export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: Smar
     const posterUri = thumbUri || uri;
 
     // Player only created with a real source when this tile is active
-    const player = useVideoPlayer(isVisible && uri ? uri : null, p => {
+    const player = useVideoPlayer(isVisible && uri ? getFilmSource(uri) : null, p => {
         p.loop = true;
         p.muted = true;
     });
@@ -37,7 +38,7 @@ export default function SmartVideoTile({ uri, thumbUri, isVisible, style }: Smar
             {/* LAYER 1: expo-image as base — renders poster frame from video URL */}
             {posterUri ? (
                 <Image
-                    source={{ uri: posterUri }}
+                    source={getImageSource(posterUri)}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
                     transition={200}

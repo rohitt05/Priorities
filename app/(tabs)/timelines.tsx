@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import {
     View,
     StyleSheet,
-    Image,
     TouchableOpacity,
     Dimensions,
     LayoutRectangle,
@@ -11,6 +10,8 @@ import {
     ViewToken,
     ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getAvatarSource } from '@/utils/getMediaSource';
 import { StatusBar } from 'expo-status-bar';
 import { Entypo } from '@expo/vector-icons';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -150,13 +151,14 @@ const TimelineItem = React.memo(({
                         opacity: isPriority ? 1 : 0.6,
                     }, scaleStyle]}>
                         <Image
-                            source={{ uri: user.profilePicture }}
+                            source={getAvatarSource(user.profilePicture)}
                             style={{
                                 width: '100%',
                                 height: '100%',
                                 opacity: isPriority ? 1 : 0.7,
                             }}
-                            resizeMode="cover"
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
                         />
                     </Animated.View>
                 </Pressable>

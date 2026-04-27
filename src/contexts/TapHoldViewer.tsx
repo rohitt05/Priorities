@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { SvgXml } from 'react-native-svg';
 import { FACE_SVGS } from '../constants/Avatars';
+import { getAvatarSource } from '@/utils/getMediaSource';
 
 import { PinchZoomProvider, usePinchZoom } from '@/contexts/PinchZoomContext';
 
@@ -30,7 +31,7 @@ const ZoomableImageContent = React.memo(({ uri }: { uri: string }) => {
                 </View>
             ) : (
                 <ExpoImage
-                    source={uri}
+                    source={getAvatarSource(uri)}
                     cachePolicy="memory-disk"
                     style={styles.fullImage}
                     contentFit="cover"
@@ -118,7 +119,7 @@ export const TapHoldImage = ({ source, style }: { source: { uri: string }; style
         );
     }
 
-    return <ExpoImage source={source.uri} cachePolicy="disk" style={style} contentFit="cover" />;
+    return <ExpoImage source={getAvatarSource(source.uri)} cachePolicy="disk" style={style} contentFit="cover" />;
 };
 
 const styles = StyleSheet.create({

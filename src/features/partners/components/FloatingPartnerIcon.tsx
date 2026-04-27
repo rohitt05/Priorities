@@ -4,7 +4,6 @@ import React, { useEffect } from 'react';
 import {
     View,
     StyleSheet,
-    Image,
     Text,
     Dimensions,
     Animated as RNAnimated,
@@ -12,6 +11,7 @@ import {
     Modal,
     TouchableWithoutFeedback,
 } from 'react-native';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
@@ -113,20 +113,21 @@ export default function FloatingPartnerIcon({
     return (
         <>
             <Reanimated.View
-                style={[styles.floatingPartnerContainer, partnerContainerStyle, capsuleFadeStyle]}
+                style={[styles.floatingPartnerContainer, capsuleFadeStyle]}
                 animatedProps={animatedProps}
             >
-                <TouchableOpacity
-                    activeOpacity={isOwner ? 0.9 : 1}
-                    onPress={handlePress}
-                    onLongPress={handleLongPress}
-                    delayLongPress={400}
-                    // Disable touch feedback entirely for non-owners
-                    disabled={!isOwner}
-                >
+                <Reanimated.View style={partnerContainerStyle}>
+                    <TouchableOpacity
+                        activeOpacity={isOwner ? 0.9 : 1}
+                        onPress={handlePress}
+                        onLongPress={handleLongPress}
+                        delayLongPress={400}
+                        // Disable touch feedback entirely for non-owners
+                        disabled={!isOwner}
+                    >
                     <View style={styles.partnerContent}>
-                        <Image
-                            source={{ uri: partnerUser.profilePicture }}
+                        <UserAvatar
+                            uri={partnerUser.profilePicture}
                             style={styles.partnerImage}
                         />
                         <View style={styles.heartBadge}>
@@ -165,7 +166,8 @@ export default function FloatingPartnerIcon({
                             </View>
                         </Reanimated.View>
                     </View>
-                </TouchableOpacity>
+                    </TouchableOpacity>
+                </Reanimated.View>
             </Reanimated.View>
 
             {/* Only render removal modal for owner */}

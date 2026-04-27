@@ -75,9 +75,6 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     };
 
     // ─── Core fetch with pagination ───────────────────────────────────────────
-    // `page` starts at 0.
-    // Page 0 = first PAGE_SIZE items (newest first).
-    // Page 1 = next PAGE_SIZE items, appended. And so on.
     const fetchTimelinePage = useCallback(async (
         user: any,
         page: number,
@@ -146,6 +143,32 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
             if (page === 0) setTimelineLoading(false);
         }
     }, []);
+
+    // ─── Realtime Deletion Listener ──────────────────────────────────────────
+    useEffect(() => {
+        const channel = supabase
+            .channel('timeline-deletions')
+            .on(
+                'postgres_changes',
+                { event: 'DELETE', schema: 'public', table: 'user_timelines' },
+                () => {
+                    // When any timeline item is deleted, refresh the expanded user's view if active
+                    if (expandedUser) fetchTimelinePage(expandedUser, 0, true);
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'DELETE', schema: 'public', table: 'films' },
+                () => {
+                    if (expandedUser) fetchTimelinePage(expandedUser, 0, true);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [expandedUser, fetchTimelinePage]);
 
     // ─── Called by UserTimelineView when user reaches end of scroll ───────────
     const loadMoreEvents = useCallback((userId: string, uniqueUserId: string) => {
@@ -244,7 +267,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         priorities, setPriorities,
         scrollToUserIndex, flatListRef,
         liveTimelineEvents, timelineLoading,
-        loadMoreEvents, refreshTimeline: fetchTimelineForUser, paginationMeta,
+        loadMoreEvents, refreshTimeline: (u: any) => fetchTimelineForUser(u, true), paginationMeta,
     }), [
         expandedUser, priorities, scrollToUserIndex,
         liveTimelineEvents, timelineLoading,

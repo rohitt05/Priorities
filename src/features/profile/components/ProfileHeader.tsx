@@ -12,7 +12,8 @@ import Reanimated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 import { User } from '@/types/domain';
 import { sendPriorityRequest } from '@/services/priorityService';
@@ -39,6 +40,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     initialAccessState,
 }) => {
     const authId = useAuthUser();
+    const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
 
     const [accessState, setAccessState] = useState<HeaderAccessState>(
         initialAccessState ?? 'loading'
@@ -53,12 +55,12 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
     const handleSendRequest = async () => {
         if (!authId || !user?.id || isSending) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
         setIsSending(true);
         try {
             await sendPriorityRequest(authId, user.id);
             setAccessState('pending');
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
         } catch (e: any) {
             if (e?.code === '23505') {
                 setAccessState('pending');

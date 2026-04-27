@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { Image } from 'expo-image';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 
@@ -36,6 +37,7 @@ type YourPrioritiesProps = {
 export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthorizedAccess }) => {
     const router = useRouter();
     const authId = useAuthUser();
+    const { triggerHaptic } = useHapticFeedback();
     const { refreshKey } = usePrioritiesRefresh();
     const [activeLongPressId, setActiveLongPressId] = useState<string | null>(null);
 
@@ -153,42 +155,28 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         }
                                     }}
                                     onLongPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                        triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
                                         setActiveLongPressId(u.uniqueUserId);
                                     }}
                                     delayLongPress={200}
                                     onPressOut={() => setActiveLongPressId(null)}
                                 >
                                     <View style={styles.cardContent}>
-                                        {u.profilePicture ? (
-                                            <>
-                                                <Image
-                                                    source={getAvatarSource(u.profilePicture)}
-                                                    style={styles.avatarImage}
-                                                    contentFit="cover"
-                                                    cachePolicy="memory-disk"
-                                                />
-                                                {/* ── Blur overlay on avatar ── */}
-                                                {shouldBlur && (
-                                                    <BlurView
-                                                        intensity={55}
-                                                        tint="default"
-                                                        style={[
-                                                            StyleSheet.absoluteFill,
-                                                            styles.avatarBlur,
-                                                        ]}
-                                                        experimentalBlurMethod="dimezisBlurView"
-                                                    />
-                                                )}
-                                            </>
-                                        ) : (
-                                            <View style={[styles.avatarImage, styles.placeholder]}>
-                                                <Text style={styles.initials}>
-                                                    {shouldBlur
-                                                        ? '?'
-                                                        : u.name?.[0]?.toUpperCase() || '?'}
-                                                </Text>
-                                            </View>
+                                        <UserAvatar
+                                            uri={u.profilePicture}
+                                            style={styles.avatarImage}
+                                        />
+                                        {/* ── Blur overlay on avatar ── */}
+                                        {shouldBlur && (
+                                            <BlurView
+                                                intensity={55}
+                                                tint="default"
+                                                style={[
+                                                    StyleSheet.absoluteFill,
+                                                    styles.avatarBlur,
+                                                ]}
+                                                experimentalBlurMethod="dimezisBlurView"
+                                            />
                                         )}
                                     </View>
 

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Pressable, View, Text, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { Feather } from '@expo/vector-icons';
 import Reanimated, {
     useAnimatedStyle,
@@ -110,11 +110,9 @@ const FastUserItem = memo(({ user, width, height, isSelected, onToggle, style }:
 
                     {/* --- PROFILE IMAGE --- */}
                     <View style={[styles.profileWrapper, { backgroundColor: user.dominantColor, borderRadius }]}>
-                        <Image
-                            source={{ uri: user.profilePicture }}
+                        <UserAvatar
+                            uri={user.profilePicture}
                             style={styles.image}
-                            contentFit="cover"
-                            cachePolicy="memory-disk"
                         />
 
                         {/* --- CHECKMARK OVERLAY --- */}

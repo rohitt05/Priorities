@@ -367,8 +367,7 @@ export default function ProfileActionModal({
                                             </Text>
                                         </View>
 
-                                        {/* Vertical divider */}
-                                        <View style={styles.aboutDivider} />
+
 
                                         {/* RIGHT — Birthday */}
                                         <View style={styles.aboutHalf}>
@@ -466,7 +465,7 @@ export default function ProfileActionModal({
                                             {/* ── ROW 2: only when IS a priority ── */}
                                             {isInMyPriorities && (
                                                 <>
-                                                    <View style={styles.rowDivider} />
+
                                                     <View style={styles.gridRow}>
                                                         {/* Remove */}
                                                         <TouchableOpacity
@@ -576,12 +575,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-around',
     },
-    rowDivider: {
-        height: 1,
-        backgroundColor: 'rgba(0,0,0,0.07)',
-        marginHorizontal: 16,
-        marginVertical: 8,
-    },
+
     gridItem: {
         flex: 1,
         alignItems: 'center',
@@ -650,12 +644,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 2,
     },
-    aboutDivider: {
-        width: 1,
-        height: 80,
-        backgroundColor: 'rgba(0,0,0,0.1)',
-        marginHorizontal: 8,
-    },
+
     aboutSubLabel: {
         fontSize: 10,
         fontFamily: FONTS.bold,

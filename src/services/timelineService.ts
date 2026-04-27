@@ -39,6 +39,9 @@ const refreshSignedUrl = async (
         .createSignedUrl(resolvedPath, 60 * 60);
 
     if (error || !data?.signedUrl) {
+        if (error?.message?.includes('Object not found')) {
+            return undefined;
+        }
         console.warn('[timelineService] Failed to sign URL:', error?.message);
         return uri;
     }

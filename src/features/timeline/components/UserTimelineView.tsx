@@ -1,10 +1,12 @@
 // src/features/timeline/components/UserTimelineView.tsx
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
-    View, Text, StyleSheet, Image, TouchableOpacity,
+    View, Text, StyleSheet, TouchableOpacity,
     LayoutRectangle, BackHandler, ActivityIndicator,
     ScrollView, Pressable,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getAvatarSource, getImageSource } from '@/utils/getMediaSource';
 import Animated, {
     useAnimatedStyle, interpolate, SharedValue, Extrapolation
 } from 'react-native-reanimated';
@@ -338,8 +340,10 @@ export default function UserTimelineView({
                                             style={styles.requestThumbContainer}
                                         >
                                             <Image 
-                                                source={{ uri: allUserMedia.find(m => m.id === req.sourceId)?.thumbUri || allUserMedia.find(m => m.id === req.sourceId)?.uri }} 
+                                                source={getImageSource(allUserMedia.find(m => m.id === req.sourceId)?.thumbUri || allUserMedia.find(m => m.id === req.sourceId)?.uri)} 
                                                 style={styles.requestThumb} 
+                                                contentFit="cover"
+                                                cachePolicy="memory-disk"
                                             />
                                         </TouchableOpacity>
 
@@ -449,9 +453,10 @@ export default function UserTimelineView({
                     pointerEvents="none"
                 >
                     <Image
-                        source={{ uri: user!.profilePicture }}
+                        source={getAvatarSource(user!.profilePicture)}
                         style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
                     />
                 </Animated.View>
 
@@ -532,6 +537,7 @@ export default function UserTimelineView({
                 onClose={handleCloseMediaViewer}
                 otherUserId={user.id}
                 otherUserProfilePic={user.profilePicture}
+                onRefresh={() => refreshTimeline(user)}
             />
         </View>
     );

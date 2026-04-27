@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
 import { BaseMediaProps, formatTime } from '@/types/mediaTypes';
+import { getFilmSource } from '@/utils/getMediaSource';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
@@ -44,7 +45,7 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
         );
     }
 
-    const player = useVideoPlayer(mediaItem.uri!, player => {
+    const player = useVideoPlayer(getFilmSource(mediaItem.uri!), player => {
         player.loop = true;
         player.timeUpdateEventInterval = 0.1;
         if (autoPlay) player.play();
@@ -238,11 +239,6 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                     style={[styles.controlsBottom, { opacity: controlsOpacity }]}
                     pointerEvents={showControls ? 'box-none' : 'none'}
                 >
-                    <View style={styles.timeContainer}>
-                        <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-                        <Text style={styles.timeText}>{formatTime(duration)}</Text>
-                    </View>
-
                     <View
                         style={styles.progressBarContainer}
                         {...panResponder.panHandlers}
@@ -262,6 +258,11 @@ export default function VideoPlayer({ mediaItem, isFocused, autoPlay, onReady, t
                                 ]}
                             />
                         </View>
+                    </View>
+
+                    <View style={styles.timeContainer}>
+                        <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+                        <Text style={styles.timeText}>{formatTime(duration)}</Text>
                     </View>
                 </Animated.View>
             )}
@@ -309,7 +310,7 @@ const styles = StyleSheet.create({
     },
     controlsBottom: {
         position: 'absolute',
-        bottom: 20,
+        top: Platform.OS === 'ios' ? 65 : 45,
         left: 20,
         right: 20,
         zIndex: 20
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
     timeContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 8
+        marginTop: 4
     },
     timeText: {
         fontSize: 14,

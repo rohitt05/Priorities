@@ -23,8 +23,9 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // enums only
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
@@ -65,6 +66,7 @@ function ProfileScreenContent() {
 
     // ✅ Access state computed here alongside profile fetch — no delay
     const [headerAccessState, setHeaderAccessState] = useState<HeaderAccessState>('loading');
+    const { triggerNotificationHaptic } = useHapticFeedback();
 
     const scrollY = useSharedValue(0);
     const triggerEditMode = () => setIsEditing(true);
@@ -367,7 +369,7 @@ function ProfileScreenContent() {
                     </View>
                 </GestureDetector>
 
-                {partnerUser && (
+                {partnerUser && headerAccessState === 'allowed' && (
                     <FloatingPartnerIcon
                         partnerUser={partnerUser}
                         relationshipLabel={relationshipLabel}
@@ -390,23 +392,28 @@ function ProfileScreenContent() {
                 )}
 
                 <Reanimated.View style={prioritiesFadeStyle} animatedProps={prioritiesPointerProps}>
-                    <YourPriorities
-                        user={currentUser}
-                        onUnauthorizedAccess={() => {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                            if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
-                            setShowFlashBanner(true);
-                            bannerTimeoutRef.current = setTimeout(() => setShowFlashBanner(false), 2000);
-                        }}
-                    />
+                    {headerAccessState === 'allowed' && (
+                        <YourPriorities
+                            user={currentUser}
+                            onUnauthorizedAccess={() => {
+                                triggerNotificationHaptic(Haptics.NotificationFeedbackType.Warning);
+                                if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+                                setShowFlashBanner(true);
+                                bannerTimeoutRef.current = setTimeout(() => setShowFlashBanner(false), 2000);
+                            }}
+                        />
+                    )}
                 </Reanimated.View>
 
                 <Reanimated.View style={filmsSlideUpStyle}>
-                    <FilmsInProfile
-                        userUUID={currentUser.id}
-                        dominantColor={currentUser.dominantColor}
-                        isOwner={isActuallyOwner}
-                    />
+                    {headerAccessState === 'allowed' && (
+                        <FilmsInProfile
+                            userUUID={currentUser.id}
+                            dominantColor={currentUser.dominantColor}
+                            isOwner={isActuallyOwner}
+                            scrollY={scrollY}
+                        />
+                    )}
                     <View style={styles.bottomPad} />
                 </Reanimated.View>
 

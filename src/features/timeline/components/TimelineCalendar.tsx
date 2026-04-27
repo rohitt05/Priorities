@@ -1,9 +1,11 @@
 // src/features/timeline/components/TimelineCalendar.tsx
 import React, { useMemo, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, Image,
+    View, Text, StyleSheet,
     FlatList, Dimensions, TouchableOpacity,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { getImageSource } from '@/utils/getMediaSource';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
     TimelineRow, processTimelineData, filterEventsForUser,
@@ -105,9 +107,10 @@ export default function TimelineCalendar({
                     </View>
                 ) : item.uri ? (
                     <Image
-                        source={{ uri: item.uri }}
+                        source={getImageSource(item.uri)}
                         style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
                     />
                 ) : (
                     <View style={{ flex: 1, backgroundColor: item.bg || (dark ? '#222' : '#ddd') }} />
