@@ -4,6 +4,7 @@ import { Image } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { TimelineEvent, Message } from '@/types/domain';
 import { getCachedUrl, setCachedUrl } from '@/services/signedUrlCache';
+import { notifyTimelineInsert } from '@/services/timelineNotifyBridge';
 
 export type UnreadMedia = Message;
 
@@ -275,6 +276,8 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     // 2. INSERT user_timelines Row A (my perspective, sender = 'them')
     //    DB trigger mirror_timeline_for_sender() auto-writes Row B for the sender.
     // 3. addTimelineEvent (optimistic) → UI updates instantly
+    // 4. notifyTimelineInsert() → tells UserTimelineContext to refresh NOW
+    //    (zero-latency, fires before the Supabase realtime round-trip)
     const markAsSeen = useCallback(async (userId: string) => {
         const message = unreadMessages[userId];
         if (!message) return;
@@ -290,9 +293,7 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                 if (error) console.error('[MediaInbox] Failed to mark seen:', error);
             });
 
-        // Step 2 — write Row A to history layer
-        // getUser() is used (not getSession()) to ensure the JWT sent to Postgres
-        // always matches auth.uid() evaluated by RLS.
+        // Step 2 — write Row A to history layer, then notify timeline immediately
         const myId = await getMyId();
 
         if (myId) {
@@ -312,7 +313,14 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
                     seen_at: seenAt,
                 })
                 .then(({ error }) => {
-                    if (error) console.error('[MediaInbox] user_timelines insert failed:', error);
+                    if (error) {
+                        console.error('[MediaInbox] user_timelines insert failed:', error);
+                        return;
+                    }
+                    // ✅ Zero-latency signal: tell UserTimelineContext to refresh NOW
+                    // This fires as soon as the DB confirms the insert —
+                    // well before the Supabase realtime event arrives.
+                    notifyTimelineInsert(message.senderId);
                 });
         }
 
