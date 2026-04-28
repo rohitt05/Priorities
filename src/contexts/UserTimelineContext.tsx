@@ -15,10 +15,10 @@ import { timelineService } from '@/services/timelineService';
 import { supabase } from '@/lib/supabase';
 import { useMediaInbox } from '@/contexts/MediaInboxContext';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const PAGE_SIZE = 10; // items fetched per page
+// ─── Constants ──────────────────────────────────────────────────────────────────────────────
+const PAGE_SIZE = 10;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────────────────────
 interface PaginationMeta {
     page: number;
     hasMore: boolean;
@@ -38,12 +38,15 @@ interface UserTimelineContextType {
     timelineLoading: boolean;
     loadMoreEvents: (userId: string, uniqueUserId: string) => void;
     refreshTimeline: (user: any) => void;
+    // Called by MediaInboxContext immediately after a successful insert
+    // so the timeline refreshes without waiting for realtime round-trip.
+    notifyTimelineInsert: (otherAuthUserId: string) => void;
     paginationMeta: Record<string, PaginationMeta>;
 }
 
 const UserTimelineContext = createContext<UserTimelineContextType | undefined>(undefined);
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Provider ──────────────────────────────────────────────────────────────────────────────────
 export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const [expandedUser, setExpandedUser] = useState<any | null>(null);
     const [originLayout, setOriginLayout] = useState<LayoutRectangle | null>(null);
@@ -54,11 +57,12 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     const [liveTimelineEvents, setLiveTimelineEvents] = useState<Record<string, TimelineEvent[]>>({});
     const [timelineLoading, setTimelineLoading] = useState(false);
 
-    // tracks pagination state per user
     const [paginationMeta, setPaginationMeta] = useState<Record<string, PaginationMeta>>({});
-
-    // tracks which users had their FIRST page loaded already
     const loadedUsers = useRef<Set<string>>(new Set());
+
+    // Ref so realtime callbacks always see current expandedUser without stale closure
+    const expandedUserRef = useRef<any>(null);
+    useEffect(() => { expandedUserRef.current = expandedUser; }, [expandedUser]);
 
     const expandAnim = useSharedValue(0);
     const flatListRef = useRef<FlatList>(null);
@@ -74,7 +78,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
-    // ─── Core fetch with pagination ───────────────────────────────────────────
+    // ─── Core fetch with pagination ──────────────────────────────────────────────────────────
     const fetchTimelinePage = useCallback(async (
         user: any,
         page: number,
@@ -82,7 +86,6 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
     ) => {
         const uniqueKey = user.uniqueUserId || user.id;
 
-        // skip if already loading this user's page
         setPaginationMeta(prev => {
             if (prev[uniqueKey]?.loading) return prev;
             return {
@@ -98,11 +101,11 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         if (page === 0) setTimelineLoading(true);
 
         try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const myId = sessionData?.session?.user?.id;
+            // Use getUser() — not getSession() — to ensure JWT matches auth.uid() in RLS
+            const { data: userData } = await supabase.auth.getUser();
+            const myId = userData?.user?.id;
             if (!myId) return;
 
-            // pass page + PAGE_SIZE to timelineService so it can LIMIT/OFFSET
             const events = await timelineService.getTimelineForPair(
                 myId,
                 user.id,
@@ -115,7 +118,6 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
 
             setLiveTimelineEvents(prev => {
                 const existing = page === 0 ? [] : (prev[uniqueKey] ?? []);
-                // dedup by id before appending
                 const existingIds = new Set(existing.map((e: TimelineEvent) => (e as any).id));
                 const fresh = events.filter((e: TimelineEvent) => !existingIds.has((e as any).id));
                 return {
@@ -144,33 +146,82 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         }
     }, []);
 
-    // ─── Realtime Deletion Listener ──────────────────────────────────────────
+    // ─── Realtime: DELETE + INSERT on user_timelines + films DELETE ─────────────────────────
+    // This is the safety-net refresh layer. MediaInboxContext also calls
+    // notifyTimelineInsert() directly for a faster zero-latency path.
     useEffect(() => {
-        const channel = supabase
-            .channel('timeline-deletions')
-            .on(
-                'postgres_changes',
-                { event: 'DELETE', schema: 'public', table: 'user_timelines' },
-                () => {
-                    // When any timeline item is deleted, refresh the expanded user's view if active
-                    if (expandedUser) fetchTimelinePage(expandedUser, 0, true);
-                }
-            )
-            .on(
-                'postgres_changes',
-                { event: 'DELETE', schema: 'public', table: 'films' },
-                () => {
-                    if (expandedUser) fetchTimelinePage(expandedUser, 0, true);
-                }
-            )
-            .subscribe();
+        let myId: string | undefined;
+
+        const setupChannel = async () => {
+            const { data: userData } = await supabase.auth.getUser();
+            myId = userData?.user?.id;
+            if (!myId) return;
+
+            const channel = supabase
+                .channel('timeline-changes')
+
+                // ── New row inserted for ME (Row A: I just saw a message) ─────────────────
+                // filter: owner_id = myId so we only get rows we own
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'user_timelines',
+                        filter: `owner_id=eq.${myId}`,
+                    },
+                    (payload) => {
+                        const row = payload.new as any;
+                        // other_user_id is the person this event is about
+                        const otherUserId = row.other_user_id;
+                        if (!otherUserId) return;
+
+                        // If that user's timeline is currently open, refresh page 0
+                        const current = expandedUserRef.current;
+                        if (current && (current.id === otherUserId || current.uniqueUserId === otherUserId)) {
+                            fetchTimelinePage(current, 0, true);
+                        } else {
+                            // Not open yet — invalidate cache so next open fetches fresh
+                            loadedUsers.current.delete(otherUserId);
+                        }
+                    }
+                )
+
+                // ── Row deleted (user cleared their history) ───────────────────────────
+                .on(
+                    'postgres_changes',
+                    { event: 'DELETE', schema: 'public', table: 'user_timelines' },
+                    () => {
+                        const current = expandedUserRef.current;
+                        if (current) fetchTimelinePage(current, 0, true);
+                    }
+                )
+
+                // ── Film deleted ───────────────────────────────────────────────────────
+                .on(
+                    'postgres_changes',
+                    { event: 'DELETE', schema: 'public', table: 'films' },
+                    () => {
+                        const current = expandedUserRef.current;
+                        if (current) fetchTimelinePage(current, 0, true);
+                    }
+                )
+
+                .subscribe();
+
+            return channel;
+        };
+
+        let channelRef: ReturnType<typeof supabase.channel> | undefined;
+        setupChannel().then(ch => { channelRef = ch; });
 
         return () => {
-            supabase.removeChannel(channel);
+            if (channelRef) supabase.removeChannel(channelRef);
         };
-    }, [expandedUser, fetchTimelinePage]);
+    // Only re-run on mount/unmount — expandedUserRef keeps it current without re-subscribing
+    }, [fetchTimelinePage]);
 
-    // ─── Called by UserTimelineView when user reaches end of scroll ───────────
+    // ─── loadMoreEvents (infinite scroll) ──────────────────────────────────────────────────
     const loadMoreEvents = useCallback((userId: string, uniqueUserId: string) => {
         const uniqueKey = uniqueUserId || userId;
         const meta = paginationMeta[uniqueKey];
@@ -178,13 +229,28 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         fetchTimelinePage({ id: userId, uniqueUserId }, meta.page + 1);
     }, [paginationMeta, fetchTimelinePage]);
 
-    // ─── Initial fetch (page 0) for a user ───────────────────────────────────
+    // ─── Initial fetch (page 0) for a user ───────────────────────────────────────────────────
     const fetchTimelineForUser = useCallback(async (user: any, force = false) => {
         if (!force && loadedUsers.current.has(user.id)) return;
         fetchTimelinePage(user, 0, force);
     }, [fetchTimelinePage]);
 
-    // ─── React to inbox events ────────────────────────────────────────────────
+    // ─── notifyTimelineInsert ──────────────────────────────────────────────────────────────────
+    // Called directly by MediaInboxContext after a successful user_timelines insert.
+    // otherAuthUserId = message.senderId (the other person in the pair).
+    // This is the zero-latency path — fires before the realtime event arrives.
+    const notifyTimelineInsert = useCallback((otherAuthUserId: string) => {
+        const current = expandedUserRef.current;
+        if (current && current.id === otherAuthUserId) {
+            // Timeline for this person is currently open — hard refresh
+            fetchTimelinePage(current, 0, true);
+        } else {
+            // Timeline not open — invalidate cache so next open fetches fresh
+            loadedUsers.current.delete(otherAuthUserId);
+        }
+    }, [fetchTimelinePage]);
+
+    // ─── React to inbox events (legacy path, kept as extra safety net) ──────────────────
     const fetchedInboxMessageIds = useRef<Set<string>>(new Set());
     useEffect(() => {
         Object.entries(inboxEvents).forEach(([userId, events]) => {
@@ -197,7 +263,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         });
     }, [inboxEvents, fetchTimelineForUser]);
 
-    // ─── Open / Close ─────────────────────────────────────────────────────────
+    // ─── Open / Close ──────────────────────────────────────────────────────────────────────────────
     const openTimeline = (user: any, layout: LayoutRectangle) => {
         if (isAnimating) return;
         setIsAnimating(true);
@@ -213,7 +279,7 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         expandAnim.value = withSpring(1, {
             damping: 15,
             stiffness: 120,
-            mass: 0.5, // much lighter feel
+            mass: 0.5,
             overshootClamping: true,
         }, (finished) => {
             if (finished) {
@@ -235,17 +301,15 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
             setIsAnimating(false);
         }, 800);
 
-        // High stiffness + high damping = Organic feeling of a spring with NONE of the bounce.
         expandAnim.value = withSpring(0, {
             stiffness: 150,
             damping: 24,
             mass: 0.6,
-            overshootClamping: true, // Prevents jumps past 0
+            overshootClamping: true,
             energyThreshold: 0.01,
         }, (finished) => {
             if (finished) {
                 runOnJS(clearAnimSafety)();
-                // Minimal delay to ensure the UI paints the '0' state fully
                 setTimeout(() => {
                     runOnJS(setExpandedUser)(null);
                     runOnJS(setOriginLayout)(null);
@@ -267,11 +331,15 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
         priorities, setPriorities,
         scrollToUserIndex, flatListRef,
         liveTimelineEvents, timelineLoading,
-        loadMoreEvents, refreshTimeline: (u: any) => fetchTimelineForUser(u, true), paginationMeta,
+        loadMoreEvents,
+        refreshTimeline: (u: any) => fetchTimelineForUser(u, true),
+        notifyTimelineInsert,
+        paginationMeta,
     }), [
         expandedUser, priorities, scrollToUserIndex,
         liveTimelineEvents, timelineLoading,
-        loadMoreEvents, fetchTimelineForUser, paginationMeta,
+        loadMoreEvents, fetchTimelineForUser,
+        notifyTimelineInsert, paginationMeta,
     ]);
 
     return (
