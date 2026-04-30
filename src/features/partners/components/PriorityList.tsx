@@ -90,6 +90,10 @@ const isBirthdayToday = (birthday?: string): boolean => {
     return today.getMonth() + 1 === month && today.getDate() === day;
 };
 
+/** Returns up to 2 uppercase initials from a display name */
+const getInitials = (name: string): string =>
+    name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+
 export interface PriorityListProps {
     priorities: PriorityUserWithPost[];
     onColorChange?: (color: string) => void;
@@ -429,7 +433,13 @@ const PriorityCard = React.memo(
                                 overflow: 'hidden',
                             }]}
                         >
-                            <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                            {item.profilePicture ? (
+                                <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                            ) : (
+                                <View style={[styles.circularImage, styles.avatarFallback, { backgroundColor: dominantColor }]}>
+                                    <Text style={styles.avatarInitials}>{getInitials(item.name)}</Text>
+                                </View>
+                            )}
                         </Animated.View>
                         <View style={styles.pendingOverlay} pointerEvents="none">
                             <Ionicons name="hourglass-outline" size={28} color="rgba(255,255,255,0.9)" />
@@ -464,7 +474,13 @@ const PriorityCard = React.memo(
                                 overflow: 'hidden',
                             }]}
                         >
-                            <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                            {item.profilePicture ? (
+                                <TapHoldImage source={{ uri: item.profilePicture }} style={styles.circularImage} />
+                            ) : (
+                                <View style={[styles.circularImage, styles.avatarFallback, { backgroundColor: dominantColor }]}>
+                                    <Text style={styles.avatarInitials}>{getInitials(item.name)}</Text>
+                                </View>
+                            )}
                         </Animated.View>
                     </GestureDetector>
 
@@ -784,6 +800,16 @@ const styles = StyleSheet.create({
     curvedTextWrapper: { marginBottom: -75, zIndex: Z_INDEX.CURVED_TEXT, alignItems: 'center', justifyContent: 'flex-end', overflow: 'visible' },
     imageWrapper: { width: LAYOUT.IMAGE_SIZE, height: LAYOUT.IMAGE_SIZE, borderRadius: LAYOUT.IMAGE_SIZE / 2, position: 'relative', overflow: 'visible' },
     circularImage: { width: '100%', height: '100%', backgroundColor: '#F0EFE9', resizeMode: 'cover' },
+    avatarFallback: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarInitials: {
+        color: '#fff',
+        fontSize: 28,
+        fontFamily: FONTS.bold,
+        fontWeight: '700',
+    },
     callIconsContainer: { position: 'absolute', bottom: -60, alignSelf: 'center', flexDirection: 'row', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: 'rgba(255, 255, 255, 0.96)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 4, zIndex: Z_INDEX.INDICATOR },
     callIconBubble: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255, 255, 255, 1)', justifyContent: 'center', alignItems: 'center' },
     callIconSpacer: { width: 12 },
