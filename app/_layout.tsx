@@ -31,12 +31,14 @@ if (typeof global !== 'undefined' && (global as any).event === 'undefined') {
 
 import { Stack, router, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import { useFonts } from 'expo-font';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 import { VoiceNoteRecordingProvider } from '@/contexts/VoiceNoteRecordingContext';
 import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
@@ -48,11 +50,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 SplashScreen.preventAutoHideAsync();
 
+// ── Notification route map ──────────────────────────────────────────────────
+const handleNotificationRoute = (data: Record<string, any> | undefined) => {
+    if (!data?.route) return;
+    try {
+        router.push(data.route as any);
+    } catch (e) {
+        console.warn('[Notifications] Failed to navigate to route:', data.route, e);
+    }
+};
+
 export default function Layout() {
     const [session, setSession] = useState<Session | null>(null);
     const [sessionLoaded, setSessionLoaded] = useState(false);
     const segments = useSegments();
     useIncomingCall(session?.user?.id);
+
+    const notificationListener = useRef<Notifications.EventSubscription>();
+    const responseListener = useRef<Notifications.EventSubscription>();
 
     const [loaded, error] = useFonts({
         'DancingScript-Regular': require('../assets/fonts/DancingScript-Regular.ttf'),
@@ -94,6 +109,29 @@ export default function Layout() {
         return () => subscription.unsubscribe();
     }, []);
 
+    // ── Notification tap listeners ────────────────────────────────────────────
+    useEffect(() => {
+        // Foreground notification display handler (already set in pushNotificationService)
+        // Tap on notification while app is foregrounded or backgrounded
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+            const data = response.notification.request.content.data as Record<string, any>;
+            handleNotificationRoute(data);
+        });
+
+        // Cold-start: app was killed, user tapped notification to open it
+        Notifications.getLastNotificationResponseAsync().then(response => {
+            if (response) {
+                const data = response.notification.request.content.data as Record<string, any>;
+                // Delay slightly to let the router initialise after cold start
+                setTimeout(() => handleNotificationRoute(data), 500);
+            }
+        });
+
+        return () => {
+            responseListener.current?.remove();
+        };
+    }, []);
+
     useEffect(() => {
         if ((loaded || error) && sessionLoaded) {
             SplashScreen.hideAsync();
@@ -121,16 +159,18 @@ export default function Layout() {
     }
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <PreferencesProvider>
-                <BackgroundProvider>
-                    <PrioritiesRefreshProvider>
-                        <VoiceNoteRecordingProvider>
-                            <Stack screenOptions={{ headerShown: false }} />
-                        </VoiceNoteRecordingProvider>
-                    </PrioritiesRefreshProvider>
-                </BackgroundProvider>
-            </PreferencesProvider>
-        </GestureHandlerRootView>
+        <ErrorBoundary>
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <PreferencesProvider>
+                    <BackgroundProvider>
+                        <PrioritiesRefreshProvider>
+                            <VoiceNoteRecordingProvider>
+                                <Stack screenOptions={{ headerShown: false }} />
+                            </VoiceNoteRecordingProvider>
+                        </PrioritiesRefreshProvider>
+                    </BackgroundProvider>
+                </PreferencesProvider>
+            </GestureHandlerRootView>
+        </ErrorBoundary>
     );
 }

@@ -25,7 +25,7 @@ import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import SecurityBottomSheet from '@/features/profile/components/SecurityBottomSheet';
-import { signOut, deleteAccount } from '@/services/authService';
+import { signOut } from '@/services/authService';
 import { registerForPushNotificationsAsync, unregisterPushNotifications } from '@/services/pushNotificationService';
 
 const { width } = Dimensions.get('window');
@@ -96,8 +96,14 @@ function SettingsScreenContent() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { bgColor, prevBgColor, colorAnim, handleColorChange } = useBackground();
-    const { hapticsEnabled, setHapticsEnabled, pushNotificationsEnabled, setPushNotificationsEnabled } = usePreferences();
-    const [autoPlayEnabled, setAutoPlayEnabled] = useState(false);
+    const {
+        hapticsEnabled,
+        setHapticsEnabled,
+        pushNotificationsEnabled,
+        setPushNotificationsEnabled,
+        autoPlayEnabled,
+        setAutoPlayEnabled,
+    } = usePreferences();
     const [isSecurityOpen, setIsSecurityOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -199,7 +205,6 @@ function SettingsScreenContent() {
         }
     };
 
-
     const HEADER_HEIGHT = 60 + insets.top;
 
     return (
@@ -214,6 +219,7 @@ function SettingsScreenContent() {
                 ]}
                 showsVerticalScrollIndicator={false}
             >
+                {/* ── Account ─────────────────────────────────────────── */}
                 <Section title="account">
                     <SettingsRow
                         icon="person-outline"
@@ -228,8 +234,15 @@ function SettingsScreenContent() {
                         value="passcode, privacy and more"
                         onPress={() => setIsSecurityOpen(true)}
                     />
+                    <View style={styles.divider} />
+                    <SettingsRow
+                        icon="ban-outline"
+                        label="blocked users"
+                        onPress={() => router.push('/blocked-users')}
+                    />
                 </Section>
 
+                {/* ── Preferences ─────────────────────────────────────── */}
                 <Section title="preferences">
                     <SettingsRow
                         icon="notifications-outline"
@@ -248,11 +261,15 @@ function SettingsScreenContent() {
                     <SettingsRow
                         icon="play-outline"
                         label="autoplay films"
-                        toggle={{ value: autoPlayEnabled, onValueChange: setAutoPlayEnabled }}
+                        toggle={{
+                            value: autoPlayEnabled,
+                            onValueChange: (v) => setAutoPlayEnabled(v),
+                        }}
                         right="none"
                     />
                 </Section>
 
+                {/* ── Support ─────────────────────────────────────────── */}
                 <Section title="support">
                     <SettingsRow
                         icon="help-circle-outline"
@@ -273,7 +290,7 @@ function SettingsScreenContent() {
                     />
                 </Section>
 
-                {/* SIGN OUT */}
+                {/* ── Sign out ────────────────────────────────────────── */}
                 <TouchableOpacity
                     activeOpacity={0.8}
                     style={styles.dangerButton}
@@ -289,11 +306,10 @@ function SettingsScreenContent() {
                     <Text style={styles.dangerText}>sign out</Text>
                 </TouchableOpacity>
 
-
                 <Text style={styles.footer}>priorities</Text>
             </ScrollView>
 
-            {/* Header */}
+            {/* ── Floating header ─────────────────────────────────────── */}
             <View style={[styles.headerWrapper, { paddingTop: insets.top }]}>
                 <LinearGradient
                     colors={['rgba(240, 239, 233, 0.95)', 'rgba(240, 239, 233, 0.95)', 'rgba(240, 239, 233, 0)']}
@@ -455,15 +471,6 @@ const styles = StyleSheet.create({
         color: COLORS.error,
         textTransform: 'lowercase',
         letterSpacing: 0.4,
-    },
-    // Delete account button — slightly more aggressive red tint
-    deleteButton: {
-        marginTop: SPACING.sm,
-        borderColor: 'rgba(180, 30, 30, 0.18)',
-        backgroundColor: 'rgba(255, 235, 235, 0.45)',
-    },
-    deleteText: {
-        color: '#B41E1E',
     },
     footer: {
         marginTop: SPACING.xl,

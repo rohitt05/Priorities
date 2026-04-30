@@ -7,33 +7,42 @@ interface PreferencesContextType {
     setHapticsEnabled: (enabled: boolean) => Promise<void>;
     pushNotificationsEnabled: boolean;
     setPushNotificationsEnabled: (enabled: boolean) => Promise<void>;
+    autoPlayEnabled: boolean;
+    setAutoPlayEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
 
 const HAPTICS_PREF_KEY = 'pref_haptics_enabled';
 const PUSH_PREF_KEY = 'pref_push_notifications_enabled';
+const AUTOPLAY_PREF_KEY = 'pref_autoplay_enabled';
 
 export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [hapticsEnabled, setHapticsEnabledState] = useState(true);
     const [pushNotificationsEnabled, setPushNotificationsEnabledState] = useState(true);
+    const [autoPlayEnabled, setAutoPlayEnabledState] = useState(true);
 
     useEffect(() => {
         const loadPrefs = async () => {
             try {
-                const [savedHaptics, savedPush] = await Promise.all([
+                const [savedHaptics, savedPush, savedAutoPlay] = await Promise.all([
                     AsyncStorage.getItem(HAPTICS_PREF_KEY),
                     AsyncStorage.getItem(PUSH_PREF_KEY),
+                    AsyncStorage.getItem(AUTOPLAY_PREF_KEY),
                 ]);
 
                 if (savedHaptics !== null) {
                     const val = savedHaptics === 'true';
                     setHapticsEnabledState(val);
-                    hapticManager.setEnabled(val); // sync singleton on boot
+                    hapticManager.setEnabled(val);
                 }
 
                 if (savedPush !== null) {
                     setPushNotificationsEnabledState(savedPush === 'true');
+                }
+
+                if (savedAutoPlay !== null) {
+                    setAutoPlayEnabledState(savedAutoPlay === 'true');
                 }
             } catch (error) {
                 console.error('Error loading preferences:', error);
@@ -45,7 +54,7 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const setHapticsEnabled = async (enabled: boolean) => {
         try {
             setHapticsEnabledState(enabled);
-            hapticManager.setEnabled(enabled); // keep singleton in sync
+            hapticManager.setEnabled(enabled);
             await AsyncStorage.setItem(HAPTICS_PREF_KEY, enabled.toString());
         } catch (error) {
             console.error('Error saving haptics preference:', error);
@@ -61,6 +70,15 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
     };
 
+    const setAutoPlayEnabled = async (enabled: boolean) => {
+        try {
+            setAutoPlayEnabledState(enabled);
+            await AsyncStorage.setItem(AUTOPLAY_PREF_KEY, enabled.toString());
+        } catch (error) {
+            console.error('Error saving autoplay preference:', error);
+        }
+    };
+
     return (
         <PreferencesContext.Provider
             value={{
@@ -68,6 +86,8 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 setHapticsEnabled,
                 pushNotificationsEnabled,
                 setPushNotificationsEnabled,
+                autoPlayEnabled,
+                setAutoPlayEnabled,
             }}
         >
             {children}
