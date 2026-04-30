@@ -10,7 +10,7 @@ import { getAvatarSource, getImageSource } from '@/utils/getMediaSource';
 import Animated, {
     useAnimatedStyle, interpolate, SharedValue, Extrapolation
 } from 'react-native-reanimated';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -88,7 +88,7 @@ export default function UserTimelineView({
         });
     }, []);
 
-    const { liveTimelineEvents, refreshTimeline } = useUserTimeline();
+    const { liveTimelineEvents, refreshTimeline, timelineLoading, paginationMeta } = useUserTimeline();
 
 
     useEffect(() => {
@@ -264,6 +264,20 @@ export default function UserTimelineView({
 
 
     const renderContent = () => {
+        // Determine if this user's timeline data is still being fetched
+        const userMeta = paginationMeta[user!.uniqueUserId];
+        const isLoadingData =
+            timelineLoading ||
+            (userMeta?.loading === true && mergedEvents.length === 0);
+
+        if (isLoadingData) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="rgba(0,0,0,0.3)" />
+                </View>
+            );
+        }
+
         if (mergedEvents.length > 0) {
             return (
                 <TimelineCalendar
@@ -301,7 +315,7 @@ export default function UserTimelineView({
                         { top: HEADER_HEIGHT + 65, right: 16 }
                     ]}
                 >
-                    {/* Caret pointing to Bell */}
+                    {/* Caret pointing to icon */}
                     <View style={styles.panelCaret} />
                     
                     <Text style={styles.panelTitle}>Delete Requests</Text>
@@ -486,7 +500,7 @@ export default function UserTimelineView({
                 </Animated.View>
 
 
-                {/* ─── Bell icon — top-right of header ─────────────────────────── */}
+                {/* ─── Delete icon — top-right of header ──────────────────────────── */}
                 <Animated.View
                     style={[
                         headerTextAnimatedStyle,
@@ -507,10 +521,10 @@ export default function UserTimelineView({
                         activeOpacity={0.65}
                         style={styles.bellBtn}
                     >
-                        <Ionicons
-                            name={deleteRequests.length > 0 ? 'notifications' : 'notifications-outline'}
+                        <MaterialCommunityIcons
+                            name="delete-empty-outline"
                             size={24}
-                            color={COLORS.primary}
+                            color="black"
                         />
                         {/* Badge dot when there are requests */}
                         {(deleteRequests.length > 0 && !hasSeenNotifications) && (
@@ -553,7 +567,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden', backgroundColor: 'transparent',
     },
     loadingContainer: {
-        flex: 1, justifyContent: 'center', alignItems: 'center',
+        flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100,
     },
     floatingCloseContainer: {
         position: 'absolute', bottom: 40, left: 0, right: 0,
@@ -573,7 +587,7 @@ const styles = StyleSheet.create({
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
     emptyText: { fontSize: 18, fontFamily: 'DancingScript-Regular', color: 'rgba(0,0,0,0.4)' },
 
-    // Bell button
+    // Delete/action button
     bellBtn: {
         width: 36,
         height: 36,
@@ -607,7 +621,7 @@ const styles = StyleSheet.create({
     requestsPanel: {
         position: 'absolute',
         zIndex: 201,
-        width: 345, // Increased width to prevent truncation
+        width: 345,
         backgroundColor: '#FFFFFF',
         borderRadius: 16,
         paddingVertical: 14,
