@@ -13,8 +13,9 @@ import {
 import { TimelineEvent } from '@/types/domain';
 import SmartVideoTile from '@/components/ui/SmartVideoTile';
 import { useBackground } from '@/contexts/BackgroundContext';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '@/theme/theme';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -123,11 +124,18 @@ export default function TimelineCalendar({
                         )}
                     </View>
                 ) : item.uri ? (
-                    <Image
-                        source={getImageSource(item.uri)}
-                        style={{ width: '100%', height: '100%' }}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
+                    /*
+                     * Use UserAvatar instead of expo-image directly.
+                     * expo-image cannot render 'default:N' SVG avatar URIs — it would
+                     * silently fail and show only the background color.
+                     * UserAvatar handles both real photo URIs and default:N keys,
+                     * rendering SvgXml with explicit pixel dimensions (itemSize × itemSize)
+                     * so the SVG face always fills the grid cell correctly.
+                     */
+                    <UserAvatar
+                        uri={item.uri}
+                        style={{ width: itemSize, height: itemSize }}
+                        resizeMode="cover"
                     />
                 ) : (
                     <View style={{ flex: 1, backgroundColor: item.bg || (dark ? '#222' : '#ddd') }} />
