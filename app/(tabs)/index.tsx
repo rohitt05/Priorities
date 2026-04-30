@@ -1,6 +1,6 @@
 import { StyleSheet, View, Text, Share, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { COLORS, FONTS, FONT_SIZES } from '@/theme/theme';
 import FloatingSearch from '@/components/ui/FloatingSearch';
 import PriorityList from '@/features/partners/components/PriorityList';
@@ -15,7 +15,9 @@ import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { FontAwesome6, Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
-
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { startBuzz, stopBuzz } from '@/services/hapticService';
+import { runOnJS } from 'react-native-reanimated';
 
 export default function HomeScreen() {
     const router = useRouter();
@@ -28,12 +30,14 @@ export default function HomeScreen() {
     const [myUniqueId, setMyUniqueId] = useState<string>('');
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+    // Tracks whether buzz is currently active to avoid duplicate stop signals
+    const isBuzzing = useRef(false);
+
     const loadPrioritiesData = async (userId: string) => {
         try {
             const real = await getMyPriorities(userId);
             const pending = await getOutgoingPendingRequests(userId);
 
-            // pending is already mapped — no .profiles key exists
             const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => ({
                 id: req.id,
                 uniqueUserId: req.uniqueUserId,
@@ -96,11 +100,55 @@ export default function HomeScreen() {
         };
     }, [currentUserId]);
 
+    // ─── Buzz Helpers (called from worklet via runOnJS) ───────────────────────
+    const sendBuzzStart = async () => {
+        if (!activeUser || !currentUserId || isBuzzing.current) return;
+        isBuzzing.current = true;
+
+        startBuzz();
+
+        await supabase.channel(`user-signals-${activeUser.id}`).send({
+            type: 'broadcast',
+            event: 'buzz',
+            payload: { state: 'start', senderId: currentUserId },
+        });
+    };
+
+    const sendBuzzStop = async () => {
+        if (!isBuzzing.current) return;
+        isBuzzing.current = false;
+
+        stopBuzz();
+
+        if (!activeUser || !currentUserId) return;
+        await supabase.channel(`user-signals-${activeUser.id}`).send({
+            type: 'broadcast',
+            event: 'buzz',
+            payload: { state: 'stop', senderId: currentUserId },
+        });
+    };
+
+    // ─── Full-screen Long Press Gesture ──────────────────────────────────────
+    // Activates after 350ms hold anywhere on the screen.
+    // The inner profile picture has its own gesture handler which takes
+    // priority due to RNGH specificity — so it is naturally excluded.
+    const buzzGesture = Gesture.LongPress()
+        .minDuration(350)
+        .maxDistance(999) // allow finger to move freely while holding
+        .onStart(() => {
+            runOnJS(sendBuzzStart)();
+        })
+        .onEnd(() => {
+            runOnJS(sendBuzzStop)();
+        })
+        .onTouchesCancelled(() => {
+            runOnJS(sendBuzzStop)();
+        });
 
     const hasPriorities = priorities.length > 0;
 
     const handleInvite = async () => {
-        const message = `I’m okay on my own, but honestly, everything feels brighter when I’m with you.\n\nDownload the app and add me: @${myUniqueId}`;
+        const message = `I'm okay on my own, but honestly, everything feels brighter when I'm with you.\n\nDownload the app and add me: @${myUniqueId}`;
         try {
             await Share.share({ message });
         } catch (error) {
@@ -109,62 +157,66 @@ export default function HomeScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <View style={styles.mainContent}>
-                <PriorityList
-                    priorities={priorities}
-                    onColorChange={handleColorChange}
-                    onActiveUserChange={setActiveUser}
-                    scrollX={scrollX}
-                />
-            </View>
-
-            {hasPriorities && (
-                <FilmSwiperBlob
-                    activeUser={activeUser}
-                    scrollX={scrollX}
-                    onReveal={() => {
-                        if (activeUser) {
-                            router.push({
-                                pathname: '/UserFilms',
-                                params: {
-                                    userId: activeUser.id,           // ← UUID, not uniqueUserId
-                                    userName: activeUser.name,
-                                    dominantColor: activeUser.dominantColor,
-                                    isPending: activeUser.isPending ? 'true' : 'false',
-                                }
-                            });
-                        }
-                    }}
-                />
-            )}
-
-            {isLoaded && !hasPriorities && (
-                <View style={styles.emptyContainer} pointerEvents="box-none">
-                    <View style={styles.cuteBoxWrapper}>
-                        <View style={styles.distortedBoxBehind} />
-                        <View style={styles.distortedBoxFront}>
-                            <Text style={styles.quoteText}>
-                                "I’m okay on my own, but honestly, everything feels brighter when I’m with you"
-                            </Text>
-                        </View>
-                    </View>
-
-                    <Text style={styles.whoText}>
-                        who's the person, who came to your mind when you first read it?
-                    </Text>
-
-                    <TouchableOpacity style={styles.inviteButton} onPress={handleInvite} activeOpacity={0.7}>
-                        <Ionicons name="paper-plane-outline" size={20} color={COLORS.text} />
-                        <Text style={styles.inviteButtonText}>invite them</Text>
-                    </TouchableOpacity>
+        // GestureDetector wraps the entire screen — buzz fires on any long press
+        // except where a child gesture (profile pic voice note) intercepts first
+        <GestureDetector gesture={buzzGesture}>
+            <View style={styles.container}>
+                <View style={styles.mainContent}>
+                    <PriorityList
+                        priorities={priorities}
+                        onColorChange={handleColorChange}
+                        onActiveUserChange={setActiveUser}
+                        scrollX={scrollX}
+                    />
                 </View>
-            )}
 
-            <FilmMyDay />
-            <FloatingSearch />
-            <StatusBar style="auto" />
-        </View>
+                {hasPriorities && (
+                    <FilmSwiperBlob
+                        activeUser={activeUser}
+                        scrollX={scrollX}
+                        onReveal={() => {
+                            if (activeUser) {
+                                router.push({
+                                    pathname: '/UserFilms',
+                                    params: {
+                                        userId: activeUser.id,
+                                        userName: activeUser.name,
+                                        dominantColor: activeUser.dominantColor,
+                                        isPending: activeUser.isPending ? 'true' : 'false',
+                                    }
+                                });
+                            }
+                        }}
+                    />
+                )}
+
+                {isLoaded && !hasPriorities && (
+                    <View style={styles.emptyContainer} pointerEvents="box-none">
+                        <View style={styles.cuteBoxWrapper}>
+                            <View style={styles.distortedBoxBehind} />
+                            <View style={styles.distortedBoxFront}>
+                                <Text style={styles.quoteText}>
+                                    "I'm okay on my own, but honestly, everything feels brighter when I'm with you"
+                                </Text>
+                            </View>
+                        </View>
+
+                        <Text style={styles.whoText}>
+                            who's the person, who came to your mind when you first read it?
+                        </Text>
+
+                        <TouchableOpacity style={styles.inviteButton} onPress={handleInvite} activeOpacity={0.7}>
+                            <Ionicons name="paper-plane-outline" size={20} color={COLORS.text} />
+                            <Text style={styles.inviteButtonText}>invite them</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                <FilmMyDay />
+                <FloatingSearch />
+                <StatusBar style="auto" />
+            </View>
+        </GestureDetector>
     );
 }
 
