@@ -46,12 +46,13 @@ import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { useIncomingCall } from '@/features/calls/useIncomingCall';
 import { useBuzzListener } from '@/features/buzz/useBuzzListener';
+import { BuzzToast } from '@/features/buzz/BuzzToast';
 import { registerForPushNotificationsAsync, unregisterPushNotifications } from '@/services/pushNotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 SplashScreen.preventAutoHideAsync();
 
-// ── Notification route map ──────────────────────────────────────────────────
+// ── Notification route map ─────────────────────────────────────────────
 const handleNotificationRoute = (data: Record<string, any> | undefined) => {
     if (!data?.route) return;
     try {
@@ -66,9 +67,11 @@ export default function Layout() {
     const [sessionLoaded, setSessionLoaded] = useState(false);
     const segments = useSegments();
 
-    // ── Global real-time listeners — registered here so they fire on any screen ──
+    // ── Global real-time listeners — fire on ANY screen ──────────────────────
     useIncomingCall(session?.user?.id);
-    useBuzzListener(session?.user?.id);
+    // buzzState carries { isBuzzing, buzzerName, buzzerAvatar, senderId }
+    // or null when no buzz is active — fed directly into <BuzzToast>
+    const buzzState = useBuzzListener(session?.user?.id);
 
     const notificationListener = useRef<Notifications.EventSubscription>();
     const responseListener = useRef<Notifications.EventSubscription>();
@@ -113,7 +116,7 @@ export default function Layout() {
         return () => subscription.unsubscribe();
     }, []);
 
-    // ── Notification tap listeners ────────────────────────────────────────────
+    // ── Notification tap listeners ───────────────────────────────────────
     useEffect(() => {
         responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
             const data = response.notification.request.content.data as Record<string, any>;
@@ -166,6 +169,15 @@ export default function Layout() {
                         <PrioritiesRefreshProvider>
                             <VoiceNoteRecordingProvider>
                                 <Stack screenOptions={{ headerShown: false }} />
+
+                                {/*
+                                  BuzzToast sits OUTSIDE the Stack so it floats
+                                  above every screen — home, timelines, profile, all of them.
+                                  pointerEvents="none" on the toast ensures it never
+                                  blocks the user from interacting with the app below.
+                                */}
+                                <BuzzToast buzzState={buzzState} />
+
                             </VoiceNoteRecordingProvider>
                         </PrioritiesRefreshProvider>
                     </BackgroundProvider>
