@@ -467,9 +467,18 @@ export default function UserTimelineView({
                     ]}
                     pointerEvents="none"
                 >
+                    {/*
+                     * IMPORTANT: Do NOT use { width: '100%', height: '100%' } here.
+                     * Reanimated animates width/height on the UI thread, bypassing
+                     * React Native's Yoga layout engine. Percentage-based children
+                     * never receive updated pixel dimensions, so they render at 0x0.
+                     * StyleSheet.absoluteFillObject fills via position constraints
+                     * (top/right/bottom/left = 0) which works correctly with
+                     * Reanimated animated parents.
+                     */}
                     <UserAvatar
                         uri={user!.profilePicture}
-                        style={{ width: '100%', height: '100%' }}
+                        style={StyleSheet.absoluteFillObject}
                     />
                 </Animated.View>
 
