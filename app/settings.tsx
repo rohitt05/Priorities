@@ -234,12 +234,6 @@ function SettingsScreenContent() {
                         value="passcode, privacy and more"
                         onPress={() => setIsSecurityOpen(true)}
                     />
-                    <View style={styles.divider} />
-                    <SettingsRow
-                        icon="ban-outline"
-                        label="blocked users"
-                        onPress={() => router.push('/blocked-users')}
-                    />
                 </Section>
 
                 {/* ── Preferences ─────────────────────────────────────── */}
