@@ -21,7 +21,7 @@ export default function CallInfoViewer({ mediaItem }: BaseMediaProps) {
 }
 
 const styles = StyleSheet.create({
-    container: { width: SCREEN_WIDTH * 0.85, height: 350, borderRadius: 20, overflow: 'hidden' },
+    container: { flex: 1 },
     gradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     title: { fontSize: 28, fontWeight: '700', color: '#fff', marginVertical: 20 },
     text: { fontSize: 18, color: '#fff', marginBottom: 10 }

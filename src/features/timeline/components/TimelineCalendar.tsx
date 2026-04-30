@@ -104,6 +104,23 @@ export default function TimelineCalendar({
                 ) : item.type === 'voice' ? (
                     <View style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: item.bg || (dark ? '#222' : '#ddd') }}>
                         <Feather name="mic" size={24} color={COLORS.primary} />
+                        {item.durationSec && (
+                            <Text style={{ position: 'absolute', bottom: 4, fontSize: 8, color: textMuted }}>{Math.floor(item.durationSec / 60)}:{(item.durationSec % 60).toString().padStart(2, '0')}</Text>
+                        )}
+                    </View>
+                ) : item.type === 'video_call' ? (
+                    <View style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: item.bg || (dark ? '#222' : '#ddd') }}>
+                        <Ionicons name="videocam" size={24} color={COLORS.primary} />
+                        {item.durationSec && (
+                            <Text style={{ position: 'absolute', bottom: 4, fontSize: 8, color: textMuted }}>{Math.floor(item.durationSec / 60)}:{(item.durationSec % 60).toString().padStart(2, '0')}</Text>
+                        )}
+                    </View>
+                ) : item.type === 'voice_call' ? (
+                    <View style={{ flex: 1, width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: item.bg || (dark ? '#222' : '#ddd') }}>
+                        <Ionicons name="call" size={22} color={COLORS.primary} />
+                        {item.durationSec && (
+                            <Text style={{ position: 'absolute', bottom: 4, fontSize: 8, color: textMuted }}>{Math.floor(item.durationSec / 60)}:{(item.durationSec % 60).toString().padStart(2, '0')}</Text>
+                        )}
                     </View>
                 ) : item.uri ? (
                     <Image

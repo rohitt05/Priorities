@@ -3,12 +3,13 @@ import { TimelineEvent } from '@/types/domain';
 
 export interface TimelineGridItem {
     id: string;
-    type: 'photo' | 'video';
+    type: 'photo' | 'video' | 'voice' | 'video_call' | 'voice_call';
     bg: string;
     uri?: string;
     videoUri?: string;
     thumbUri?: string;
     text?: string;
+    durationSec?: number;
 }
 
 export interface TimelineDayRow {
@@ -82,6 +83,19 @@ export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem
             thumbUri = isValidUrl(ev.thumbUri) ? ev.thumbUri : (isValidUrl(ev.uri) ? ev.uri : undefined);
             uri = thumbUri; // Image tile shows thumb only
             break;
+        case 'voice':
+            type = 'voice';
+            bg = '#f8f9fa';
+            uri = isValidUrl(ev.uri) ? ev.uri : undefined;
+            break;
+        case 'video_call':
+            type = 'video_call';
+            bg = '#e9ecef';
+            break;
+        case 'voice_call':
+            type = 'voice_call';
+            bg = '#f1f3f5';
+            break;
     }
 
     return {
@@ -92,6 +106,7 @@ export const transformEventToGridItem = (event: TimelineEvent): TimelineGridItem
         videoUri,
         thumbUri,
         text: ev.textContent || ev.text || ev.caption,
+        durationSec: ev.duration_sec || ev.durationSec,
     };
 };
 

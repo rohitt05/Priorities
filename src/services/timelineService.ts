@@ -91,7 +91,7 @@ export const timelineService = {
                 .select('id, source_id, media_type, uri, thumb_uri, duration_sec, sender, text_content, seen_at, created_at')
                 .eq('owner_id', myId)
                 .eq('other_user_id', theirId)
-                .order('seen_at', { ascending: false })
+                .order('created_at', { ascending: false })
                 .range(from, to),
         ]);
 
@@ -151,6 +151,7 @@ export const timelineService = {
                 console.warn('[timelineService] Skipping timeline row with no valid URI:', row.source_id);
                 continue;
             }
+            const eventTs = row.seen_at || row.created_at;
             events.push({
                 id: row.source_id,
                 senderId: row.sender === 'me' ? myId : theirId,
@@ -160,12 +161,12 @@ export const timelineService = {
                 thumbUri: row.thumb_uri ?? freshUri,
                 durationSec: row.duration_sec ?? undefined,
                 textContent: row.text_content ?? undefined,
-                sentAt: row.seen_at,
+                sentAt: eventTs,
                 seenAt: row.seen_at,
                 disappeared: false,
                 userUniqueId: theirUniqueUserId,
-                sender: row.sender as 'me' | 'them',
-                timestamp: row.seen_at,
+                sender: row.sender === 'other' ? 'them' : (row.sender as any),
+                timestamp: eventTs,
             } as TimelineEvent);
         }
 
