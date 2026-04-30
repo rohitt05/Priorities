@@ -1,52 +1,69 @@
 // src/features/buzz/useBuzzListener.ts
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { startBuzz, stopBuzz } from '@/services/hapticService';
 
+export interface BuzzState {
+    isBuzzing: boolean;
+    buzzerName: string;
+    buzzerAvatar: string | null;
+    senderId: string;
+}
+
 /**
- * Global receiver hook — subscribes to the current user's personal
- * signal channel so haptic buzzes are received regardless of which
- * screen the user is currently on.
+ * Global receiver hook.
+ * Now also returns the buzzer's identity so the UI can show
+ * who is buzzing the current user in real-time.
  *
- * Registered at the root layout level (app/_layout.tsx) alongside
- * useIncomingCall for the same reason.
- *
- * Channel pattern: user-signals-${currentUserId}
- * Event:           'buzz'
- * Payload:         { state: 'start' | 'stop', senderId: string }
+ * Returns null when no buzz is active.
  */
-export function useBuzzListener(currentUserId: string | undefined): void {
+export function useBuzzListener(currentUserId: string | undefined): BuzzState | null {
+    const [buzzState, setBuzzState] = useState<BuzzState | null>(null);
+
     useEffect(() => {
         if (!currentUserId) return;
-
-        console.log('[useBuzzListener] Subscribing to user-signals-' + currentUserId);
 
         const channel = supabase
             .channel(`user-signals-${currentUserId}`)
             .on(
                 'broadcast',
                 { event: 'buzz' },
-                (payload) => {
+                async (payload) => {
                     const { state, senderId } = payload.payload as {
                         state: 'start' | 'stop';
                         senderId: string;
                     };
 
-                    console.log(`[useBuzzListener] Buzz ${state} from ${senderId}`);
-
                     if (state === 'start') {
                         startBuzz();
+
+                        // Fetch the sender's profile to show their identity
+                        const { data: profile } = await supabase
+                            .from('profiles')
+                            .select('name, profile_picture')
+                            .eq('id', senderId)
+                            .single();
+
+                        setBuzzState({
+                            isBuzzing: true,
+                            buzzerName: profile?.name ?? 'Someone',
+                            buzzerAvatar: profile?.profile_picture ?? null,
+                            senderId,
+                        });
                     } else if (state === 'stop') {
                         stopBuzz();
+                        setBuzzState(null);
                     }
                 }
             )
             .subscribe();
 
         return () => {
-            // Cancel any ongoing vibration when the hook unmounts / user logs out
             stopBuzz();
+            setBuzzState(null);
             supabase.removeChannel(channel);
         };
     }, [currentUserId]);
+
+    return buzzState;
 }
