@@ -10,8 +10,6 @@ import {
     ViewToken,
     ActivityIndicator,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { getAvatarSource } from '@/utils/getMediaSource';
 import { StatusBar } from 'expo-status-bar';
 import { Entypo } from '@expo/vector-icons';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -20,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUserTimeline } from '@/contexts/UserTimelineContext';
 import { User } from '@/types/domain';
 import { FONTS } from '@/theme/theme';
-import * as Haptics from 'expo-haptics'; // enums only
+import * as Haptics from 'expo-haptics';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import Animated, {
     useSharedValue,
@@ -33,6 +31,7 @@ import Animated, {
     Extrapolation
 } from 'react-native-reanimated';
 import { usePriorityUsers } from '@/hooks/usePriorityUsers';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SPACING = 16;
@@ -150,15 +149,22 @@ const TimelineItem = React.memo(({
                         backgroundColor: user.dominantColor, overflow: 'hidden',
                         opacity: isPriority ? 1 : 0.6,
                     }, scaleStyle]}>
-                        <Image
-                            source={getAvatarSource(user.profilePicture)}
+                        {/*
+                         * UserAvatar instead of expo-image:
+                         * expo-image cannot render 'default:N' SVG avatar URIs —
+                         * it silently fails and shows only the dominantColor background.
+                         * UserAvatar handles both real photo URIs and default:N keys,
+                         * using SvgXml with pixel dimensions from onLayout so the SVG
+                         * face always renders correctly inside the circular container.
+                         */}
+                        <UserAvatar
+                            uri={user.profilePicture}
                             style={{
                                 width: '100%',
                                 height: '100%',
                                 opacity: isPriority ? 1 : 0.7,
                             }}
-                            contentFit="cover"
-                            cachePolicy="memory-disk"
+                            resizeMode="cover"
                         />
                     </Animated.View>
                 </Pressable>
