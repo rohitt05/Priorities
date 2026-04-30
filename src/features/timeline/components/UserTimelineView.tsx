@@ -6,7 +6,7 @@ import {
     ScrollView, Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { getAvatarSource, getImageSource } from '@/utils/getMediaSource';
+import { getImageSource } from '@/utils/getMediaSource';
 import Animated, {
     useAnimatedStyle, interpolate, SharedValue, Extrapolation
 } from 'react-native-reanimated';
@@ -27,11 +27,7 @@ import {
     respondToDeleteRequest,
     MemoryDeleteRequest,
 } from '@/services/memoryDeleteService';
-
-
-/** Returns up to 2 uppercase initials from a display name */
-const getInitials = (name: string): string =>
-    name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 
 const formatTimestamp = (isoTs: string): string => {
@@ -471,18 +467,10 @@ export default function UserTimelineView({
                     ]}
                     pointerEvents="none"
                 >
-                    {user!.profilePicture ? (
-                        <Image
-                            source={getAvatarSource(user!.profilePicture)}
-                            style={{ width: '100%', height: '100%' }}
-                            contentFit="cover"
-                            cachePolicy="memory-disk"
-                        />
-                    ) : (
-                        <View style={styles.avatarFallback}>
-                            <Text style={styles.avatarInitials}>{getInitials(user!.name)}</Text>
-                        </View>
-                    )}
+                    <UserAvatar
+                        uri={user!.profilePicture}
+                        style={{ width: '100%', height: '100%' }}
+                    />
                 </Animated.View>
 
 
@@ -597,19 +585,6 @@ const styles = StyleSheet.create({
     closeBtnContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
     emptyText: { fontSize: 18, fontFamily: 'DancingScript-Regular', color: 'rgba(0,0,0,0.4)' },
-    avatarFallback: {
-        flex: 1,
-        width: '100%',
-        height: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarInitials: {
-        color: '#fff',
-        fontSize: 18,
-        fontFamily: FONTS.bold,
-        fontWeight: '700',
-    },
 
     // Delete/action button
     bellBtn: {
