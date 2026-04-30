@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Image, AppState, Dimensions } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Image, AppState, Dimensions, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
     LiveKitRoom,
@@ -75,9 +75,14 @@ export default function CallRoom() {
             )
             .subscribe();
 
-        // Handle app-wide PiP when backgrounding
+        // ── PiP on background: Android-only guard ──────────────────────────────
         const subscription = AppState.addEventListener('change', nextAppState => {
-            if (nextAppState === 'background' && params.callType === 'video' && hasPermission) {
+            if (
+                nextAppState === 'background' &&
+                params.callType === 'video' &&
+                hasPermission &&
+                Platform.OS === 'android'
+            ) {
                 PipHandler.enterPipMode();
             }
         });
@@ -178,7 +183,44 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
     const isMicEnabled = localParticipant?.isMicrophoneEnabled ?? false;
     const isCameraEnabled = localParticipant?.isCameraEnabled ?? false;
 
-    // Draggable PiP State
+    // ── Speaker state — default loudspeaker ON ─────────────────────────────
+    const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+
+    // Set loudspeaker on mount so the call starts loud by default
+    useEffect(() => {
+        const enableSpeaker = async () => {
+            try {
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: true,
+                    // false = route through loudspeaker; true = route through earpiece
+                    ...(Platform.OS === 'android' ? { playThroughEarpieceAndroid: false } : {}),
+                });
+            } catch (e) {
+                console.error('Failed to set initial audio mode:', e);
+            }
+        };
+        enableSpeaker();
+    }, []);
+
+    const toggleSpeaker = async () => {
+        const newSpeakerOn = !isSpeakerOn;
+        try {
+            await Audio.setAudioModeAsync({
+                allowsRecordingIOS: true,
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: true,
+                // On Android: playThroughEarpieceAndroid: false = loudspeaker, true = earpiece
+                ...(Platform.OS === 'android' ? { playThroughEarpieceAndroid: !newSpeakerOn } : {}),
+            });
+            setIsSpeakerOn(newSpeakerOn);
+        } catch (e) {
+            console.error('Speaker toggle failed:', e);
+        }
+    };
+
+    // ── Draggable PiP State (video calls only) ─────────────────────────────
     const translateX = useSharedValue(SCREEN_WIDTH - PIP_WIDTH - 20);
     const translateY = useSharedValue(SCREEN_HEIGHT - PIP_HEIGHT - 100);
 
@@ -188,7 +230,7 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
             translateY.value = event.absoluteY - PIP_HEIGHT / 2;
         })
         .onEnd(() => {
-            // Snap to nearest corner
+            // Snap to nearest horizontal edge
             const snapX = translateX.value > SCREEN_WIDTH / 2 ? SCREEN_WIDTH - PIP_WIDTH - 20 : 20;
             translateX.value = withSpring(snapX);
             translateY.value = withSpring(translateY.value);
@@ -235,48 +277,67 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
                 )}
             </View>
 
-            {/* Header Overlay - Uses Insets */}
+            {/* Header Overlay */}
             <View style={[styles.headerOverlay, { top: insets.top + 10 }]}>
                 <View style={styles.participantChip}>
                     <Image source={{ uri: remotePic }} style={styles.chipAvatar} />
                     <Text style={styles.chipName}>{remoteName || 'Charlie'}</Text>
                     <Ionicons name="chevron-forward" size={16} color="#fff" />
                 </View>
-                <TouchableOpacity style={styles.topRightIcon}>
-                    <View style={styles.whiteCircle} />
-                </TouchableOpacity>
             </View>
 
-            {/* Draggable PIP Overlay: Local Video */}
-            <GestureDetector gesture={panGesture}>
-                <Animated.View style={[styles.pipContainer, animatedStyle]}>
-                    {isCameraEnabled && localTrack ? (
-                        <View style={styles.pipVideoWrapper}>
-                            <VideoTrack
-                                // @ts-ignore
-                                trackRef={localTrack}
-                                style={styles.pipVideo}
-                                objectFit="cover"
-                                mirror={true}
-                            />
-                        </View>
-                    ) : (
-                        <View style={[styles.pipVideo, styles.pipPlaceholder]}>
-                            <Feather name="video-off" size={24} color="#fff" />
-                        </View>
-                    )}
-                </Animated.View>
-            </GestureDetector>
+            {/* ── Draggable PiP: local video — VIDEO calls only ────────────── */}
+            {callType === 'video' && (
+                <GestureDetector gesture={panGesture}>
+                    <Animated.View style={[styles.pipContainer, animatedStyle]}>
+                        {isCameraEnabled && localTrack ? (
+                            <View style={styles.pipVideoWrapper}>
+                                <VideoTrack
+                                    // @ts-ignore
+                                    trackRef={localTrack}
+                                    style={styles.pipVideo}
+                                    objectFit="cover"
+                                    mirror={true}
+                                />
+                            </View>
+                        ) : (
+                            <View style={[styles.pipVideo, styles.pipPlaceholder]}>
+                                <Feather name="video-off" size={24} color="#fff" />
+                            </View>
+                        )}
+                    </Animated.View>
+                </GestureDetector>
+            )}
 
-            {/* Vertical Controls Overlay - Uses Insets */}
+            {/* Vertical Controls Overlay */}
             <View style={[styles.verticalControls, { bottom: insets.bottom + 40 }]}>
+                {/* Speaker toggle — available on both voice and video */}
                 <TouchableOpacity
-                    style={[styles.controlBtn, isCameraEnabled ? styles.btnActive : styles.btnInactive]}
-                    onPress={toggleCamera}
+                    style={[
+                        styles.controlBtn,
+                        isSpeakerOn ? styles.btnActiveSpeaker : styles.btnInactive,
+                    ]}
+                    onPress={toggleSpeaker}
+                    accessibilityLabel={isSpeakerOn ? 'Switch to earpiece' : 'Switch to speaker'}
                 >
-                    <Feather name={isCameraEnabled ? "video" : "video-off"} size={22} color="#fff" />
+                    <Ionicons
+                        name={isSpeakerOn ? 'volume-high' : 'volume-low'}
+                        size={22}
+                        color="#fff"
+                    />
                 </TouchableOpacity>
 
+                {/* Camera toggle — video calls only */}
+                {callType === 'video' && (
+                    <TouchableOpacity
+                        style={[styles.controlBtn, isCameraEnabled ? styles.btnActive : styles.btnInactive]}
+                        onPress={toggleCamera}
+                    >
+                        <Feather name={isCameraEnabled ? "video" : "video-off"} size={22} color="#fff" />
+                    </TouchableOpacity>
+                )}
+
+                {/* Mic toggle — always visible */}
                 <TouchableOpacity
                     style={[styles.controlBtn, isMicEnabled ? styles.btnActiveMic : styles.btnInactive]}
                     onPress={toggleMic}
@@ -284,10 +345,14 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
                     <Feather name={isMicEnabled ? "mic" : "mic-off"} size={22} color="#fff" />
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.controlBtn} onPress={switchCamera}>
-                    <Ionicons name="camera-reverse" size={24} color="#fff" />
-                </TouchableOpacity>
+                {/* Camera flip — video calls only */}
+                {callType === 'video' && (
+                    <TouchableOpacity style={styles.controlBtn} onPress={switchCamera}>
+                        <Ionicons name="camera-reverse" size={24} color="#fff" />
+                    </TouchableOpacity>
+                )}
 
+                {/* Hangup — always visible */}
                 <TouchableOpacity style={styles.hangupBtnLarge} onPress={onHangup}>
                     <Ionicons name="close" size={32} color="#fff" />
                 </TouchableOpacity>
@@ -310,10 +375,10 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
         alignItems: 'center',
         paddingHorizontal: 20,
-        zIndex: 100
+        zIndex: 100,
     },
     participantChip: {
         flexDirection: 'row',
@@ -324,12 +389,10 @@ const styles = StyleSheet.create({
         borderRadius: 30,
         gap: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)'
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     chipAvatar: { width: 34, height: 34, borderRadius: 17 },
     chipName: { color: '#fff', fontFamily: FONTS.bold, fontSize: 15 },
-    topRightIcon: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-    whiteCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff' },
 
     pipContainer: {
         position: 'absolute',
@@ -345,12 +408,12 @@ const styles = StyleSheet.create({
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 5 },
         shadowOpacity: 0.3,
-        shadowRadius: 10
+        shadowRadius: 10,
     },
     pipVideoWrapper: {
         flex: 1,
         borderRadius: 24,
-        overflow: 'hidden'
+        overflow: 'hidden',
     },
     pipVideo: { flex: 1 },
     pipPlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#333' },
@@ -369,10 +432,11 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)'
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     btnActive: { backgroundColor: '#4CD964' },
     btnActiveMic: { backgroundColor: '#FFCC00' },
+    btnActiveSpeaker: { backgroundColor: '#007AFF' },
     btnInactive: { backgroundColor: 'rgba(0,0,0,0.4)' },
     hangupBtnLarge: {
         width: 52,
