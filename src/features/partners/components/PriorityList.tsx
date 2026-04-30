@@ -42,6 +42,7 @@ import { ViewMessageModal } from '@/components/ui/ViewMessageModal';
 import { supabase } from '@/lib/supabase';
 import { startCall } from '@/services/callService';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { BUZZ_PATTERN } from '@/services/hapticService';
 
 const AnimatedGHFlatList = Animated.createAnimatedComponent(GHFlatList);
 
@@ -75,15 +76,14 @@ const BLOB_PATH = 'M46.3,-76.3C59.5,-69.1,69.7,-56.3,77.3,-42.3C84.9,-28.3,89.9,
 const isBirthdayToday = (birthday?: string): boolean => {
     if (!birthday) return false;
     const today = new Date();
-    // Robust parsing: extract digits from the string (handles YYYY-MM-DD, MM-DD, and trailing times)
     const digits = birthday.match(/\d+/g);
     if (!digits || digits.length < 2) return false;
 
     let month, day;
-    if (digits[0].length === 4) { // YYYY-MM-DD
+    if (digits[0].length === 4) {
         month = parseInt(digits[1], 10);
         day = parseInt(digits[2], 10);
-    } else { // MM-DD or DD-MM (assume month first)
+    } else {
         month = parseInt(digits[0], 10);
         day = parseInt(digits[1], 10);
     }
@@ -280,7 +280,6 @@ const SeenIndicator = React.memo(({ status, size, userName }: { status: string; 
 SeenIndicator.displayName = 'SeenIndicator';
 
 // ─── Birthday Indicator ───────────────────────────────────────────────────────
-// Positioned at bottom-right of the card circle (45°), avoids overlapping with unread/options
 const BirthdayIndicator = React.memo(({ size }: { size: number }) => {
     const position = useMemo(() => calculateOptionsButtonPosition(size, 45, 22), [size]);
     return (
@@ -307,10 +306,45 @@ const PriorityCard = React.memo(
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
         const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
-        const VIBRATION_PATTERN = [0, 500, 200, 500, 200, 500, 200, 800];
 
-        const startCallVibration = () => { Vibration.vibrate(VIBRATION_PATTERN, true); };
-        const stopCallVibration = () => { Vibration.cancel(); };
+        // ─── Buzz: channel ref for sending broadcast to recipient ──────────────
+        const buzzChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+        useEffect(() => {
+            if (!item.id) return;
+            // Subscribe to the RECIPIENT's signal channel so we can broadcast to it
+            const ch = supabase.channel(`user-signals-${item.id}`);
+            ch.subscribe();
+            buzzChannelRef.current = ch;
+            return () => {
+                supabase.removeChannel(ch);
+                buzzChannelRef.current = null;
+            };
+        }, [item.id]);
+
+        // startCallVibration — vibrates sender + signals receiver via Broadcast
+        const startCallVibration = useCallback(async () => {
+            Vibration.vibrate(BUZZ_PATTERN, true);
+            if (buzzChannelRef.current && currentUserId) {
+                await buzzChannelRef.current.send({
+                    type: 'broadcast',
+                    event: 'buzz',
+                    payload: { state: 'start', senderId: currentUserId },
+                });
+            }
+        }, [currentUserId]);
+
+        // stopCallVibration — cancels sender vibration + signals receiver to stop
+        const stopCallVibration = useCallback(async () => {
+            Vibration.cancel();
+            if (buzzChannelRef.current && currentUserId) {
+                await buzzChannelRef.current.send({
+                    type: 'broadcast',
+                    event: 'buzz',
+                    payload: { state: 'stop', senderId: currentUserId },
+                });
+            }
+        }, [currentUserId]);
 
         const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
         const { markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
@@ -320,7 +354,6 @@ const PriorityCard = React.memo(
 
         const [viewingMedia, setViewingMedia] = useState(false);
 
-        // When it's their birthday, show "Happy Birthday!" on the curved text arc
         const curvedLabel = isBirthday ? `Happy Birthday ${item.name}!` : item.name;
 
         const handleSingleTap = useCallback(() => {
@@ -408,6 +441,8 @@ const PriorityCard = React.memo(
 
         const composedGesture = Gesture.Exclusive(panGesture, tapGestures);
 
+        // ─── Buzz gesture — long-press the CARD BACKGROUND (not the profile picture) ───
+        // Profile picture zone uses composedGesture (voice note + tap) — fully separate.
         const callVibrationGesture = Gesture.LongPress()
             .minDuration(400)
             .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
@@ -446,15 +481,16 @@ const PriorityCard = React.memo(
 
         return (
             <View style={styles.cardContainer}>
+                {/* ── Buzz zone: the entire card background OUTSIDE the profile picture ── */}
                 <GestureDetector gesture={callVibrationGesture}>
                     <View style={StyleSheet.absoluteFill} />
                 </GestureDetector>
 
                 <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
-                {/* Birthday: curved text shows "Happy Birthday [Name]!" instead of just the name */}
                 <CurvedText text={curvedLabel} width={LAYOUT.IMAGE_SIZE} color={dominantColor} isActive={isActive} />
 
                 <View style={styles.imageWrapper}>
+                    {/* ── Profile picture zone: voice note (pan) + tap — untouched ── */}
                     <GestureDetector gesture={composedGesture}>
                         <Animated.View
                             collapsable={false}
@@ -497,17 +533,13 @@ const PriorityCard = React.memo(
                             }}
                         />
                     )}
-                    {/* Birthday cake bubble — shown when active, even if unread media exists (now that positions don't overlap) */}
                     {!recordingForThisCard && isBirthday && isActive && (
                         <BirthdayIndicator size={LAYOUT.IMAGE_SIZE} />
                     )}
                     {(() => {
                         if (recordingForThisCard || unreadMedia || !sentStatus || sentStatus.status === 'none' || !isActive) return null;
-
-                        // Only show if seen/reacted within the last 30 minutes
                         const diff = Date.now() - new Date(sentStatus.timestamp).getTime();
                         if (diff > 30 * 60 * 1000) return null;
-
                         return <SeenIndicator status={sentStatus.status} size={LAYOUT.IMAGE_SIZE} userName={item.name} />;
                     })()}
                 </View>
@@ -842,7 +874,6 @@ const styles = StyleSheet.create({
         letterSpacing: 0,
         textShadowColor: 'transparent',
     },
-    // ─── Birthday styles ───────────────────────────────────────────────────────
     birthdayBubble: {
         position: 'absolute',
         zIndex: Z_INDEX.INDICATOR,

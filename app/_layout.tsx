@@ -45,6 +45,7 @@ import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { useIncomingCall } from '@/features/calls/useIncomingCall';
+import { useBuzzListener } from '@/features/buzz/useBuzzListener';
 import { registerForPushNotificationsAsync, unregisterPushNotifications } from '@/services/pushNotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -64,7 +65,10 @@ export default function Layout() {
     const [session, setSession] = useState<Session | null>(null);
     const [sessionLoaded, setSessionLoaded] = useState(false);
     const segments = useSegments();
+
+    // ── Global real-time listeners — registered here so they fire on any screen ──
     useIncomingCall(session?.user?.id);
+    useBuzzListener(session?.user?.id);
 
     const notificationListener = useRef<Notifications.EventSubscription>();
     const responseListener = useRef<Notifications.EventSubscription>();
@@ -111,18 +115,14 @@ export default function Layout() {
 
     // ── Notification tap listeners ────────────────────────────────────────────
     useEffect(() => {
-        // Foreground notification display handler (already set in pushNotificationService)
-        // Tap on notification while app is foregrounded or backgrounded
         responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
             const data = response.notification.request.content.data as Record<string, any>;
             handleNotificationRoute(data);
         });
 
-        // Cold-start: app was killed, user tapped notification to open it
         Notifications.getLastNotificationResponseAsync().then(response => {
             if (response) {
                 const data = response.notification.request.content.data as Record<string, any>;
-                // Delay slightly to let the router initialise after cold start
                 setTimeout(() => handleNotificationRoute(data), 500);
             }
         });
