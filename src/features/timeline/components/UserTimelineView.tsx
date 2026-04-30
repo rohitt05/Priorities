@@ -453,34 +453,31 @@ export default function UserTimelineView({
                 </Animated.View>
 
 
-                {/* Avatar */}
-                <Animated.View
-                    style={[
-                        imageAnimatedStyle,
-                        {
-                            position: 'absolute',
-                            backgroundColor: user!.dominantColor,
-                            overflow: 'hidden',
-                            zIndex: 100,
-                            elevation: 10,
-                        }
-                    ]}
+                {/*
+                 * Avatar — UserAvatar IS the Reanimated.View (isReanimated=true).
+                 *
+                 * Why not wrap in Animated.View with absoluteFillObject child?
+                 * Reanimated sets width/height on the UI thread, bypassing Yoga.
+                 * A child with absoluteFillObject relies on its parent's Yoga layout
+                 * (which stays 0x0), so onLayout fires with 0x0 → SvgXml gets
+                 * width=0/height=0 → blank circle for default avatars.
+                 *
+                 * By making UserAvatar the Reanimated.View, onLayout fires directly
+                 * on the animated container and receives the real Reanimated-driven
+                 * dimensions, so SvgXml always gets correct pixel values.
+                 */}
+                <UserAvatar
+                    uri={user!.profilePicture}
+                    isReanimated={true}
+                    animatedStyle={imageAnimatedStyle}
                     pointerEvents="none"
-                >
-                    {/*
-                     * IMPORTANT: Do NOT use { width: '100%', height: '100%' } here.
-                     * Reanimated animates width/height on the UI thread, bypassing
-                     * React Native's Yoga layout engine. Percentage-based children
-                     * never receive updated pixel dimensions, so they render at 0x0.
-                     * StyleSheet.absoluteFillObject fills via position constraints
-                     * (top/right/bottom/left = 0) which works correctly with
-                     * Reanimated animated parents.
-                     */}
-                    <UserAvatar
-                        uri={user!.profilePicture}
-                        style={StyleSheet.absoluteFillObject}
-                    />
-                </Animated.View>
+                    style={{
+                        position: 'absolute',
+                        overflow: 'hidden',
+                        zIndex: 100,
+                        elevation: 10,
+                    }}
+                />
 
 
                 {/* Header name */}

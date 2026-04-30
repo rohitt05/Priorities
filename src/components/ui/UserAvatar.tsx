@@ -15,6 +15,9 @@ interface UserAvatarProps {
     isReanimated?: boolean;
     animatedStyle?: any;
     fallbackColor?: string;
+    /** Forward pointerEvents to the container — useful when UserAvatar IS the
+     *  Reanimated.View (isReanimated=true) and the caller needs touch pass-through. */
+    pointerEvents?: 'none' | 'box-none' | 'box-only' | 'auto';
 }
 
 export const UserAvatar: React.FC<UserAvatarProps> = ({
@@ -24,6 +27,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     isReanimated = false,
     animatedStyle,
     fallbackColor = '#E5E5EA',
+    pointerEvents,
 }) => {
     const [containerSize, setContainerSize] = useState<{ w: number; h: number } | null>(null);
 
@@ -48,6 +52,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
                     { backgroundColor: '#F0EFE9', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
                 ]}
                 onLayout={handleLayout}
+                pointerEvents={pointerEvents}
             >
                 {/*
                  * SvgXml cannot resolve percentage widths when the parent itself uses
@@ -55,6 +60,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
                  * We measure the container via onLayout and pass explicit pixel values
                  * so the SVG fills correctly in every context — fixed sizes AND
                  * percentage/animated parents alike.
+                 *
+                 * When this component IS the Reanimated.View (isReanimated=true with
+                 * animatedStyle), onLayout fires directly on the animated container so
+                 * Reanimated-driven dimension changes are captured correctly.
                  */}
                 <SvgXml
                     xml={svgXml}
