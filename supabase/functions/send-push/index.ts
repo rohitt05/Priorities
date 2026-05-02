@@ -5,88 +5,188 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') as string;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// ── Route map for notification taps ─────────────────────────────────────────
-// These are Expo Router paths that the app will navigate to when the
-// notification is tapped. addNotificationResponseReceivedListener in
-// app/_layout.tsx reads `data.route` and calls router.push(data.route).
 const ROUTES = {
   MAIN_TABS: '/(tabs)',
   TIMELINES: '/(tabs)/timelines',
 } as const;
 
+async function sendExpoPush(params: {
+  token: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  sound?: string;
+  channelId?: string;
+  priority?: string;
+  ttl?: number;
+}) {
+  const expoAccessToken = Deno.env.get('EXPO_ACCESS_TOKEN');
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'Accept-encoding': 'gzip, deflate',
+    'Content-Type': 'application/json',
+  };
+  if (expoAccessToken) {
+    headers['Authorization'] = `Bearer ${expoAccessToken}`;
+  }
+
+  const pushPayload: Record<string, unknown> = {
+    to: params.token,
+    sound: params.sound ?? 'default',
+    title: params.title,
+    body: params.body,
+  };
+  if (params.data) pushPayload.data = params.data;
+  if (params.channelId) pushPayload.channelId = params.channelId;
+  if (params.priority) pushPayload.priority = params.priority;
+  if (params.ttl !== undefined) pushPayload.ttl = params.ttl;
+
+  const res = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(pushPayload),
+  });
+
+  const json = await res.json();
+  if (json?.data?.[0]?.status === 'error') {
+    console.error('Expo Push Error:', JSON.stringify(json.data[0]));
+  }
+  return json;
+}
+
+// FIX 5 — channelId is Android-only. iOS does not support custom vibration
+// patterns from push notifications — the default system vibration is the only
+// option available without the Critical Alerts entitlement (Apple approval needed).
+// This helper detects iOS tokens so we can safely omit channelId for them.
+function isIosToken(token: string): boolean {
+  const lower = token.toLowerCase();
+  return lower.includes('ios') || lower.includes('apns');
+}
+
 serve(async (req) => {
   try {
     const payload = await req.json();
-    const { table, type, record, old_record } = payload;
+
+    if (payload.type === 'buzz') {
+      const { receiverId, senderId, senderName } = payload as {
+        receiverId: string;
+        senderId: string;
+        senderName: string;
+      };
+
+      if (!receiverId || !senderName) {
+        return new Response(
+          JSON.stringify({ error: 'receiverId and senderName are required for buzz.' }),
+          { status: 400 }
+        );
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('expo_push_token')
+        .eq('id', receiverId)
+        .single();
+
+      if (!profile?.expo_push_token) {
+        console.log(`[Buzz] No push token for ${receiverId}. Skipping.`);
+        return new Response(
+          JSON.stringify({ message: 'User has no push token.' }),
+          { status: 200 }
+        );
+      }
+
+      const token = profile.expo_push_token as string;
+
+      // FIX 5 — Android gets channelId 'buzz' which triggers the custom
+      // vibration pattern [0,100,50,100,50,100,50,600,100,600] registered
+      // in pushNotificationService.ts, with bypassDnd + MAX importance.
+      // iOS gets no channelId — it is an Android-only field. iOS will fire
+      // the default system vibration, which is all APNs allows here.
+      const isIos = isIosToken(token);
+
+      const result = await sendExpoPush({
+        token,
+        title: '📳 Buzz!',
+        body: `${senderName} is buzzing you`,
+        channelId: isIos ? undefined : 'buzz',
+        sound: 'default',
+        priority: 'high',
+        ttl: 30,
+        data: {
+          route: ROUTES.MAIN_TABS,
+          type: 'buzz',
+          senderId: senderId ?? '',
+        },
+      });
+
+      console.log(`[Buzz] Push sent to ${receiverId} (${isIos ? 'iOS' : 'Android'})`);
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ── DB webhook events ─────────────────────────────────────────────────────
+    const { table, type: eventType, record, old_record } = payload;
 
     let targetUserId: string | null = null;
     let title = '';
     let body = '';
     let route: string = ROUTES.MAIN_TABS;
 
-    // 1 & 2. Priority Requests
     if (table === 'priority_requests') {
-      if (type === 'INSERT') {
+      if (eventType === 'INSERT') {
         targetUserId = record.receiver_id;
         title = 'New Priority Request';
         body = 'Someone sent you a new priority request.';
         route = ROUTES.MAIN_TABS;
-      } else if (type === 'UPDATE' && record.status === 'accepted' && old_record.status !== 'accepted') {
+      } else if (eventType === 'UPDATE' && record.status === 'accepted' && old_record.status !== 'accepted') {
         targetUserId = record.sender_id;
         title = 'Priority Request Accepted';
         body = 'Your priority request was accepted!';
         route = ROUTES.MAIN_TABS;
       }
-    }
-    // 3. Incoming Call — notification handled by incoming-call screen; skip deep link
-    else if (table === 'call_sessions' && type === 'INSERT') {
+    } else if (table === 'call_sessions' && eventType === 'INSERT') {
       targetUserId = record.callee_id;
       title = 'Incoming Call';
       body = 'You have an incoming call.';
-      // No route — call listener handles this
-    }
-    // 4. New Voice Message
-    else if (table === 'messages' && type === 'INSERT' && record.type === 'voice') {
+    } else if (table === 'messages' && eventType === 'INSERT' && record.type === 'voice') {
       targetUserId = record.receiver_id;
       title = 'New Voice Message';
       body = 'You received a new voice message.';
       route = ROUTES.TIMELINES;
-    }
-    // 5. Message Reaction
-    else if (table === 'message_reactions' && type === 'INSERT') {
+    } else if (table === 'message_reactions' && eventType === 'INSERT') {
       const { data: originalMessage } = await supabase
         .from('messages')
         .select('sender_id')
         .eq('id', record.message_id)
         .single();
-
       if (originalMessage && originalMessage.sender_id !== record.user_id) {
         targetUserId = originalMessage.sender_id;
         title = 'New Reaction';
         body = 'Someone reacted to your message.';
         route = ROUTES.TIMELINES;
       }
-    }
-    // 6. Partner Request
-    else if (table === 'partner_requests' && type === 'INSERT') {
+    } else if (table === 'partner_requests' && eventType === 'INSERT') {
       targetUserId = record.receiver_id;
       title = 'New Partner Request';
       body = 'You have a new partner request.';
       route = ROUTES.MAIN_TABS;
-    }
-    // 7. Memory Delete Request
-    else if (table === 'memory_delete_requests' && type === 'INSERT') {
+    } else if (table === 'memory_delete_requests' && eventType === 'INSERT') {
       targetUserId = record.other_user_id;
       title = 'Memory Deletion Request';
       body = 'Your partner requested to delete a shared memory.';
       route = ROUTES.TIMELINES;
     }
 
-    console.log(`[Edge Function] Triggered by ${table} / ${type}`);
+    console.log(`[Edge Function] Triggered by ${table} / ${eventType}`);
 
     if (!targetUserId) {
       console.log('[Edge Function] No target user for this event. Skipping.');
-      return new Response(JSON.stringify({ message: 'No notification needed.' }), { status: 200 });
+      return new Response(
+        JSON.stringify({ message: 'No notification needed.' }),
+        { status: 200 }
+      );
     }
 
     const { data: profile } = await supabase
@@ -97,44 +197,23 @@ serve(async (req) => {
 
     if (!profile?.expo_push_token) {
       console.log(`[Edge Function] No push token for ${targetUserId}. Skipping.`);
-      return new Response(JSON.stringify({ message: 'User has no push token.' }), { status: 200 });
+      return new Response(
+        JSON.stringify({ message: 'User has no push token.' }),
+        { status: 200 }
+      );
     }
 
-    const expoAccessToken = Deno.env.get('EXPO_ACCESS_TOKEN');
-    const headers: Record<string, string> = {
-      'Accept': 'application/json',
-      'Accept-encoding': 'gzip, deflate',
-      'Content-Type': 'application/json',
-    };
-    if (expoAccessToken) {
-      headers['Authorization'] = `Bearer ${expoAccessToken}`;
+    const pushData: Record<string, unknown> = {};
+    if (table !== 'call_sessions') {
+      pushData.route = route;
     }
 
-    const pushPayload: Record<string, unknown> = {
-      to: profile.expo_push_token,
-      sound: 'default',
+    const expoData = await sendExpoPush({
+      token: profile.expo_push_token,
       title,
       body,
-    };
-
-    // Attach deep-link route so the app can navigate on tap
-    // call_sessions notifications intentionally have no route
-    if (table !== 'call_sessions') {
-      pushPayload.data = { route };
-    }
-
-    const expoResponse = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(pushPayload),
+      data: Object.keys(pushData).length > 0 ? pushData : undefined,
     });
-
-    const expoData = await expoResponse.json();
-    console.log('EXPO RAW RESPONSE:', JSON.stringify(expoData));
-
-    if (expoData?.data?.[0]?.status === 'error') {
-      console.error('Expo Push Error Details:', expoData.data[0]);
-    }
 
     return new Response(
       JSON.stringify(expoData),
@@ -143,6 +222,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Internal Edge Function Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 400 });
+    return new Response(
+      JSON.stringify({ error: (error as Error).message }),
+      { status: 400 }
+    );
   }
 });

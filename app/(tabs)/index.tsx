@@ -13,11 +13,12 @@ import { useSharedValue } from 'react-native-reanimated';
 import { getMyPriorities, getOutgoingPendingRequests } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
-import { FontAwesome6, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { startBuzz, stopBuzz } from '@/services/hapticService';
 import { runOnJS } from 'react-native-reanimated';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export default function HomeScreen() {
     const router = useRouter();
@@ -29,9 +30,16 @@ export default function HomeScreen() {
     const { refreshKey } = usePrioritiesRefresh();
     const [myUniqueId, setMyUniqueId] = useState<string>('');
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [currentUserName, setCurrentUserName] = useState<string>('');
 
     // Tracks whether buzz is currently active to avoid duplicate stop signals
     const isBuzzing = useRef(false);
+
+    // FIX 1 — Persistent channel ref: subscribed ONCE per activeUser so that
+    // .send() is always called on an already-joined channel. Supabase Realtime
+    // requires .subscribe() before .send() — creating a fresh channel on every
+    // buzz and immediately calling .send() was the root cause of silent failures.
+    const buzzChannelRef = useRef<RealtimeChannel | null>(null);
 
     const loadPrioritiesData = async (userId: string) => {
         try {
@@ -64,9 +72,14 @@ export default function HomeScreen() {
             if (!userId) return;
             setCurrentUserId(userId);
 
-            const { data: profile } = await supabase.from('profiles').select('unique_user_id').eq('id', userId).single();
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('unique_user_id, name')
+                .eq('id', userId)
+                .single();
             if (profile) {
                 setMyUniqueId(profile.unique_user_id);
+                setCurrentUserName(profile.name ?? '');
             }
 
             loadPrioritiesData(userId);
@@ -100,6 +113,32 @@ export default function HomeScreen() {
         };
     }, [currentUserId]);
 
+    // FIX 1 — Subscribe the sender-side broadcast channel ONCE when activeUser
+    // changes. Tear down the old channel first so we never have stale subs.
+    // The channel stays alive for the entire session with this person, so every
+    // .send() call hits an already-subscribed socket — no more silent drops.
+    useEffect(() => {
+        if (buzzChannelRef.current) {
+            supabase.removeChannel(buzzChannelRef.current);
+            buzzChannelRef.current = null;
+        }
+
+        if (!activeUser) return;
+
+        const ch = supabase
+            .channel(`user-signals-${activeUser.id}`)
+            .subscribe((status) => {
+                console.log(`[Buzz] Sender channel status for ${activeUser.id}:`, status);
+            });
+
+        buzzChannelRef.current = ch;
+
+        return () => {
+            supabase.removeChannel(ch);
+            buzzChannelRef.current = null;
+        };
+    }, [activeUser?.id]);
+
     // ─── Buzz Helpers (called from worklet via runOnJS) ───────────────────────
     const sendBuzzStart = async () => {
         if (!activeUser || !currentUserId || isBuzzing.current) return;
@@ -107,11 +146,49 @@ export default function HomeScreen() {
 
         startBuzz();
 
-        await supabase.channel(`user-signals-${activeUser.id}`).send({
-            type: 'broadcast',
-            event: 'buzz',
-            payload: { state: 'start', senderId: currentUserId },
-        });
+        // FIX 1 — Use buzzChannelRef.current (already subscribed) instead of
+        // creating a new unsubscribed channel. Supabase silently drops broadcasts
+        // on channels that haven't joined yet — this was the core bug.
+        if (buzzChannelRef.current) {
+            await buzzChannelRef.current.send({
+                type: 'broadcast',
+                event: 'buzz',
+                payload: {
+                    state: 'start',
+                    senderId: currentUserId,
+                    senderName: currentUserName,
+                },
+            });
+        } else {
+            console.warn('[Buzz] Sender channel not ready — Realtime path skipped');
+        }
+
+        // FIX 4 — Check receiver has a push token before invoking Edge Function.
+        // Skip the network call entirely if token is missing — avoids a wasted
+        // round-trip and keeps logs clean.
+        try {
+            const { data: receiverProfile } = await supabase
+                .from('profiles')
+                .select('expo_push_token')
+                .eq('id', activeUser.id)
+                .single();
+
+            if (!receiverProfile?.expo_push_token) {
+                console.warn(`[Buzz] Receiver ${activeUser.id} has no push token — skipping send-push`);
+                return;
+            }
+
+            await supabase.functions.invoke('send-push', {
+                body: {
+                    type: 'buzz',
+                    receiverId: activeUser.id,
+                    senderId: currentUserId,
+                    senderName: currentUserName,
+                },
+            });
+        } catch (e) {
+            console.warn('[Buzz] Push fallback failed:', e);
+        }
     };
 
     const sendBuzzStop = async () => {
@@ -121,29 +198,24 @@ export default function HomeScreen() {
         stopBuzz();
 
         if (!activeUser || !currentUserId) return;
-        await supabase.channel(`user-signals-${activeUser.id}`).send({
-            type: 'broadcast',
-            event: 'buzz',
-            payload: { state: 'stop', senderId: currentUserId },
-        });
+
+        // FIX 1 — Use buzzChannelRef for stop signal too
+        if (buzzChannelRef.current) {
+            await buzzChannelRef.current.send({
+                type: 'broadcast',
+                event: 'buzz',
+                payload: { state: 'stop', senderId: currentUserId },
+            });
+        }
     };
 
     // ─── Full-screen Long Press Gesture ──────────────────────────────────────
-    // Activates after 350ms hold anywhere on the screen.
-    // The inner profile picture has its own gesture handler which takes
-    // priority due to RNGH specificity — so it is naturally excluded.
     const buzzGesture = Gesture.LongPress()
         .minDuration(350)
-        .maxDistance(999) // allow finger to move freely while holding
-        .onStart(() => {
-            runOnJS(sendBuzzStart)();
-        })
-        .onEnd(() => {
-            runOnJS(sendBuzzStop)();
-        })
-        .onTouchesCancelled(() => {
-            runOnJS(sendBuzzStop)();
-        });
+        .maxDistance(999)
+        .onStart(() => { runOnJS(sendBuzzStart)(); })
+        .onEnd(() => { runOnJS(sendBuzzStop)(); })
+        .onTouchesCancelled(() => { runOnJS(sendBuzzStop)(); });
 
     const hasPriorities = priorities.length > 0;
 
@@ -157,8 +229,6 @@ export default function HomeScreen() {
     };
 
     return (
-        // GestureDetector wraps the entire screen — buzz fires on any long press
-        // except where a child gesture (profile pic voice note) intercepts first
         <GestureDetector gesture={buzzGesture}>
             <View style={styles.container}>
                 <View style={styles.mainContent}>
@@ -219,7 +289,6 @@ export default function HomeScreen() {
         </GestureDetector>
     );
 }
-
 
 const styles = StyleSheet.create({
     container: {
