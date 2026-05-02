@@ -73,8 +73,8 @@ export default function Layout() {
     // or null when no buzz is active — fed directly into <BuzzToast>
     const buzzState = useBuzzListener(session?.user?.id);
 
-    const notificationListener = useRef<Notifications.EventSubscription>();
-    const responseListener = useRef<Notifications.EventSubscription>();
+    const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+    const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
     const [loaded, error] = useFonts({
         'DancingScript-Regular': require('../assets/fonts/DancingScript-Regular.ttf'),
