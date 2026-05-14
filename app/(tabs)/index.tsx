@@ -43,8 +43,10 @@ export default function HomeScreen() {
 
     const loadPrioritiesData = async (userId: string) => {
         try {
-            const real = await getMyPriorities(userId);
-            const pending = await getOutgoingPendingRequests(userId);
+            const [real, pending] = await Promise.all([
+                getMyPriorities(userId),
+                getOutgoingPendingRequests(userId),
+            ]);
 
             const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => ({
                 id: req.id,
@@ -72,17 +74,20 @@ export default function HomeScreen() {
             if (!userId) return;
             setCurrentUserId(userId);
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('unique_user_id, name')
-                .eq('id', userId)
-                .single();
-            if (profile) {
-                setMyUniqueId(profile.unique_user_id);
-                setCurrentUserName(profile.name ?? '');
-            }
+            // FIX #9: Parallelize profile fetch and priorities data load.
+            const [profileResult] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('unique_user_id, name')
+                    .eq('id', userId)
+                    .single(),
+                loadPrioritiesData(userId)
+            ]);
 
-            loadPrioritiesData(userId);
+            if (profileResult.data) {
+                setMyUniqueId(profileResult.data.unique_user_id);
+                setCurrentUserName(profileResult.data.name ?? '');
+            }
         };
         init();
     }, [refreshKey]);

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hapticManager } from '@/hooks/useHapticFeedback';
 
@@ -48,7 +49,11 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 console.error('Error loading preferences:', error);
             }
         };
-        loadPrefs();
+        const task = InteractionManager.runAfterInteractions(() => {
+            loadPrefs();
+        });
+
+        return () => task.cancel();
     }, []);
 
     const setHapticsEnabled = async (enabled: boolean) => {

@@ -1,6 +1,6 @@
 // src/contexts/MediaInboxContext.tsx
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode, useEffect, useRef } from 'react';
-import { Image } from 'react-native';
+import { InteractionManager, Image } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { TimelineEvent, Message } from '@/types/domain';
 import { getCachedUrl, setCachedUrl } from '@/services/signedUrlCache';
@@ -162,100 +162,105 @@ export const MediaInboxProvider = ({ children }: { children: ReactNode }) => {
     // ── Realtime subscription ─────────────────────────────────────────────────
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
+    // FIX #5: Deferred with InteractionManager so the two startup DB queries and
+    // 4 realtime channel subscriptions do not fire before the first frame is painted.
     useEffect(() => {
-        loadUnreadMessages();
+        const task = InteractionManager.runAfterInteractions(() => {
+            loadUnreadMessages();
 
-        const setupRealtime = async () => {
-            const myId = await getMyId();
-            if (!myId) return;
+            const setupRealtime = async () => {
+                const myId = await getMyId();
+                if (!myId) return;
 
-            channelRef.current = supabase
-                .channel('messages-inbox')
+                channelRef.current = supabase
+                    .channel('messages-inbox')
 
-                .on(
-                    'postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${myId}` },
-                    async (payload) => {
-                        const row = payload.new as any;
-                        if (row.disappeared || row.seen_at) return;
+                    .on(
+                        'postgres_changes',
+                        { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${myId}` },
+                        async (payload) => {
+                            const row = payload.new as any;
+                            if (row.disappeared || row.seen_at) return;
 
-                        const newMessage: Message = {
-                            id: row.id,
-                            senderId: row.sender_id,
-                            receiverId: row.receiver_id,
-                            type: row.type as Message['type'],
-                            uri: row.uri ?? undefined,
-                            durationSec: row.duration_sec ?? undefined,
-                            sentAt: row.sent_at,
-                            seenAt: null,
-                            disappeared: row.disappeared,
-                        };
+                            const newMessage: Message = {
+                                id: row.id,
+                                senderId: row.sender_id,
+                                receiverId: row.receiver_id,
+                                type: row.type as Message['type'],
+                                uri: row.uri ?? undefined,
+                                durationSec: row.duration_sec ?? undefined,
+                                sentAt: row.sent_at,
+                                seenAt: null,
+                                disappeared: row.disappeared,
+                            };
 
-                        setUnreadQueues(prev => ({
-                            ...prev,
-                            [row.sender_id]: [newMessage, ...(prev[row.sender_id] || [])],
-                        }));
+                            setUnreadQueues(prev => ({
+                                ...prev,
+                                [row.sender_id]: [newMessage, ...(prev[row.sender_id] || [])],
+                            }));
 
-                        const freshUri = await refreshSignedUrl(row.uri);
-                        prefetchIfImage(freshUri, row.type);
+                            const freshUri = await refreshSignedUrl(row.uri);
+                            prefetchIfImage(freshUri, row.type);
 
-                        setUnreadMessages(prev => ({
-                            ...prev,
-                            [row.sender_id]: { ...newMessage, uri: freshUri },
-                        }));
-                    }
-                )
-
-                .on(
-                    'postgres_changes',
-                    { event: 'UPDATE', schema: 'public', table: 'messages', filter: `sender_id=eq.${myId}` },
-                    (payload) => {
-                        const row = payload.new as any;
-                        if (row.seen_at) {
-                            setMyLastSentStatus(prev => {
-                                const current = prev[row.receiver_id];
-                                const isEmoji = current && current.status !== 'sent' && current.status !== 'seen' && current.status !== 'none';
-                                if (isEmoji) return prev;
-                                return { ...prev, [row.receiver_id]: { status: 'seen', timestamp: row.seen_at } };
-                            });
+                            setUnreadMessages(prev => ({
+                                ...prev,
+                                [row.sender_id]: { ...newMessage, uri: freshUri },
+                            }));
                         }
-                    }
-                )
+                    )
 
-                .on(
-                    'postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'message_reactions' },
-                    (payload) => {
-                        const row = payload.new as any;
-                        const receiverId = sentMessageMapRef.current[row.message_id];
-                        if (!receiverId) return;
-                        setMyLastSentStatus(prev => ({
-                            ...prev,
-                            [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
-                        }));
-                    }
-                )
+                    .on(
+                        'postgres_changes',
+                        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `sender_id=eq.${myId}` },
+                        (payload) => {
+                            const row = payload.new as any;
+                            if (row.seen_at) {
+                                setMyLastSentStatus(prev => {
+                                    const current = prev[row.receiver_id];
+                                    const isEmoji = current && current.status !== 'sent' && current.status !== 'seen' && current.status !== 'none';
+                                    if (isEmoji) return prev;
+                                    return { ...prev, [row.receiver_id]: { status: 'seen', timestamp: row.seen_at } };
+                                });
+                            }
+                        }
+                    )
 
-                .on(
-                    'postgres_changes',
-                    { event: 'UPDATE', schema: 'public', table: 'message_reactions' },
-                    (payload) => {
-                        const row = payload.new as any;
-                        const receiverId = sentMessageMapRef.current[row.message_id];
-                        if (!receiverId) return;
-                        setMyLastSentStatus(prev => ({
-                            ...prev,
-                            [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
-                        }));
-                    }
-                )
+                    .on(
+                        'postgres_changes',
+                        { event: 'INSERT', schema: 'public', table: 'message_reactions' },
+                        (payload) => {
+                            const row = payload.new as any;
+                            const receiverId = sentMessageMapRef.current[row.message_id];
+                            if (!receiverId) return;
+                            setMyLastSentStatus(prev => ({
+                                ...prev,
+                                [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
+                            }));
+                        }
+                    )
 
-                .subscribe();
-        };
+                    .on(
+                        'postgres_changes',
+                        { event: 'UPDATE', schema: 'public', table: 'message_reactions' },
+                        (payload) => {
+                            const row = payload.new as any;
+                            const receiverId = sentMessageMapRef.current[row.message_id];
+                            if (!receiverId) return;
+                            setMyLastSentStatus(prev => ({
+                                ...prev,
+                                [receiverId]: { status: row.emoji, timestamp: row.created_at || new Date().toISOString() },
+                            }));
+                        }
+                    )
 
-        setupRealtime();
+                    .subscribe();
+            };
+
+            setupRealtime();
+        });
 
         return () => {
+            task.cancel();
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;

@@ -298,53 +298,39 @@ interface PriorityCardProps {
     sentStatus: { status: string; timestamp: string } | null;
     currentUserId: string | null;
     isBirthday: boolean;
+    buzzChannel: ReturnType<typeof supabase.channel> | null;
 }
 
 const PriorityCard = React.memo(
-    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId, isBirthday }: PriorityCardProps) => {
+    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId, isBirthday, buzzChannel }: PriorityCardProps) => {
         const dominantColor = item.dominantColor || COLORS.primary;
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
         const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
 
-        // ─── Buzz: channel ref for sending broadcast to recipient ──────────────
-        const buzzChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
-        useEffect(() => {
-            if (!item.id) return;
-            // Subscribe to the RECIPIENT's signal channel so we can broadcast to it
-            const ch = supabase.channel(`user-signals-${item.id}`);
-            ch.subscribe();
-            buzzChannelRef.current = ch;
-            return () => {
-                supabase.removeChannel(ch);
-                buzzChannelRef.current = null;
-            };
-        }, [item.id]);
-
         // startCallVibration — vibrates sender + signals receiver via Broadcast
         const startCallVibration = useCallback(async () => {
             Vibration.vibrate(BUZZ_PATTERN, true);
-            if (buzzChannelRef.current && currentUserId) {
-                await buzzChannelRef.current.send({
+            if (buzzChannel && currentUserId) {
+                await buzzChannel.send({
                     type: 'broadcast',
                     event: 'buzz',
                     payload: { state: 'start', senderId: currentUserId },
                 });
             }
-        }, [currentUserId]);
+        }, [currentUserId, buzzChannel]);
 
         // stopCallVibration — cancels sender vibration + signals receiver to stop
         const stopCallVibration = useCallback(async () => {
             Vibration.cancel();
-            if (buzzChannelRef.current && currentUserId) {
-                await buzzChannelRef.current.send({
+            if (buzzChannel && currentUserId) {
+                await buzzChannel.send({
                     type: 'broadcast',
                     event: 'buzz',
                     payload: { state: 'stop', senderId: currentUserId },
                 });
             }
-        }, [currentUserId]);
+        }, [currentUserId, buzzChannel]);
 
         const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
         const { markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
@@ -565,7 +551,8 @@ const PriorityCard = React.memo(
         prev.unreadMedia?.id === next.unreadMedia?.id &&
         prev.sentStatus?.status === next.sentStatus?.status &&
         prev.sentStatus?.timestamp === next.sentStatus?.timestamp &&
-        prev.isBirthday === next.isBirthday
+        prev.isBirthday === next.isBirthday &&
+        prev.buzzChannel === next.buzzChannel
 );
 PriorityCard.displayName = 'PriorityCard';
 
@@ -621,6 +608,8 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const flatListRef = useRef<GHFlatList>(null);
+    const activeBuzzChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+    const [activeBuzzChannel, setActiveBuzzChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
 
     const { unreadMessages, myLastSentStatus } = useMediaInbox();
     const { triggerHaptic } = useHapticFeedback();
@@ -674,6 +663,29 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         index,
     }), []);
 
+    // FIX #8: Manage subscription for the ACTIVE card user only.
+    const activeUser = displayPriorities[activeIndex];
+    useEffect(() => {
+        if (!activeUser?.id) {
+            setActiveBuzzChannel(null);
+            return;
+        }
+
+        const ch = supabase.channel(`user-signals-${activeUser.id}`);
+        ch.subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                activeBuzzChannelRef.current = ch;
+                setActiveBuzzChannel(ch);
+            }
+        });
+
+        return () => {
+            supabase.removeChannel(ch);
+            activeBuzzChannelRef.current = null;
+            setActiveBuzzChannel(null);
+        };
+    }, [activeUser?.id]);
+
     const openPinSheetForUser = useCallback((user: PriorityUserWithPost, anchor: AnchorPosition) => {
         setSelectedUser(user);
         setMenuAnchor(anchor);
@@ -708,9 +720,10 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
                 sentStatus={sentStatus}
                 currentUserId={currentUserId}
                 isBirthday={isBirthday}
+                buzzChannel={index === activeIndex ? activeBuzzChannel : null}
             />
         );
-    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId]);
+    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId, activeBuzzChannel]);
 
     const leftUnread = useMemo(() => {
         let count = 0;

@@ -25,6 +25,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Video as VideoCompressor } from 'react-native-compressor';
 import { COLORS, FONTS } from '@/theme/theme';
 import MediaPreview from '@/components/ui/MediaPreview';
 
@@ -68,6 +69,8 @@ const FilmMyDayContent = () => {
     const [isCapturing, setIsCapturing] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [compressionProgress, setCompressionProgress] = useState(0);
 
     // --- LOGIC REFS ---
     const recordingTimer = useRef<NodeJS.Timeout | null>(null);
@@ -175,6 +178,42 @@ const FilmMyDayContent = () => {
         setFlash((c) => (c === 'off' ? 'on' : 'off'));
     }, []);
 
+    // --- COMPRESSION ---
+    const compressMedia = async (uri: string, type: 'image' | 'video'): Promise<string | null> => {
+        setIsProcessing(true);
+        setCompressionProgress(0);
+        try {
+            if (type === 'image') {
+                // Images: max 1920px wide, max 2MB, JPEG
+                const manipulated = await ImageManipulator.manipulateAsync(
+                    uri,
+                    [{ resize: { width: 1920 } }],
+                    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+                );
+                return manipulated.uri;
+            } else {
+                // Videos: max 720p, max 20MB, H.264
+                const compressed = await VideoCompressor.compress(
+                    uri,
+                    {
+                        compressionMethod: 'auto',
+                    },
+                    (progress) => {
+                        setCompressionProgress(Math.round(progress * 100));
+                    }
+                );
+                return compressed;
+            }
+        } catch (e) {
+            console.error('Compression error:', e);
+            Alert.alert('Error', 'Failed to process media.');
+            return null;
+        } finally {
+            setIsProcessing(false);
+            setCompressionProgress(0);
+        }
+    };
+
     // --- CAPTURE ---
     const takePicture = async () => {
         if (!cameraRef.current || isCapturing || isRecordingRef.current) return;
@@ -196,7 +235,22 @@ const FilmMyDayContent = () => {
             });
 
             if (photo?.uri) {
-                setCapturedMedia({ uri: photo.uri, type: 'image', facing });
+                let finalUri = photo.uri;
+
+                // Handle front camera flip immediately so preview and upload match
+                if (facing === 'front') {
+                    const manipulated = await ImageManipulator.manipulateAsync(
+                        finalUri,
+                        [{ flip: ImageManipulator.FlipType.Horizontal }],
+                        { format: ImageManipulator.SaveFormat.JPEG }
+                    );
+                    finalUri = manipulated.uri;
+                }
+
+                const compressedUri = await compressMedia(finalUri, 'image');
+                if (compressedUri) {
+                    setCapturedMedia({ uri: compressedUri, type: 'image', facing });
+                }
             }
         } catch (e) {
             console.log('Photo Error:', e);
@@ -229,7 +283,10 @@ const FilmMyDayContent = () => {
                 });
 
                 if (video?.uri) {
-                    setCapturedMedia({ uri: video.uri, type: 'video', facing });
+                    const compressedUri = await compressMedia(video.uri, 'video');
+                    if (compressedUri) {
+                        setCapturedMedia({ uri: compressedUri, type: 'video', facing });
+                    }
                 }
             } catch (e) {
                 console.log('Recording Error:', e);
@@ -356,8 +413,12 @@ const FilmMyDayContent = () => {
                 quality: 1,
             });
             if (!result.canceled) {
-                const type = result.assets[0].type === 'video' ? 'video' : 'image';
-                setCapturedMedia({ uri: result.assets[0].uri, type, facing: 'back' });
+                const asset = result.assets[0];
+                const type = asset.type === 'video' ? 'video' : 'image';
+                const compressedUri = await compressMedia(asset.uri, type);
+                if (compressedUri) {
+                    setCapturedMedia({ uri: compressedUri, type, facing: 'back' });
+                }
             }
         } catch (e) {
             Alert.alert('Error', 'Could not open gallery');
@@ -368,15 +429,6 @@ const FilmMyDayContent = () => {
         if (!capturedMedia) return;
         try {
             let uriToSave = capturedMedia.uri;
-
-            if (capturedMedia.type === 'image' && capturedMedia.facing === 'front') {
-                const manipulated = await ImageManipulator.manipulateAsync(
-                    capturedMedia.uri,
-                    [{ flip: ImageManipulator.FlipType.Horizontal }],
-                    { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-                );
-                uriToSave = manipulated.uri;
-            }
 
             await MediaLibrary.saveToLibraryAsync(uriToSave);
             Alert.alert('Saved!', 'Media saved to your gallery.');
@@ -445,6 +497,7 @@ const FilmMyDayContent = () => {
                             <Text style={styles.dateDayText}>{dayShort}</Text>
                             <Text style={styles.dateMonthYearText}>{monthShort} {yearShort}</Text>
                         </View>
+
                         <Text style={styles.dateNumberText}>{date}</Text>
                     </View>
 
@@ -561,6 +614,17 @@ const FilmMyDayContent = () => {
                     </View>
                 </View>
             </View>
+
+            {/* Processing Overlay */}
+            {isProcessing && (
+                <View style={styles.processingOverlay}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={styles.processingText}>Processing...</Text>
+                    {compressionProgress > 0 && (
+                        <Text style={styles.progressText}>{compressionProgress}%</Text>
+                    )}
+                </View>
+            )}
         </View>
     );
 }
@@ -680,4 +744,24 @@ const styles = StyleSheet.create({
     recordingText: { color: '#FFF', fontSize: 12, fontFamily: FONTS.bold },
 
     iconButtonBlur: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
+    processingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    processingText: {
+        color: '#FFF',
+        fontSize: 18,
+        fontFamily: FONTS.bold,
+        marginTop: 16,
+        letterSpacing: 1,
+    },
+    progressText: {
+        color: COLORS.primary,
+        fontSize: 16,
+        fontFamily: FONTS.medium,
+        marginTop: 8,
+    },
 });

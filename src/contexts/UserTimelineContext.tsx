@@ -3,7 +3,7 @@ import React, {
     createContext, useContext, useState, useRef,
     useCallback, useMemo, ReactNode, useEffect
 } from 'react';
-import { LayoutRectangle, FlatList } from 'react-native';
+import { InteractionManager, LayoutRectangle, FlatList } from 'react-native';
 import Animated, {
     useSharedValue, withTiming, withSpring, Easing, runOnJS
 } from 'react-native-reanimated';
@@ -217,9 +217,14 @@ export const UserTimelineProvider = ({ children }: { children: ReactNode }) => {
                 .subscribe();
         };
 
-        setupChannel();
+        // FIX #6: Deferred with InteractionManager so the auth server call and
+        // 3 realtime subscriptions do not fire before the first frame is painted.
+        const task = InteractionManager.runAfterInteractions(() => {
+            setupChannel();
+        });
 
         return () => {
+            task.cancel();
             if (channelRef) supabase.removeChannel(channelRef);
         };
     }, [fetchTimelinePage]);

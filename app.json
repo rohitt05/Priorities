@@ -84,7 +84,8 @@
             "targetSdkVersion": 35
           }
         }
-      ]
+      ],
+      "react-native-compressor"
     ],
     "extra": {
       "eas": {
@@ -94,6 +95,12 @@
     "experiments": {
       "reactStrictMode": false
     },
-    "owner": "rohitt05"
+    "owner": "rohitt05",
+    "fonts": [
+      "./assets/fonts/DancingScript-Regular.ttf",
+      "./assets/fonts/DancingScript-Medium.ttf",
+      "./assets/fonts/DancingScript-SemiBold.ttf",
+      "./assets/fonts/DancingScript-Bold.ttf"
+    ]
   }
 }
