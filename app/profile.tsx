@@ -22,7 +22,7 @@ import Reanimated, {
     FadeOut,
 } from 'react-native-reanimated';
 
-import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics'; // enums only
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
@@ -329,6 +329,13 @@ function ProfileScreenContent() {
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
+            <Stack.Screen 
+                options={{ 
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                    gestureEnabled: true,
+                }} 
+            />
             <StatusBar barStyle="dark-content" />
 
             <RNAnimated.View

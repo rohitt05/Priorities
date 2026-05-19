@@ -15,6 +15,33 @@ import { acceptPriorityRequest, declinePriorityRequest } from '@/services/priori
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useBackground } from '@/contexts/BackgroundContext';
+
+const parseColorToRgb = (colorStr: string): { r: number, g: number, b: number } => {
+    if (!colorStr) return { r: 253, g: 252, b: 240 };
+    const str = colorStr.trim().toLowerCase();
+    if (str.startsWith('#')) {
+        const hex = str.length === 4 
+            ? '#' + str[1] + str[1] + str[2] + str[2] + str[3] + str[3] 
+            : str;
+        return {
+            r: parseInt(hex.slice(1, 3), 16),
+            g: parseInt(hex.slice(3, 5), 16),
+            b: parseInt(hex.slice(5, 7), 16)
+        };
+    }
+    if (str.startsWith('rgb')) {
+        const matches = str.match(/\d+/g);
+        if (matches && matches.length >= 3) {
+            return {
+                r: parseInt(matches[0], 10),
+                g: parseInt(matches[1], 10),
+                b: parseInt(matches[2], 10)
+            };
+        }
+    }
+    return { r: 253, g: 252, b: 240 };
+};
 
 
 
@@ -117,6 +144,24 @@ const ReceivedPriorityRequests = ({
     onRelationshipOpen?: () => void;
     onRelationshipClose?: () => void;
 }) => {
+    const { bgColor } = useBackground();
+    
+    const blendedColor = React.useMemo(() => {
+        const base = parseColorToRgb(COLORS.background);
+        const overlay = parseColorToRgb(bgColor);
+        
+        // Blend: base * 0.75 + overlay * 0.25
+        const r = Math.round(base.r * 0.75 + overlay.r * 0.25);
+        const g = Math.round(base.g * 0.75 + overlay.g * 0.25);
+        const b = Math.round(base.b * 0.75 + overlay.b * 0.25);
+        
+        return `rgb(${r}, ${g}, ${b})`;
+    }, [bgColor]);
+    
+    const blendedTransparent = React.useMemo(() => {
+        return blendedColor.replace('rgb', 'rgba').replace(')', ', 0)');
+    }, [blendedColor]);
+
     const [currentRequests, setCurrentRequests] = React.useState(requests);
     const [pendingItem, setPendingItem] = React.useState<RequestItem | null>(null);
     const [relationshipLabel, setRelationshipLabel] = React.useState('');
@@ -249,12 +294,12 @@ const ReceivedPriorityRequests = ({
             )}
 
             <LinearGradient
-                colors={['#FDFCF0', 'rgba(253, 252, 240, 0)']}
+                colors={[blendedColor, blendedTransparent]}
                 style={styles.topGradient}
                 pointerEvents="none"
             />
             <LinearGradient
-                colors={['rgba(253, 252, 240, 0)', 'rgba(253, 252, 240, 0.95)', '#FDFCF0']}
+                colors={[blendedTransparent, blendedColor.replace('rgb', 'rgba').replace(')', ', 0.95)'), blendedColor]}
                 style={styles.bottomGradient}
                 pointerEvents="none"
             />

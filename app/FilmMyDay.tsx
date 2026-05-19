@@ -28,6 +28,8 @@ import { Ionicons, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-ic
 import { Video as VideoCompressor } from 'react-native-compressor';
 import { COLORS, FONTS } from '@/theme/theme';
 import MediaPreview from '@/components/ui/MediaPreview';
+import { CustomAlert } from '@/components/ui/CustomAlert';
+import { SubscriptionConfig } from '@/config/subscription';
 
 import {
     Gesture,
@@ -53,6 +55,13 @@ const MAX_ZOOM = 0.8;
 const MIN_ZOOM = 0;
 const MIN_RECORDING_DURATION = 1000;
 
+const ZOOM_OPTIONS = [
+    { label: '0.5', zoomValue: 0 },
+    { label: '1x', zoomValue: 0.2 },
+    { label: '2x', zoomValue: 0.5 },
+    { label: '3x', zoomValue: 0.8 },
+];
+
 const FilmMyDayContent = () => {
     const router = useRouter();
     const { recipient, recipientId } = useLocalSearchParams<{ recipient?: string; recipientId?: string }>();
@@ -62,7 +71,8 @@ const FilmMyDayContent = () => {
     const [facing, setFacing] = useState<CameraType>('back');
     const [flash, setFlash] = useState<FlashMode>('off');
     const [cameraMode, setCameraMode] = useState<'picture' | 'video'>('picture');
-    const [zoom, setZoom] = useState(0);
+    const [zoom, setZoom] = useState(0.2);
+    const [cameraHeight, setCameraHeight] = useState(0);
 
     // --- CAPTURE STATE ---
     const [capturedMedia, setCapturedMedia] = useState<CapturedMedia | null>(null);
@@ -80,6 +90,7 @@ const FilmMyDayContent = () => {
 
     // --- GALLERY STATE ---
     const [recentAssets, setRecentAssets] = useState<MediaLibrary.Asset[]>([]);
+    const [showPremiumAlert, setShowPremiumAlert] = useState(false);
 
     // --- FOCUS STATE (Visual) ---
     const [focusCoords, setFocusCoords] = useState<{ x: number; y: number } | null>(null);
@@ -91,7 +102,7 @@ const FilmMyDayContent = () => {
 
     // --- ANIMATED VALUES ---
     const buttonScale = useSharedValue(1);
-    const currentZoom = useSharedValue(0);
+    const currentZoom = useSharedValue(0.2);
     const startZoom = useSharedValue(0);
     const focusOpacity = useSharedValue(0);
     const focusScale = useSharedValue(1.5);
@@ -140,6 +151,26 @@ const FilmMyDayContent = () => {
     }, []);
 
     // --- FUNCTIONS ---
+    const getZoomDisplayLabel = (currentZoom: number) => {
+        if (currentZoom <= 0.2) {
+            const t = currentZoom / 0.2;
+            return (0.5 + t * 0.5).toFixed(1);
+        } else if (currentZoom <= 0.5) {
+            const t = (currentZoom - 0.2) / 0.3;
+            return (1.0 + t * 1.0).toFixed(1);
+        } else {
+            const t = (currentZoom - 0.5) / 0.3;
+            return (2.0 + t * 1.0).toFixed(1);
+        }
+    };
+
+    const getActiveZoomIndex = (currentZoom: number) => {
+        if (currentZoom < 0.1) return 0;
+        if (currentZoom < 0.35) return 1;
+        if (currentZoom < 0.65) return 2;
+        return 3;
+    };
+
     const loadRecentAssets = useCallback(async () => {
         try {
             const { assets } = await MediaLibrary.getAssetsAsync({
@@ -294,8 +325,8 @@ const FilmMyDayContent = () => {
                 setIsRecording(false);
                 isRecordingRef.current = false;
                 setCameraMode('picture');
-                setZoom(0);
-                currentZoom.value = 0;
+                setZoom(0.2);
+                currentZoom.value = 0.2;
             }
         }, 200);
     }, [facing, isCapturing]);
@@ -361,13 +392,19 @@ const FilmMyDayContent = () => {
     const doubleTapGesture = Gesture.Tap()
         .numberOfTaps(2)
         .runOnJS(true)
-        .onEnd(() => {
+        .onEnd((e) => {
+            if (cameraHeight > 0 && e.y > cameraHeight - 75) {
+                return;
+            }
             toggleCameraFacing();
         });
 
     const singleTapGesture = Gesture.Tap()
         .runOnJS(true)
         .onEnd((e) => {
+            if (cameraHeight > 0 && e.y > cameraHeight - 75) {
+                return;
+            }
             setFocusCoords({ x: e.x, y: e.y });
             focusOpacity.value = 1;
             focusScale.value = 1.3;
@@ -406,6 +443,12 @@ const FilmMyDayContent = () => {
 
     // --- HELPERS ---
     const pickImage = async () => {
+        if (SubscriptionConfig.requiresPremiumForGallery && !SubscriptionConfig.isPremiumUser) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setShowPremiumAlert(true);
+            return;
+        }
+
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.All,
@@ -522,7 +565,10 @@ const FilmMyDayContent = () => {
                     <View style={styles.cameraFrame}>
                         <View style={styles.cameraCard}>
                             <GestureDetector gesture={cameraAreaGesture}>
-                                <View style={styles.cameraTouchArea}>
+                                <View 
+                                    style={styles.cameraTouchArea}
+                                    onLayout={(e) => setCameraHeight(e.nativeEvent.layout.height)}
+                                >
                                     <CameraView
                                         ref={cameraRef}
                                         style={StyleSheet.absoluteFill}
@@ -541,9 +587,9 @@ const FilmMyDayContent = () => {
                                     <Animated.View style={[styles.focusFrame, animatedFocusStyle]} />
 
                                     {/* Zoom Indicator */}
-                                    {zoom > 0 && (
+                                    {Math.abs(zoom - 0.2) > 0.01 && (
                                         <View style={styles.zoomIndicator}>
-                                            <Text style={styles.zoomText}>{(zoom * 3 + 1).toFixed(1)}x</Text>
+                                            <Text style={styles.zoomText}>{getZoomDisplayLabel(zoom)}x</Text>
                                         </View>
                                     )}
 
@@ -554,28 +600,36 @@ const FilmMyDayContent = () => {
                                             <Text style={styles.recordingText}>{formatDuration(recordingDuration)}</Text>
                                         </View>
                                     )}
-                                </View>
-                            </GestureDetector>
-                        </View>
 
-                        {/* Shutter Button */}
-                        <View style={styles.shutterContainerFloating}>
-                            <GestureDetector gesture={shutterGesture}>
-                                <Animated.View
-                                    style={[
-                                        styles.shutterButtonOuter,
-                                        isRecording && styles.shutterRecordingOuter,
-                                        animatedButtonStyle,
-                                    ]}
-                                >
-                                    <View
-                                        style={[
-                                            styles.shutterButtonInner,
-                                            isRecording && styles.shutterRecordingInner,
-                                            isCapturing && { backgroundColor: '#ccc' },
-                                        ]}
-                                    />
-                                </Animated.View>
+                                    {/* iPhone Style Zoom Buttons */}
+                                    <View style={styles.zoomControlsContainer}>
+                                        {ZOOM_OPTIONS.map((opt, index) => {
+                                            const isActive = getActiveZoomIndex(zoom) === index;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={opt.label}
+                                                    style={[
+                                                        styles.zoomButton,
+                                                        isActive && styles.zoomButtonActive
+                                                    ]}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setZoom(opt.zoomValue);
+                                                        currentZoom.value = opt.zoomValue;
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={[
+                                                        styles.zoomButtonText,
+                                                        isActive && styles.zoomButtonTextActive
+                                                    ]}>
+                                                        {opt.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+                                </View>
                             </GestureDetector>
                         </View>
                     </View>
@@ -606,7 +660,24 @@ const FilmMyDayContent = () => {
                             )}
                         </TouchableOpacity>
 
-                        <View style={{ width: 44, height: 44 }} />
+                        {/* Shutter/Capture Button */}
+                        <GestureDetector gesture={shutterGesture}>
+                            <Animated.View
+                                style={[
+                                    styles.shutterButtonOuter,
+                                    isRecording && styles.shutterRecordingOuter,
+                                    animatedButtonStyle,
+                                ]}
+                            >
+                                <View
+                                    style={[
+                                        styles.shutterButtonInner,
+                                        isRecording && styles.shutterRecordingInner,
+                                        isCapturing && { backgroundColor: '#ccc' },
+                                    ]}
+                                />
+                            </Animated.View>
+                        </GestureDetector>
 
                         <TouchableOpacity onPress={toggleCameraFacing} style={styles.iconButtonBlur}>
                             <MaterialCommunityIcons name="rotate-360" size={24} color="#FFF" />
@@ -625,6 +696,20 @@ const FilmMyDayContent = () => {
                     )}
                 </View>
             )}
+
+            <CustomAlert
+                visible={showPremiumAlert}
+                title="Unlock Gallery ✨"
+                description="Get priorities+ to upload photos & videos from your camera roll, just like locket gold."
+                cancelText="Maybe Later"
+                confirmText="Upgrade Now"
+                onCancel={() => setShowPremiumAlert(false)}
+                onConfirm={() => {
+                    setShowPremiumAlert(false);
+                    // Navigate to subscription screen if you have one, else just close
+                    // router.push('/subscription');
+                }}
+            />
         </View>
     );
 }
@@ -704,10 +789,48 @@ const styles = StyleSheet.create({
     },
     zoomText: { color: '#FFF', fontFamily: FONTS.bold, fontSize: 12 },
 
-    shutterContainerFloating: {
-        position: 'absolute', alignSelf: 'center', bottom: -60, zIndex: 10,
-        width: 120, height: 120, justifyContent: 'center', alignItems: 'center',
+    zoomControlsContainer: {
+        position: 'absolute',
+        bottom: 12,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        borderRadius: 20,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        zIndex: 50,
     },
+    zoomButton: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: 6,
+        backgroundColor: 'transparent',
+    },
+    zoomButtonActive: {
+        backgroundColor: '#FFF',
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowOffset: { width: 0, height: 1 },
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    zoomButtonText: {
+        color: 'rgba(255, 255, 255, 0.85)',
+        fontSize: 11,
+        fontFamily: FONTS.bold,
+        fontWeight: '700',
+    },
+    zoomButtonTextActive: {
+        color: '#000',
+        fontSize: 12,
+        fontWeight: '800',
+    },
+
     shutterButtonOuter: {
         width: 84, height: 84, borderRadius: 42, borderWidth: 4, borderColor: '#FFF',
         justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)',
@@ -716,7 +839,7 @@ const styles = StyleSheet.create({
     shutterButtonInner: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#FFF' },
     shutterRecordingInner: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#FF4040' },
 
-    controlsBelow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 36, paddingTop: 50 },
+    controlsBelow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 36, paddingTop: 24 },
     galleryStackContainer: { width: 60, height: 60, justifyContent: 'center', alignItems: 'center', position: 'relative' },
     stackLayer: { position: 'absolute', width: 48, height: 48, borderRadius: 10, borderWidth: 1, borderColor: '#FFF', backgroundColor: '#222', overflow: 'hidden' },
     stackLayerBottom: { transform: [{ rotate: '-12deg' }, { translateX: -4 }], opacity: 0.8, zIndex: 1 },

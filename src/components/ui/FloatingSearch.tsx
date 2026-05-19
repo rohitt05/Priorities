@@ -34,7 +34,6 @@ import { COLORS, FONTS } from '@/theme/theme';
 import { searchUsers } from '@/services/profileService';
 import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyPriorities } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
-import ReceivedPriorityRequests from './ReceivedPriorityRequests';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { supabase } from '@/lib/supabase';
@@ -450,23 +449,7 @@ const FloatingSearch = () => {
                 </Pressable>
             </RNAnimated.View>
 
-            {isExpanded && incomingRequests.length > 0 && (
-                <RNAnimated.View
-                    style={{
-                        position: 'absolute', top: 0, left: 0, right: 0,
-                        bottom: keyboardOffset, zIndex: 2500
-                    }}
-                    pointerEvents="box-none"
-                >
-                    <ReceivedPriorityRequests
-                        requests={incomingRequests}
-                        opacity={requestListOpacity}
-                        onRequestsChange={setIncomingRequests}
-                        onRelationshipOpen={() => setSearchBarHidden(true)}
-                        onRelationshipClose={() => setSearchBarHidden(false)}
-                    />
-                </RNAnimated.View>
-            )}
+            {/* Removed ReceivedPriorityRequests from here */}
 
             <RNAnimated.View
                 style={[
@@ -585,11 +568,7 @@ const FloatingSearch = () => {
                             size={28}
                             color={COLORS.background}
                         />
-                        {!isExpanded && hasNewRequests && incomingRequests.length > 0 && (
-                            <View style={styles.newRequestIndicator}>
-                                <Ionicons name="add" size={10} color={COLORS.primary} />
-                            </View>
-                        )}
+                        {/* Removed newRequestIndicator from here */}
                     </Pressable>
                 </View>
             </RNAnimated.View>

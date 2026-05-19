@@ -1,7 +1,9 @@
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, Pressable, Animated as RNAnimated } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SPACING, FONT_SIZES, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
@@ -10,13 +12,16 @@ import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withSpring,
+    withTiming,
     runOnJS,
     interpolate,
     Extrapolation,
     useAnimatedProps,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { getIncomingRequests } from '@/services/priorityService';
+import { getCurrentUserId } from '@/services/authService';
 
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
@@ -25,9 +30,39 @@ export default function Header() {
     const router = useRouter();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
 
+    // --- NOTIFICATIONS STATE ---
+    const [hasNewRequests, setHasNewRequests] = useState(false);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+    useEffect(() => {
+        getCurrentUserId().then(setCurrentUserId).catch(console.error);
+    }, []);
+
+    const checkRequests = async () => {
+        if (!currentUserId) return;
+        try {
+            const requests = await getIncomingRequests(currentUserId);
+            setHasNewRequests(requests.length > 0);
+        } catch (e) {}
+    };
+
+    useEffect(() => {
+        if (!currentUserId) return;
+        checkRequests();
+        const channel = supabase
+            .channel(`header_notifs_${currentUserId}`)
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'priority_requests', filter: `receiver_id=eq.${currentUserId}` },
+                () => checkRequests()
+            )
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [currentUserId]);
+
     const translateY = useSharedValue(0);
     const hasTriggered = useSharedValue(false);
-    const PULL_THRESHOLD = 80;
+    const PULL_THRESHOLD = 60; // Lowered from 80 for easier access
 
     const navigateToFilm = () => {
         router.push({
@@ -39,7 +74,7 @@ export default function Header() {
     const panGesture = Gesture.Pan()
         .onUpdate((event) => {
             if (event.translationY > 0) {
-                const drag = event.translationY * 0.4; // natural rubber-band feel
+                const drag = event.translationY * 0.8; // Increased from 0.4 for higher responsiveness
                 translateY.value = drag;
 
                 if (drag > PULL_THRESHOLD && !hasTriggered.value) {
@@ -132,15 +167,28 @@ export default function Header() {
 
                     {/* Visible Header Content */}
                     <View style={[styles.headerContent, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
+                        {/* Left Side: Pressable Notification Bell Icon */}
+                        <Link href="/notifications" asChild>
+                            <Pressable style={styles.notificationButton}>
+                                <View style={styles.iconContainer}>
+                                    <Ionicons name="notifications-outline" size={28} color={COLORS.primary} />
+                                    {hasNewRequests && <View style={styles.bellDot} />}
+                                </View>
+                            </Pressable>
+                        </Link>
+                        
                         <View style={styles.logoContainer}>
                             <Text style={styles.logo} numberOfLines={1}>priorities</Text>
                         </View>
+                        
                         <Link href="/profile" asChild>
                             <Pressable style={styles.profileButton}>
                                 <Ionicons name="person-outline" size={28} color={COLORS.primary} />
                             </Pressable>
                         </Link>
                     </View>
+
+
 
                     {/* Sheet Bottom Edge/Handle */}
                     <View style={styles.sheetEdge} />
@@ -154,7 +202,8 @@ const styles = StyleSheet.create({
     root: {
         width: '100%',
         zIndex: 2000,
-        height: 120 // Increased height to push tabs down further
+        height: 120,
+        overflow: 'visible', // Ensure hanging bell isn't clipped
     },
     sheetContainer: {
         width: '100%',
@@ -201,9 +250,24 @@ const styles = StyleSheet.create({
         width: '100%',
         // Removed visible props since surface handles it now
     },
-    logoContainer: {
+    notificationButton: {
+        width: 50,
         height: 50,
         justifyContent: 'center',
+        alignItems: 'flex-start',
+    },
+    iconContainer: {
+        position: 'relative',
+        width: 28,
+        height: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    logoContainer: {
+        flex: 1,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     logo: {
         fontSize: 32,
@@ -212,8 +276,24 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         letterSpacing: -1,
         includeFontPadding: false,
+        textAlign: 'center',
     },
     profileButton: {
-        padding: 4,
-    }
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'flex-end',
+    },
+    bellDot: {
+        position: 'absolute',
+        top: -1,
+        right: -1,
+        width: 9,
+        height: 9,
+        borderRadius: 4.5,
+        backgroundColor: COLORS.PALETTE.coralRed,
+        borderWidth: 1.5,
+        borderColor: COLORS.background,
+    },
 });
+

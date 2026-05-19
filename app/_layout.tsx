@@ -23,8 +23,9 @@ import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
-// FIX #3 & #4: VoiceNoteRecordingProvider and BackgroundProvider removed from root.
-// Both live solely inside (tabs)/_layout.tsx where they are actually consumed.
+// FIX #3 & #4: VoiceNoteRecordingProvider removed from root.
+// It lives solely inside (tabs)/_layout.tsx where it is actually consumed.
+import { BackgroundProvider } from '@/contexts/BackgroundContext';
 import { PrioritiesRefreshProvider } from '@/contexts/PrioritiesRefreshContext';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { useIncomingCall } from '@/features/calls/useIncomingCall';
@@ -150,26 +151,28 @@ export default function Layout() {
         return <View style={{ flex: 1, backgroundColor: 'white' }} />;
     }
 
-    // FIX #3 & #4: VoiceNoteRecordingProvider and BackgroundProvider removed.
+    // FIX #3 & #4: VoiceNoteRecordingProvider removed.
     // BuzzToast only needs PrioritiesRefreshProvider context (none) — it reads
     // buzzState passed directly as a prop, so no extra providers are needed here.
     return (
         <ErrorBoundary>
             <GestureHandlerRootView style={{ flex: 1 }}>
-                <PreferencesProvider>
-                    <PrioritiesRefreshProvider>
-                        <Stack screenOptions={{ headerShown: false }} />
+                <BackgroundProvider>
+                    <PreferencesProvider>
+                        <PrioritiesRefreshProvider>
+                            <Stack screenOptions={{ headerShown: false }} />
 
-                        {/*
-                          BuzzToast sits OUTSIDE the Stack so it floats
-                          above every screen — home, timelines, profile, all of them.
-                          pointerEvents="none" on the toast ensures it never
-                          blocks the user from interacting with the app below.
-                        */}
-                        <BuzzToast buzzState={buzzState} />
+                            {/*
+                              BuzzToast sits OUTSIDE the Stack so it floats
+                              above every screen — home, timelines, profile, all of them.
+                              pointerEvents="none" on the toast ensures it never
+                              blocks the user from interacting with the app below.
+                            */}
+                            <BuzzToast buzzState={buzzState} />
 
-                    </PrioritiesRefreshProvider>
-                </PreferencesProvider>
+                        </PrioritiesRefreshProvider>
+                    </PreferencesProvider>
+                </BackgroundProvider>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );

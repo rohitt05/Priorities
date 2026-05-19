@@ -121,13 +121,6 @@ function TabLayoutContent() {
                     <Header />
 
                     <View style={{ flex: 1 }}>
-                        <View style={styles.fadeMask} pointerEvents="none">
-                            <LinearGradient
-                                colors={['rgba(240, 239, 233, 0.95)', 'rgba(240, 239, 233, 0)']}
-                                style={StyleSheet.absoluteFill}
-                            />
-                        </View>
-
                         <MaterialTopTabs
                             // @ts-ignore
                             sceneContainerStyle={{ backgroundColor: 'transparent' }}
@@ -218,19 +211,17 @@ function TabLayoutContent() {
 
 export default function TabLayout() {
     return (
-        <BackgroundProvider>
-            <TabBarVisibilityProvider>
-                <MediaInboxProvider>
-                    <UserTimelineProvider>
-                        <VoiceNoteRecordingProvider>
+        <TabBarVisibilityProvider>
+            <MediaInboxProvider>
+                <UserTimelineProvider>
+                    <VoiceNoteRecordingProvider>
 
-                            <TabLayoutContent />
+                        <TabLayoutContent />
 
-                        </VoiceNoteRecordingProvider>
-                    </UserTimelineProvider>
-                </MediaInboxProvider>
-            </TabBarVisibilityProvider>
-        </BackgroundProvider>
+                    </VoiceNoteRecordingProvider>
+                </UserTimelineProvider>
+            </MediaInboxProvider>
+        </TabBarVisibilityProvider>
     );
 }
 
@@ -238,5 +229,4 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
     container: { flex: 1 },
     content: { flex: 1 },
-    fadeMask: { position: 'absolute', top: 0, left: 0, right: 0, height: 60, zIndex: 50 }
 });
