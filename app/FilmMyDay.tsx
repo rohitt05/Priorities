@@ -443,10 +443,13 @@ const FilmMyDayContent = () => {
 
     // --- HELPERS ---
     const pickImage = async () => {
-        if (SubscriptionConfig.requiresPremiumForGallery && !SubscriptionConfig.isPremiumUser) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setShowPremiumAlert(true);
-            return;
+        if (SubscriptionConfig.requiresPremiumForGallery) {
+            const isPremium = await SubscriptionConfig.checkIsPremiumUser();
+            if (!isPremium) {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setShowPremiumAlert(true);
+                return;
+            }
         }
 
         try {
@@ -707,7 +710,7 @@ const FilmMyDayContent = () => {
                 onConfirm={() => {
                     setShowPremiumAlert(false);
                     // Navigate to subscription screen if you have one, else just close
-                    // router.push('/subscription');
+                    router.push('/subscription');
                 }}
             />
         </View>

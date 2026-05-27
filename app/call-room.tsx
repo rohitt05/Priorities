@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Image, AppState, Dimensions, Platform } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, SafeAreaView, Image, AppState, Dimensions, Platform, BackHandler, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
     LiveKitRoom,
@@ -92,6 +92,23 @@ export default function CallRoom() {
             subscription.remove();
         };
     }, [params.sessionId, hasPermission]);
+
+    useEffect(() => {
+        const onBackPress = () => {
+            Alert.alert(
+                'Leave Call',
+                'Are you sure you want to end this call?',
+                [
+                    { text: 'Cancel', style: 'cancel', onPress: () => {} },
+                    { text: 'Leave', style: 'destructive', onPress: () => handleDisconnect() },
+                ]
+            );
+            return true;
+        };
+
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+    }, [params.sessionId]);
 
     const cleanup = () => {
         if (router.canGoBack()) {

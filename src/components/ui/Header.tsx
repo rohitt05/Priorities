@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, Pressable, Animated as RNAnimated } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,10 +25,69 @@ import { getCurrentUserId } from '@/services/authService';
 
 const AnimatedIonicons = Animated.createAnimatedComponent(Ionicons);
 
+interface PressableScaleProps {
+    onPress: () => void;
+    children: React.ReactNode;
+    style?: any;
+    disabled?: boolean;
+}
+
+const PressableScale: React.FC<PressableScaleProps> = ({ onPress, children, style, disabled }) => {
+    const scale = useSharedValue(1);
+    const opacity = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+        opacity: opacity.value,
+    }));
+
+    const handlePressIn = () => {
+        if (disabled) return;
+        scale.value = withSpring(0.88, { damping: 15, stiffness: 350, mass: 0.5 });
+        opacity.value = withTiming(0.7, { duration: 80 });
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+
+    const handlePressOut = () => {
+        scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+        opacity.value = withTiming(1, { duration: 120 });
+    };
+
+    return (
+        <Pressable
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            onPress={onPress}
+            disabled={disabled}
+            style={style}
+        >
+            <Animated.View style={animatedStyle}>
+                {children}
+            </Animated.View>
+        </Pressable>
+    );
+};
+
 export default function Header() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
+
+    // --- NAVIGATION STATE & THROTTLE ---
+    const [isNavigating, setIsNavigating] = useState(false);
+
+    const handleNavigate = (route: '/notifications' | '/profile') => {
+        if (isNavigating) return;
+        setIsNavigating(true);
+
+        requestAnimationFrame(() => {
+            router.push(route);
+        });
+
+        setTimeout(() => {
+            setIsNavigating(false);
+        }, 800);
+    };
 
     // --- NOTIFICATIONS STATE ---
     const [hasNewRequests, setHasNewRequests] = useState(false);
@@ -168,24 +227,28 @@ export default function Header() {
                     {/* Visible Header Content */}
                     <View style={[styles.headerContent, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
                         {/* Left Side: Pressable Notification Bell Icon */}
-                        <Link href="/notifications" asChild>
-                            <Pressable style={styles.notificationButton}>
-                                <View style={styles.iconContainer}>
-                                    <Ionicons name="notifications-outline" size={28} color={COLORS.primary} />
-                                    {hasNewRequests && <View style={styles.bellDot} />}
-                                </View>
-                            </Pressable>
-                        </Link>
+                        <PressableScale
+                            onPress={() => handleNavigate('/notifications')}
+                            disabled={isNavigating}
+                            style={styles.notificationButton}
+                        >
+                            <View style={styles.iconContainer}>
+                                <Ionicons name="notifications-outline" size={28} color={COLORS.primary} />
+                                {hasNewRequests && <View style={styles.bellDot} />}
+                            </View>
+                        </PressableScale>
                         
                         <View style={styles.logoContainer}>
                             <Text style={styles.logo} numberOfLines={1}>priorities</Text>
                         </View>
                         
-                        <Link href="/profile" asChild>
-                            <Pressable style={styles.profileButton}>
-                                <Ionicons name="person-outline" size={28} color={COLORS.primary} />
-                            </Pressable>
-                        </Link>
+                        <PressableScale
+                            onPress={() => handleNavigate('/profile')}
+                            disabled={isNavigating}
+                            style={styles.profileButton}
+                        >
+                            <Ionicons name="person-outline" size={28} color={COLORS.primary} />
+                        </PressableScale>
                     </View>
 
 

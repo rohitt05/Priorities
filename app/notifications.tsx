@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, Pressable, Animated as RNAnimated } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Pressable, Animated as RNAnimated, InteractionManager } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,15 +20,18 @@ export default function NotificationsScreen() {
     const requestListOpacity = useSharedValue(0);
 
     useEffect(() => {
-        getCurrentUserId()
-            .then(id => {
-                setCurrentUserId(id);
-                if (!id) setIsLoading(false);
-            })
-            .catch(err => {
-                console.error(err);
-                setIsLoading(false);
-            });
+        const task = InteractionManager.runAfterInteractions(() => {
+            getCurrentUserId()
+                .then(id => {
+                    setCurrentUserId(id);
+                    if (!id) setIsLoading(false);
+                })
+                .catch(err => {
+                    console.error(err);
+                    setIsLoading(false);
+                });
+        });
+        return () => task.cancel();
     }, []);
 
     const loadIncomingRequests = async () => {
@@ -47,7 +50,9 @@ export default function NotificationsScreen() {
     useEffect(() => {
         if (!currentUserId) return;
         
-        loadIncomingRequests();
+        const task = InteractionManager.runAfterInteractions(() => {
+            loadIncomingRequests();
+        });
 
         const channel = supabase
             .channel(`realtime_incoming_requests_notifications_${currentUserId}`)
@@ -66,6 +71,7 @@ export default function NotificationsScreen() {
             .subscribe();
 
         return () => {
+            task.cancel();
             supabase.removeChannel(channel);
         };
     }, [currentUserId]);
@@ -75,7 +81,7 @@ export default function NotificationsScreen() {
             <Stack.Screen 
                 options={{ 
                     headerShown: false,
-                    animation: 'slide_from_left',
+                    animation: 'slide_from_right',
                     gestureEnabled: true,
                 }} 
             />

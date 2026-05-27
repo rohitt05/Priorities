@@ -1,16 +1,43 @@
-const { withProjectBuildGradle } = require('@expo/config-plugins');
+const { withProjectBuildGradle, withAndroidManifest } = require('@expo/config-plugins');
 
 /**
  * This plugin injects the required SDK versions into the root project's 
- * build.gradle so that react-native-pip-android can read them via safeExtGet.
+ * build.gradle so that react-native-pip-android can read them via safeExtGet,
+ * and configures AndroidManifest.xml to support Picture-in-Picture mode.
  */
 module.exports = function withPipAndroidFix(config) {
-  return withProjectBuildGradle(config, (config) => {
+  // 1. Configure build.gradle
+  config = withProjectBuildGradle(config, (config) => {
     if (config.modResults.language === 'groovy') {
       config.modResults.contents = fixGradle(config.modResults.contents);
     }
     return config;
   });
+
+  // 2. Configure AndroidManifest.xml
+  config = withAndroidManifest(config, (config) => {
+    const mainActivity = config.modResults.manifest.application[0].activity.find(
+      (a) => a.$['android:name'] === '.MainActivity'
+    );
+    if (mainActivity) {
+      mainActivity.$['android:supportsPictureInPicture'] = 'true';
+
+      const existingConfigChanges = mainActivity.$['android:configChanges'] || '';
+      const neededChanges = ['screenSize', 'smallestScreenSize', 'screenLayout', 'orientation'];
+      let changesArray = existingConfigChanges ? existingConfigChanges.split('|') : [];
+
+      neededChanges.forEach((change) => {
+        if (!changesArray.includes(change)) {
+          changesArray.push(change);
+        }
+      });
+
+      mainActivity.$['android:configChanges'] = changesArray.join('|');
+    }
+    return config;
+  });
+
+  return config;
 };
 
 function fixGradle(content) {

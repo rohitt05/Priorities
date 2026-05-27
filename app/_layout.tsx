@@ -22,6 +22,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { supabase } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SubscriptionConfig } from '@/config/subscription';
 
 // FIX #3 & #4: VoiceNoteRecordingProvider removed from root.
 // It lives solely inside (tabs)/_layout.tsx where it is actually consumed.
@@ -79,6 +80,7 @@ export default function Layout() {
     useEffect(() => {
         const { registerGlobals } = require('@livekit/react-native-webrtc');
         registerGlobals();
+        SubscriptionConfig.initializePurchases();
     }, []);
 
     useEffect(() => {

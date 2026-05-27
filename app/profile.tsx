@@ -9,6 +9,7 @@ import {
     Animated as RNAnimated,
     BackHandler,
     Dimensions,
+    InteractionManager,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -153,6 +154,7 @@ function ProfileScreenContent() {
             lastFetch.current = Date.now();
 
             let isMounted = true;
+            let task: { cancel: () => void } | null = null;
 
             const fetchProfiles = async () => {
                 try {
@@ -227,8 +229,14 @@ function ProfileScreenContent() {
                 }
             };
 
-            fetchProfiles();
-            return () => { isMounted = false; };
+            task = InteractionManager.runAfterInteractions(() => {
+                if (isMounted) fetchProfiles();
+            });
+
+            return () => { 
+                isMounted = false;
+                if (task) task.cancel();
+            };
         }, [authId, effectiveUserId, isOwner, fetchAndSetPartner])
     );
 
