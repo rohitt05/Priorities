@@ -96,6 +96,30 @@ export async function searchUsers(
     return data ?? [];
 }
 
+// ─── SEARCH DIRECTORY USERS (ONLY COMMITTED) ───────────────────────
+export async function searchDirectoryUsers(
+    query: string,
+    excludeIds: string[] = []
+): Promise<any[]> {
+    let q = supabase
+        .from('profiles')
+        .select(`
+            *,
+            partner:partner_id(id, name, unique_user_id, profile_picture)
+        `)
+        .not('partner_id', 'is', null)
+        .or(`name.ilike.%${query}%,unique_user_id.ilike.%${query}%`)
+        .limit(20);
+
+    if (excludeIds.length > 0) {
+        q = q.not('id', 'in', `(${excludeIds.join(',')})`);
+    }
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+}
+
 // ─── UPLOAD PROFILE PICTURE ───────────────────────────────
 // Uses timestamp in filename — always a unique fresh INSERT.
 // No upsert, no delete, no UPDATE policy needed ever.

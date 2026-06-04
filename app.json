@@ -15,7 +15,6 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.rohitt05.priorities",
-      "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "Priorities needs your microphone for voice and video calls",
@@ -51,6 +50,16 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ffffff",
+          "sounds": [
+            "./assets/buzz.wav"
+          ]
+        }
+      ],
       "./plugins/withPipAndroidFix",
       "expo-video",
       [
@@ -85,22 +94,25 @@
           }
         }
       ],
-      "react-native-compressor"
+      "react-native-compressor",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/DancingScript-Regular.ttf",
+            "./assets/fonts/DancingScript-Medium.ttf",
+            "./assets/fonts/DancingScript-SemiBold.ttf",
+            "./assets/fonts/DancingScript-Bold.ttf"
+          ]
+        }
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {
         "projectId": "212072fd-d39c-4750-84bc-d851918340ca"
       }
     },
-    "experiments": {
-      "reactStrictMode": false
-    },
-    "owner": "rohitt05",
-    "fonts": [
-      "./assets/fonts/DancingScript-Regular.ttf",
-      "./assets/fonts/DancingScript-Medium.ttf",
-      "./assets/fonts/DancingScript-SemiBold.ttf",
-      "./assets/fonts/DancingScript-Bold.ttf"
-    ]
+    "owner": "rohitt05"
   }
 }

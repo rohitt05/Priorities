@@ -1,23 +1,34 @@
 // src/services/hapticService.ts
 import { Vibration } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
-/**
- * The shared buzz pattern — identical on both sender and receiver
- * so both phones stay perfectly in sync.
- *
- * Format: [delay, vibrate, pause, vibrate, ...]
- *
- * Stronger pattern: short rapid bursts followed by a longer sustained
- * vibration — feels more like a deliberate "buzz" than a ring.
- */
-export const BUZZ_PATTERN = [0, 100, 50, 100, 50, 100, 50, 600, 100, 600];
+export const BUZZ_PATTERN = [0, 300, 40, 300, 40, 300, 40];
+
+let hapticInterval: NodeJS.Timeout | null = null;
 
 /** Start the looping buzz — keeps vibrating until stopBuzz() is called */
 export function startBuzz(): void {
-    Vibration.vibrate(BUZZ_PATTERN, true); // true = repeat
+    // 1. Start standard repeat vibration
+    Vibration.vibrate([0, 200, 30, 200, 30, 200, 30], true);
+
+    // 2. Clean up any previous interval just in case
+    if (hapticInterval) {
+        clearInterval(hapticInterval);
+    }
+
+    // 3. Fire first heavy impact immediately
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+
+    // 4. Repeatedly fire Heavy impact haptics to generate a very strong, premium tactile "buzz" sensation
+    hapticInterval = setInterval(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    }, 80);
 }
 
-/** Stop the buzz immediately */
 export function stopBuzz(): void {
     Vibration.cancel();
+    if (hapticInterval) {
+        clearInterval(hapticInterval);
+        hapticInterval = null;
+    }
 }

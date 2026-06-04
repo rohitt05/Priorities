@@ -90,7 +90,6 @@ const FilmMyDayContent = () => {
 
     // --- GALLERY STATE ---
     const [recentAssets, setRecentAssets] = useState<MediaLibrary.Asset[]>([]);
-    const [showPremiumAlert, setShowPremiumAlert] = useState(false);
 
     // --- FOCUS STATE (Visual) ---
     const [focusCoords, setFocusCoords] = useState<{ x: number; y: number } | null>(null);
@@ -443,15 +442,6 @@ const FilmMyDayContent = () => {
 
     // --- HELPERS ---
     const pickImage = async () => {
-        if (SubscriptionConfig.requiresPremiumForGallery) {
-            const isPremium = await SubscriptionConfig.checkIsPremiumUser();
-            if (!isPremium) {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setShowPremiumAlert(true);
-                return;
-            }
-        }
-
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.All,
@@ -700,19 +690,7 @@ const FilmMyDayContent = () => {
                 </View>
             )}
 
-            <CustomAlert
-                visible={showPremiumAlert}
-                title="Unlock Gallery ✨"
-                description="Get priorities+ to upload photos & videos from your camera roll, just like locket gold."
-                cancelText="Maybe Later"
-                confirmText="Upgrade Now"
-                onCancel={() => setShowPremiumAlert(false)}
-                onConfirm={() => {
-                    setShowPremiumAlert(false);
-                    // Navigate to subscription screen if you have one, else just close
-                    router.push('/subscription');
-                }}
-            />
+
         </View>
     );
 }

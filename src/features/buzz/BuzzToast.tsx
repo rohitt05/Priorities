@@ -128,7 +128,9 @@ export const BuzzToast: React.FC<BuzzToastProps> = ({ buzzState }) => {
                     <Text style={styles.nameText} numberOfLines={1}>
                         {buzzState?.buzzerName ?? ''}
                     </Text>
-                    <Text style={styles.subText}>is buzzing you · ~~~</Text>
+                    <Text style={styles.subText}>
+                        {buzzState?.isMissedBuzz ? 'buzzed you · missed' : 'is buzzing you · ~~~'}
+                    </Text>
                 </View>
 
                 {/* Buzz wave icon */}

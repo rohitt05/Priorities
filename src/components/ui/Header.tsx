@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { StyleSheet, Text, View, Pressable, Animated as RNAnimated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Entypo } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, SPACING, FONT_SIZES, FONTS } from '@/theme/theme';
+import { COLORS, SPACING, FONTS } from '@/theme/theme';
 import { useBackground } from '@/contexts/BackgroundContext';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
@@ -32,7 +33,7 @@ interface PressableScaleProps {
     disabled?: boolean;
 }
 
-const PressableScale: React.FC<PressableScaleProps> = ({ onPress, children, style, disabled }) => {
+const PressableScale: React.FC<PressableScaleProps> = memo(({ onPress, children, style, disabled }) => {
     const scale = useSharedValue(1);
     const opacity = useSharedValue(1);
 
@@ -43,13 +44,12 @@ const PressableScale: React.FC<PressableScaleProps> = ({ onPress, children, styl
 
     const handlePressIn = () => {
         if (disabled) return;
-        scale.value = withSpring(0.88, { damping: 15, stiffness: 350, mass: 0.5 });
-        opacity.value = withTiming(0.7, { duration: 80 });
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        scale.value = withTiming(0.94, { duration: 90 });
+        opacity.value = withTiming(0.82, { duration: 90 });
     };
 
     const handlePressOut = () => {
-        scale.value = withSpring(1, { damping: 15, stiffness: 300 });
+        scale.value = withTiming(1, { duration: 120 });
         opacity.value = withTiming(1, { duration: 120 });
     };
 
@@ -61,49 +61,40 @@ const PressableScale: React.FC<PressableScaleProps> = ({ onPress, children, styl
             disabled={disabled}
             style={style}
         >
-            <Animated.View style={animatedStyle}>
-                {children}
-            </Animated.View>
+            <Animated.View style={animatedStyle}>{children}</Animated.View>
         </Pressable>
     );
-};
+});
+
+PressableScale.displayName = 'PressableScale';
 
 export default function Header() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { bgColor, prevBgColor, colorAnim } = useBackground();
 
-    // --- NAVIGATION STATE & THROTTLE ---
     const [isNavigating, setIsNavigating] = useState(false);
-
-    const handleNavigate = (route: '/notifications' | '/profile') => {
-        if (isNavigating) return;
-        setIsNavigating(true);
-
-        requestAnimationFrame(() => {
-            router.push(route);
-        });
-
-        setTimeout(() => {
-            setIsNavigating(false);
-        }, 800);
-    };
-
-    // --- NOTIFICATIONS STATE ---
     const [hasNewRequests, setHasNewRequests] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [isReadyToRelease, setIsReadyToRelease] = useState(false);
+
+    const translateY = useSharedValue(0);
+    const hasTriggered = useSharedValue(false);
+    const PULL_THRESHOLD = 60;
 
     useEffect(() => {
         getCurrentUserId().then(setCurrentUserId).catch(console.error);
     }, []);
 
-    const checkRequests = async () => {
+    const checkRequests = useCallback(async () => {
         if (!currentUserId) return;
         try {
             const requests = await getIncomingRequests(currentUserId);
             setHasNewRequests(requests.length > 0);
-        } catch (e) {}
-    };
+        } catch (e) {
+            console.error('[Header] Failed to load incoming requests', e);
+        }
+    }, [currentUserId]);
 
     useEffect(() => {
         if (!currentUserId) return;
@@ -116,12 +107,28 @@ export default function Header() {
                 () => checkRequests()
             )
             .subscribe();
-        return () => { supabase.removeChannel(channel); };
-    }, [currentUserId]);
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [currentUserId, checkRequests]);
 
-    const translateY = useSharedValue(0);
-    const hasTriggered = useSharedValue(false);
-    const PULL_THRESHOLD = 60; // Lowered from 80 for easier access
+    const handleNavigate = (route: '/notifications' | '/profile', flowSide: 'left' | 'right') => {
+        if (isNavigating) return;
+        setIsNavigating(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+
+        router.push({
+            pathname: route,
+            params: {
+                flowEntry: '1',
+                flowSide,
+            },
+        } as any);
+
+        setTimeout(() => {
+            setIsNavigating(false);
+        }, 320);
+    };
 
     const navigateToFilm = () => {
         router.push({
@@ -133,14 +140,16 @@ export default function Header() {
     const panGesture = Gesture.Pan()
         .onUpdate((event) => {
             if (event.translationY > 0) {
-                const drag = event.translationY * 0.8; // Increased from 0.4 for higher responsiveness
+                const drag = event.translationY * 0.8;
                 translateY.value = drag;
 
                 if (drag > PULL_THRESHOLD && !hasTriggered.value) {
                     hasTriggered.value = true;
+                    runOnJS(setIsReadyToRelease)(true);
                     runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Medium);
                 } else if (drag < PULL_THRESHOLD && hasTriggered.value) {
                     hasTriggered.value = false;
+                    runOnJS(setIsReadyToRelease)(false);
                 }
             } else {
                 translateY.value = 0;
@@ -150,9 +159,9 @@ export default function Header() {
             if (translateY.value > PULL_THRESHOLD) {
                 runOnJS(navigateToFilm)();
             }
-            // Fast iPhone-like snap back
             translateY.value = withSpring(0, { damping: 26, stiffness: 400, mass: 0.6 });
             hasTriggered.value = false;
+            runOnJS(setIsReadyToRelease)(false);
         });
 
     const animatedHeaderStyle = useAnimatedStyle(() => ({
@@ -161,40 +170,30 @@ export default function Header() {
 
     const indicatorStyle = useAnimatedStyle(() => {
         const opacity = interpolate(translateY.value, [20, 60], [0, 1], Extrapolation.CLAMP);
-        const scale = interpolate(translateY.value, [20, 80], [0.8, 1.1], Extrapolation.CLAMP);
-        const y = interpolate(translateY.value, [0, 80], [-20, 10], Extrapolation.CLAMP);
-        const color = translateY.value > PULL_THRESHOLD ? COLORS.PALETTE.coralRed : COLORS.primary;
+        const scale = interpolate(translateY.value, [20, 80], [0.8, 1.06], Extrapolation.CLAMP);
+        const y = interpolate(translateY.value, [0, 80], [-20, 8], Extrapolation.CLAMP);
 
         return {
             opacity,
-            transform: [
-                { scale },
-                { translateY: y }
-            ],
-            // We pass color through a separate mechanism if possible,
-            // but for now, we can use it in a derived Text/Icon style.
+            transform: [{ scale }, { translateY: y }],
         };
     });
 
     const indicatorColorStyle = useAnimatedStyle(() => ({
-        color: translateY.value > PULL_THRESHOLD ? COLORS.PALETTE.coralRed : COLORS.primary as string
+        color: translateY.value > PULL_THRESHOLD ? COLORS.PALETTE.coralRed : COLORS.primary,
     }));
 
     const animatedProps = useAnimatedProps(() => ({
-        color: translateY.value > PULL_THRESHOLD ? COLORS.PALETTE.coralRed : COLORS.primary as string
+        color: translateY.value > PULL_THRESHOLD ? COLORS.PALETTE.coralRed : COLORS.primary,
     }));
 
     return (
         <View style={styles.root}>
             <GestureDetector gesture={panGesture}>
                 <Animated.View style={[styles.sheetContainer, animatedHeaderStyle]}>
-                    {/* The Full Sheet Surface (Covers indicators and header) */}
                     <View style={styles.sheetSurface}>
-                        {/* Dynamic Color Layers - 1:1 Match with Home Screen Logic */}
                         <View style={[StyleSheet.absoluteFill, { backgroundColor: COLORS.background }]} />
-                        {/* Current/New Color Layer */}
-                        <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor, opacity: 0.35 }]} />
-                        {/* Fading Old Color Layer */}
+                        <View style={[StyleSheet.absoluteFill, { backgroundColor: bgColor, opacity: 0.18 }]} />
                         <RNAnimated.View
                             style={[
                                 StyleSheet.absoluteFill,
@@ -202,58 +201,52 @@ export default function Header() {
                                     backgroundColor: prevBgColor,
                                     opacity: colorAnim.interpolate({
                                         inputRange: [0, 1],
-                                        outputRange: [0.35, 0]
+                                        outputRange: [0.18, 0]
                                     })
                                 }
                             ]}
                         />
-                        <BlurView intensity={50} tint="light" style={StyleSheet.absoluteFill} />
+                        <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
                     </View>
 
-                    {/* Hidden Indicator Area (revealed when pulling) */}
                     <View style={styles.indicatorArea}>
                         <Animated.View style={[styles.indicatorContent, indicatorStyle]}>
                             <AnimatedIonicons
-                                name={hasTriggered.value ? "film" : "arrow-down"}
+                                name={isReadyToRelease ? 'film' : 'arrow-down'}
                                 size={24}
                                 animatedProps={animatedProps}
                             />
                             <Animated.Text style={[styles.indicatorText, indicatorColorStyle]}>
-                                {hasTriggered.value ? "Release for Film" : "Pull for Daily Film"}
+                                {isReadyToRelease ? 'Release for Film' : 'Pull for Daily Film'}
                             </Animated.Text>
                         </Animated.View>
                     </View>
 
-                    {/* Visible Header Content */}
                     <View style={[styles.headerContent, { paddingTop: Math.max(insets.top, SPACING.md) }]}>
-                        {/* Left Side: Pressable Notification Bell Icon */}
                         <PressableScale
-                            onPress={() => handleNavigate('/notifications')}
+                            onPress={() => handleNavigate('/notifications', 'left')}
                             disabled={isNavigating}
                             style={styles.notificationButton}
                         >
                             <View style={styles.iconContainer}>
-                                <Ionicons name="notifications-outline" size={28} color={COLORS.primary} />
+                                <Entypo name="bell" size={28} color={COLORS.primary} />
                                 {hasNewRequests && <View style={styles.bellDot} />}
                             </View>
                         </PressableScale>
-                        
+
                         <View style={styles.logoContainer}>
                             <Text style={styles.logo} numberOfLines={1}>priorities</Text>
                         </View>
-                        
+
                         <PressableScale
-                            onPress={() => handleNavigate('/profile')}
+                            onPress={() => handleNavigate('/profile', 'right')}
                             disabled={isNavigating}
                             style={styles.profileButton}
                         >
-                            <Ionicons name="person-outline" size={28} color={COLORS.primary} />
+                            <MaterialCommunityIcons name="face-man-profile" size={30} color={COLORS.primary} />
                         </PressableScale>
                     </View>
 
-
-
-                    {/* Sheet Bottom Edge/Handle */}
                     <View style={styles.sheetEdge} />
                 </Animated.View>
             </GestureDetector>
@@ -266,7 +259,7 @@ const styles = StyleSheet.create({
         width: '100%',
         zIndex: 2000,
         height: 120,
-        overflow: 'visible', // Ensure hanging bell isn't clipped
+        overflow: 'visible',
     },
     sheetContainer: {
         width: '100%',
@@ -287,7 +280,7 @@ const styles = StyleSheet.create({
         height: 100,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: -100, // Move indicators off-screen above header
+        marginTop: -100,
     },
     indicatorContent: {
         alignItems: 'center',
@@ -306,12 +299,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: SPACING.lg,
-        paddingBottom: SPACING.md, // More space before the sheet ends
+        paddingBottom: SPACING.md,
     },
     sheetEdge: {
         height: 1,
         width: '100%',
-        // Removed visible props since surface handles it now
     },
     notificationButton: {
         width: 50,
@@ -359,4 +351,3 @@ const styles = StyleSheet.create({
         borderColor: COLORS.background,
     },
 });
-

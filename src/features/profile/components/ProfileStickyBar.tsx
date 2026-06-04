@@ -1,9 +1,13 @@
-// src/features/profile/components/ProfileStickyBar.tsx
-
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Animated as RNAnimated } from 'react-native';
-import Reanimated, { useAnimatedStyle, interpolate, Extrapolation, SharedValue } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import Reanimated, {
+    useAnimatedStyle,
+    interpolate,
+    Extrapolation,
+    SharedValue,
+    useAnimatedProps,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, Entypo } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,8 +15,6 @@ import { COLORS } from '@/theme/theme';
 import { User } from '@/types/domain';
 import { HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 import { UserAvatar } from '@/components/ui/UserAvatar';
-
-
 
 interface ProfileStickyBarProps {
     user: User;
@@ -22,6 +24,10 @@ interface ProfileStickyBarProps {
     animatedBarColor: any;
     onActionPress?: () => void;
 }
+
+const AnimatedText = Reanimated.createAnimatedComponent(Text);
+const AnimatedIonicons = Reanimated.createAnimatedComponent(Ionicons);
+const AnimatedEntypo = Reanimated.createAnimatedComponent(Entypo);
 
 export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
     user,
@@ -35,9 +41,10 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
     const insets = useSafeAreaInsets();
 
     const headerHeight = insets.top + 60;
-
     const fadeEnd = HEADER_HEIGHT - headerHeight;
     const fadeStart = fadeEnd - 40;
+    const colorStart = fadeEnd - 10;
+    const colorEnd = fadeEnd + 18;
 
     const barBgStyle = useAnimatedStyle(() => {
         const opacity = interpolate(
@@ -49,10 +56,67 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
         return { opacity };
     });
 
-    // Determine what to show on the right side:
-    // - isOwner (direct /profile route)      → settings icon
-    // - isActuallyOwner but !isOwner          → nothing (own profile via @handle navigation)
-    // - !isActuallyOwner                      → dots icon
+    const titleAnimatedStyle = useAnimatedStyle(() => {
+        const progress = interpolate(
+            scrollY.value,
+            [colorStart, colorEnd],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        return {
+            color: progress < 0.92 ? COLORS.primary : '#FFFFFF',
+            opacity: interpolate(progress, [0, 0.7, 1], [0.92, 0.97, 1], Extrapolation.CLAMP),
+        } as any;
+    });
+
+    const leftIconAnimatedProps = useAnimatedProps(() => {
+        const progress = interpolate(
+            scrollY.value,
+            [colorStart, colorEnd],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        return {
+            color: progress < 0.92 ? COLORS.primary : '#FFFFFF',
+        } as any;
+    });
+
+    const settingsAnimatedProps = useAnimatedProps(() => {
+        const progress = interpolate(
+            scrollY.value,
+            [colorStart, colorEnd],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        return {
+            color: progress < 0.92 ? COLORS.primary : '#FFFFFF',
+        } as any;
+    });
+
+    const settingsAnimatedStyle = useAnimatedStyle(() => {
+        const progress = interpolate(
+            scrollY.value,
+            [colorStart, colorEnd],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        return {
+            opacity: interpolate(progress, [0, 0.7, 1], [0.94, 0.98, 1], Extrapolation.CLAMP),
+        };
+    });
+
+    const dotsAnimatedProps = useAnimatedProps(() => {
+        const progress = interpolate(
+            scrollY.value,
+            [colorStart, colorEnd],
+            [0, 1],
+            Extrapolation.CLAMP
+        );
+        return {
+            color: progress < 0.92 ? COLORS.primary : '#FFFFFF',
+        } as any;
+    });
+
     const renderRightIcon = () => {
         if (isOwner) {
             return (
@@ -64,18 +128,18 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                         accessibilityRole="button"
                         accessibilityLabel="Open settings"
                     >
-                        <Ionicons name="settings-outline" size={24} color="white" />
+                        <Reanimated.View style={settingsAnimatedStyle}>
+                            <AnimatedIonicons animatedProps={settingsAnimatedProps} name="settings-outline" size={24} />
+                        </Reanimated.View>
                     </TouchableOpacity>
                 </Link>
             );
         }
 
         if (isActuallyOwner) {
-            // Own profile reached via @handle — show nothing, just a spacer
             return <View style={styles.iconButton} />;
         }
 
-        // Someone else's profile — show dots
         return (
             <TouchableOpacity
                 style={styles.iconButton}
@@ -85,7 +149,7 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                 accessibilityRole="button"
                 accessibilityLabel="Profile actions"
             >
-                <Entypo name="dots-two-horizontal" size={24} color="white" />
+                <AnimatedEntypo animatedProps={dotsAnimatedProps} name="dots-two-horizontal" size={24} />
             </TouchableOpacity>
         );
     };
@@ -115,19 +179,19 @@ export const ProfileStickyBar: React.FC<ProfileStickyBarProps> = ({
                     accessibilityRole="button"
                     accessibilityLabel="Go back"
                 >
-                    <Ionicons name="chevron-back" size={24} color="white" />
+                    <AnimatedIonicons animatedProps={leftIconAnimatedProps} name="close" size={24} />
                 </TouchableOpacity>
 
                 <View style={styles.nameCenterSlot} pointerEvents="none">
-                    <Text
-                        style={styles.name}
+                    <AnimatedText
+                        style={[styles.name, titleAnimatedStyle]}
                         numberOfLines={1}
                         ellipsizeMode="tail"
                         accessible={true}
                         accessibilityRole="header"
                     >
                         {user.name}
-                    </Text>
+                    </AnimatedText>
                 </View>
 
                 {renderRightIcon()}
@@ -162,6 +226,8 @@ const styles = StyleSheet.create({
         padding: 8,
         justifyContent: 'center',
         alignItems: 'center',
+        minWidth: 40,
+        minHeight: 40,
     },
     nameCenterSlot: {
         position: 'absolute',
@@ -173,7 +239,7 @@ const styles = StyleSheet.create({
     name: {
         fontSize: 17,
         fontWeight: '700',
-        color: COLORS.surfaceLight,
+        color: COLORS.primary,
         textShadowColor: 'rgba(0, 0, 0, 0.4)',
         textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 4,

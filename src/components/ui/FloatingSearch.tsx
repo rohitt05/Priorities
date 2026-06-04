@@ -31,7 +31,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { COLORS, FONTS } from '@/theme/theme';
-import { searchUsers } from '@/services/profileService';
+import { searchUsers, searchDirectoryUsers } from '@/services/profileService';
 import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyPriorities } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
@@ -50,6 +50,11 @@ interface User {
     name: string;
     profile_picture: string;
     dominant_color: string;
+    partner?: {
+        name: string;
+        unique_user_id: string;
+        profile_picture: string;
+    };
 }
 
 
@@ -63,6 +68,7 @@ interface SearchResultCardProps {
     hasSentRequest: boolean;
     onAcceptPress: (user: User) => void;
     isAlreadyPriority: boolean;
+    isDirectoryTab?: boolean;
 }
 
 
@@ -76,6 +82,7 @@ const SearchResultCard = ({
     hasSentRequest,
     onAcceptPress,
     isAlreadyPriority,
+    isDirectoryTab,
 }: SearchResultCardProps) => {
     const ITEM_H = 80;
     const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -104,55 +111,95 @@ const SearchResultCard = ({
     return (
         <ReAnimated.View style={[styles.resultCard, animatedStyle]}>
             <Pressable
-                style={styles.userInfoContainer}
+                style={[
+                    styles.userInfoContainer,
+                    isDirectoryTab && { flexDirection: 'row', flex: 1, justifyContent: 'space-between', alignItems: 'center' }
+                ]}
                 onPress={() => onPress(item.unique_user_id)}
             >
-                <UserAvatar uri={item.profile_picture} style={styles.resultAvatar} />
-                <View style={styles.userInfo}>
-                    <Text style={styles.userName}>{item.name}</Text>
-                    <Text style={styles.userId}>@{item.unique_user_id}</Text>
-                </View>
+                {isDirectoryTab ? (
+                    <>
+                        <UserAvatar uri={item.profile_picture} style={styles.resultAvatar} />
+                        <View style={[styles.userInfo, { alignItems: 'center', marginHorizontal: 10 }]}>
+                            <Text style={styles.userName}>{item.name}</Text>
+                            <Text style={[styles.userId, { color: '#ff4d4d', marginTop: 2 }]} numberOfLines={1}>committed to {item.partner?.name}</Text>
+                        </View>
+                        <UserAvatar uri={item.partner?.profile_picture || ''} style={styles.resultAvatar} />
+                    </>
+                ) : (
+                    <>
+                        <UserAvatar uri={item.profile_picture} style={styles.resultAvatar} />
+                        <View style={styles.userInfo}>
+                            <Text style={styles.userName}>{item.name}</Text>
+                            <Text style={styles.userId}>@{item.unique_user_id}</Text>
+                        </View>
+                    </>
+                )}
             </Pressable>
 
-            {isAlreadyPriority ? (
-                <Pressable
-                    style={({ pressed }) => [
-                        styles.resultAcceptButton,
-                        styles.viewProfileButton,
-                        { transform: [{ scale: pressed ? 0.95 : 1 }] }
-                    ]}
-                    onPress={() => onPress(item.unique_user_id)}
-                >
-                    <Text style={[styles.resultAcceptText, { color: COLORS.primary }]}>
-                        View Profile
-                    </Text>
-                </Pressable>
-            ) : hasSentRequest ? (
-                <Pressable
-                    style={({ pressed }) => [
-                        styles.resultAcceptButton,
-                        styles.acceptButtonHighlight,
-                        { transform: [{ scale: pressed ? 0.95 : 1 }] }
-                    ]}
-                    onPress={() => onAcceptPress(item)}
-                >
-                    <Text style={styles.resultAcceptText}>Accept</Text>
-                </Pressable>
-            ) : (
-                <Pressable
-                    style={({ pressed }) => [
-                        styles.resultAcceptButton,
-                        { transform: [{ scale: pressed ? 0.95 : 1 }] }
-                    ]}
-                    onPress={() => onAddPress(item)}
-                >
-                    <Text style={styles.resultAcceptText}>Add to Priorities</Text>
-                </Pressable>
+            {!isDirectoryTab && (
+                isAlreadyPriority ? (
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.resultAcceptButton,
+                            styles.viewProfileButton,
+                            { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                        ]}
+                        onPress={() => onPress(item.unique_user_id)}
+                    >
+                        <Text style={[styles.resultAcceptText, { color: COLORS.primary }]}>
+                            View Profile
+                        </Text>
+                    </Pressable>
+                ) : hasSentRequest ? (
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.resultAcceptButton,
+                            styles.acceptButtonHighlight,
+                            { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                        ]}
+                        onPress={() => onAcceptPress(item)}
+                    >
+                        <Text style={styles.resultAcceptText}>Accept</Text>
+                    </Pressable>
+                ) : (
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.resultAcceptButton,
+                            { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                        ]}
+                        onPress={() => onAddPress(item)}
+                    >
+                        <Text style={styles.resultAcceptText}>Add to Priorities</Text>
+                    </Pressable>
+                )
             )}
         </ReAnimated.View>
     );
 };
 
+
+const ZigzagScribble = ({ color, opacity, style }: any) => (
+    <View style={[{ flexDirection: 'row', height: 14, alignItems: 'center' }, style]}>
+        {[...Array(10)].map((_, i) => (
+            <View
+                key={i}
+                style={{
+                    width: 10,
+                    height: 3,
+                    backgroundColor: color,
+                    opacity,
+                    borderRadius: 2,
+                    transform: [
+                        { rotate: i % 2 === 0 ? '-30deg' : '30deg' },
+                        { translateY: i % 2 === 0 ? 1 : -1 }
+                    ],
+                    marginLeft: i === 0 ? 0 : -5,
+                }}
+            />
+        ))}
+    </View>
+);
 
 
 const FloatingSearch = () => {
@@ -173,14 +220,35 @@ const FloatingSearch = () => {
     const [pendingAcceptRequest, setPendingAcceptRequest] = useState<any | null>(null);
     const [existingPriorityIds, setExistingPriorityIds] = useState<Set<string>>(new Set());
     const [searchBarHidden, setSearchBarHidden] = useState(false);
+    const [activeTab, setActiveTab] = useState<'people' | 'directory'>('people');
 
     const requestListOpacity = useSharedValue(0);
     const expandAnim = useRef(new RNAnimated.Value(0)).current;
     const keyboardOffset = useRef(new RNAnimated.Value(0)).current;
     const resultsAnim = useRef(new RNAnimated.Value(0)).current;
     const relationshipAnim = useRef(new RNAnimated.Value(0)).current;
+    const activeTabAnim = useRef(new RNAnimated.Value(0)).current;
     const inputRef = useRef<TextInput>(null);
     const relInputRef = useRef<TextInput>(null);
+
+    useEffect(() => {
+        RNAnimated.spring(activeTabAnim, {
+            toValue: activeTab === 'people' ? 0 : 1,
+            useNativeDriver: true,
+            friction: 8,
+            tension: 50,
+        }).start();
+
+        // Clear search when switching tabs
+        setSearchQuery('');
+        setFilteredUsers([]);
+        setSelectedUser(null);
+    }, [activeTab]);
+
+    const translateX = activeTabAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 150], // 300 / 2
+    });
 
 
 
@@ -295,6 +363,7 @@ const FloatingSearch = () => {
         setIsAcceptFlow(false);
         setPendingAcceptRequest(null);
         setSearchBarHidden(false);
+        setActiveTab('people');
     };
 
 
@@ -326,7 +395,12 @@ const FloatingSearch = () => {
         if (text.length > 0) {
             try {
                 const excludeIds = currentUserId ? [currentUserId] : [];
-                const results = await searchUsers(text, excludeIds);
+                let results;
+                if (activeTab === 'directory') {
+                    results = await searchDirectoryUsers(text, excludeIds);
+                } else {
+                    results = await searchUsers(text, excludeIds);
+                }
                 setFilteredUsers(results as User[]);
             } catch (err) {
                 console.error('Search error:', err);
@@ -437,17 +511,87 @@ const FloatingSearch = () => {
                 pointerEvents={isExpanded ? 'auto' : 'none'}
                 style={[styles.fullscreenOverlay, { opacity: overlayOpacity }]}
             >
-                <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsExpanded(false)}>
+                <Pressable style={StyleSheet.absoluteFill}>
                     <BlurView intensity={100} tint="light" style={StyleSheet.absoluteFill}>
                         <LinearGradient
-                            colors={['rgba(253, 252, 240, 0.95)', 'rgba(253, 252, 240, 0.7)', 'rgba(253, 252, 240, 0.4)']}
+                            colors={activeTab === 'directory' 
+                                ? ['rgba(255, 240, 245, 0.95)', 'rgba(255, 228, 225, 0.8)', 'rgba(255, 192, 203, 0.5)'] 
+                                : ['rgba(253, 252, 240, 0.95)', 'rgba(253, 252, 240, 0.7)', 'rgba(253, 252, 240, 0.4)']}
                             style={StyleSheet.absoluteFill}
                             start={{ x: 0.5, y: 0 }}
                             end={{ x: 0.5, y: 1 }}
                         />
+                        {activeTab === 'directory' && (
+                            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                                <Ionicons name="heart" size={140} color="rgba(255, 105, 180, 0.12)" style={{ position: 'absolute', top: 180, left: -30, transform: [{ rotate: '-15deg' }] }} />
+                                <Ionicons name="heart" size={90} color="rgba(255, 20, 147, 0.08)" style={{ position: 'absolute', top: 380, right: -15, transform: [{ rotate: '25deg' }] }} />
+                                <Ionicons name="heart" size={220} color="rgba(255, 182, 193, 0.15)" style={{ position: 'absolute', bottom: 80, left: 50, transform: [{ rotate: '10deg' }] }} />
+                                
+                                {/* WDW Header centered in the background theme */}
+                                {filteredUsers.length === 0 && (
+                                    <View style={styles.wdwHeader}>
+                                        <Text style={styles.wdwTitle}>WDW</Text>
+                                        <Text style={styles.wdwSubtitle}>who's dating whom</Text>
+                                    </View>
+                                )}
+                            </View>
+                        )}
                     </BlurView>
                 </Pressable>
             </RNAnimated.View>
+
+            {/* Top Tabs — separate element above the header (zIndex 2100 > Header 2000) */}
+            {isExpanded && (
+                <View style={styles.topTabsWrapper} pointerEvents="box-none">
+                    <View style={styles.topTabsContainer}>
+                        <Pressable
+                            style={styles.tabButton}
+                            onPress={() => setActiveTab('people')}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                {
+                                    color: activeTab === 'people' ? '#1a1a1a' : '#888888',
+                                    fontWeight: activeTab === 'people' ? '700' : '400',
+                                }
+                            ]}>
+                                search people
+                            </Text>
+                        </Pressable>
+                        <Pressable
+                            style={styles.tabButton}
+                            onPress={() => setActiveTab('directory')}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                {
+                                    color: activeTab === 'directory' ? '#1a1a1a' : '#888888',
+                                    fontWeight: activeTab === 'directory' ? '700' : '400',
+                                }
+                            ]}>
+                                world directory
+                            </Text>
+                        </Pressable>
+
+                        {/* Sliding Zigzag Scribble Indicator */}
+                        <RNAnimated.View
+                            style={[
+                                styles.scribbleIndicatorContainer,
+                                { transform: [{ translateX }] }
+                            ]}
+                        >
+                            <ZigzagScribble color={COLORS.primary} opacity={1} />
+                            <ZigzagScribble
+                                color={COLORS.primary}
+                                opacity={0.5}
+                                style={{ position: 'absolute', top: 2, transform: [{ scale: 0.95 }, { rotate: '1deg' }] }}
+                            />
+                        </RNAnimated.View>
+                    </View>
+                </View>
+            )}
+
+            {/* Removed ReceivedPriorityRequests from here */}
 
             {/* Removed ReceivedPriorityRequests from here */}
 
@@ -500,6 +644,7 @@ const FloatingSearch = () => {
                     </RNAnimated.View>
                 )}
 
+
                 {/* Results List */}
                 {filteredUsers.length > 0 && !selectedUser && (
                     <RNAnimated.View
@@ -528,6 +673,7 @@ const FloatingSearch = () => {
                                     hasSentRequest={incomingRequestSenderIds.has(item.id)}
                                     onAcceptPress={handleAcceptFromSearch}
                                     isAlreadyPriority={existingPriorityIds.has(item.id)}
+                                    isDirectoryTab={activeTab === 'directory'}
                                 />
                             )}
                             onScroll={resultScrollHandler}
@@ -587,11 +733,7 @@ const styles = StyleSheet.create({
         elevation: 10,
     },
     fullscreenOverlay: {
-        position: 'absolute',
-        width: SCREEN_WIDTH * 1.5,
-        height: SCREEN_HEIGHT * 2,
-        bottom: -500,
-        right: -100,
+        ...StyleSheet.absoluteFillObject,
         zIndex: 1999,
     },
     iconButton: {
@@ -779,6 +921,87 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         height: 56,
         zIndex: 100,
+    },
+    topTabsWrapper: {
+        position: 'absolute',
+        top: 120,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2100,
+    },
+    topTabsContainer: {
+        width: 300,
+        height: 50,
+        flexDirection: 'row',
+        position: 'relative',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    tabButton: {
+        flex: 1,
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    tabText: {
+        fontFamily: FONTS.bold,
+        fontSize: 16,
+        textTransform: 'lowercase',
+    },
+    scribbleIndicatorContainer: {
+        position: 'absolute',
+        bottom: -4,
+        width: 150,
+        left: 0,
+        height: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    directoryPlaceholder: {
+        backgroundColor: 'rgba(255, 255, 255, 0.45)',
+        borderRadius: 30,
+        padding: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+        marginBottom: 6,
+        minHeight: 250,
+    },
+    directoryTitle: {
+        fontFamily: FONTS.bold,
+        fontSize: 18,
+        color: COLORS.primary,
+        marginBottom: 8,
+    },
+    directorySubtitle: {
+        fontFamily: FONTS.regular,
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    wdwHeader: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingBottom: 40,
+    },
+    wdwTitle: {
+        fontFamily: 'DancingScript-Bold',
+        fontSize: 64,
+        color: '#b5254e',
+        opacity: 0.8,
+    },
+    wdwSubtitle: {
+        fontFamily: FONTS.regular,
+        fontSize: 16,
+        color: '#8b3a5a',
+        opacity: 0.6,
+        marginTop: -5,
+        letterSpacing: 1,
     },
 });
 

@@ -2,12 +2,12 @@ import 'react-native-get-random-values';
 import 'react-native-url-polyfill/auto';
 
 if (typeof global.DOMException === 'undefined') {
-  global.DOMException = class DOMException extends Error {
-    constructor(message?: string, name?: string) {
-      super(message);
-      this.name = name ?? 'DOMException';
-    }
-  } as any;
+    global.DOMException = class DOMException extends Error {
+        constructor(message?: string, name?: string) {
+            super(message);
+            this.name = name ?? 'DOMException';
+        }
+    } as any;
 }
 
 // FIX #12: Removed redundant TextEncoder/TextDecoder/navigator.userAgent

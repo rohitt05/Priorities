@@ -9,6 +9,7 @@ import {
     type ViewabilityConfig,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { useFonts } from 'expo-font';
 import Animated, {
     useAnimatedScrollHandler,
     SharedValue,
@@ -96,6 +97,8 @@ export interface PriorityListProps {
     onColorChange?: (color: string) => void;
     onActiveUserChange?: (user: PriorityUserWithPost) => void;
     scrollX?: SharedValue<number>;
+    onBuzzStart: () => void;
+    onBuzzStop: () => void;
 }
 
 const calculateOptionsButtonPosition = (size: number, angleDeg: number = -45, buttonRadius: number = 18) => {
@@ -121,6 +124,10 @@ const BlobBackground = React.memo(({ color, size, isActive }: { color: string; s
 BlobBackground.displayName = 'BlobBackground';
 
 const CurvedText = React.memo(({ text, width, color, isActive }: { text: string; width: number; color?: string; isActive: boolean }) => {
+    const [fontsLoaded] = useFonts({
+        'DancingScript-Bold': require('../../../../assets/fonts/DancingScript-Bold.ttf'),
+    });
+
     const scale = useSharedValue(isActive ? 1 : 0);
     const opacity = useSharedValue(isActive ? 1 : 0);
 
@@ -144,9 +151,11 @@ const CurvedText = React.memo(({ text, width, color, isActive }: { text: string;
         <Animated.View pointerEvents="none" style={[styles.curvedTextWrapper, { width: svgWidth, height: textRadius * 0.5 }, animatedStyle]}>
             <Svg width={svgWidth} height={textRadius + 10} viewBox={`0 0 ${svgWidth} ${textRadius + 10}`}>
                 <Defs><Path id="outerArc" d={d} fill="none" /></Defs>
-                <SvgText fill={COLORS.textSecondary} fontSize="56" fontFamily="DancingScript-Bold" opacity="0.3" textAnchor="middle" letterSpacing="1" dy="10">
-                    <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
-                </SvgText>
+                {fontsLoaded ? (
+                    <SvgText fill={COLORS.textSecondary} fontSize="56" fontFamily="DancingScript-Bold" opacity="0.3" textAnchor="middle" letterSpacing="1" dy="10">
+                        <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
+                    </SvgText>
+                ) : null}
                 <SvgText fill={COLORS.primary} fontSize="34" fontFamily={FONTS.bold} fontWeight="900" textAnchor="middle" letterSpacing="2">
                     <TextPath href="#outerArc" startOffset="50%">{text}</TextPath>
                 </SvgText>
@@ -298,40 +307,17 @@ interface PriorityCardProps {
     sentStatus: { status: string; timestamp: string } | null;
     currentUserId: string | null;
     isBirthday: boolean;
-    buzzChannel: ReturnType<typeof supabase.channel> | null;
+    onBuzzStart: () => void;
+    onBuzzStop: () => void;
 }
 
 const PriorityCard = React.memo(
-    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId, isBirthday, buzzChannel }: PriorityCardProps) => {
+    ({ item, isActive, onOptionsPress, unreadMedia, sentStatus, currentUserId, isBirthday, onBuzzStart, onBuzzStop }: PriorityCardProps) => {
         const dominantColor = item.dominantColor || COLORS.primary;
         const router = useRouter();
         const tapHoldContext = useContext(TapHoldContext);
         const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
-
-        // startCallVibration — vibrates sender + signals receiver via Broadcast
-        const startCallVibration = useCallback(async () => {
-            Vibration.vibrate(BUZZ_PATTERN, true);
-            if (buzzChannel && currentUserId) {
-                await buzzChannel.send({
-                    type: 'broadcast',
-                    event: 'buzz',
-                    payload: { state: 'start', senderId: currentUserId },
-                });
-            }
-        }, [currentUserId, buzzChannel]);
-
-        // stopCallVibration — cancels sender vibration + signals receiver to stop
-        const stopCallVibration = useCallback(async () => {
-            Vibration.cancel();
-            if (buzzChannel && currentUserId) {
-                await buzzChannel.send({
-                    type: 'broadcast',
-                    event: 'buzz',
-                    payload: { state: 'stop', senderId: currentUserId },
-                });
-            }
-        }, [currentUserId, buzzChannel]);
-
+        
         const { isActive: isGlobalRecording, activeSourceId, startFromRef, updateDrag, endFromTranslationX } = useVoiceNoteRecording();
         const { markAsSeen, recordMessageSent, simulateCounterpartSeen } = useMediaInbox();
         const imageWrapperRef = useRef<View | null>(null);
@@ -385,7 +371,7 @@ const PriorityCard = React.memo(
                     }
                 });
             } catch (err) {
-                console.error('Failed to start video call:', err);
+                // video call failed silently
             }
         }, [currentUserId, item.id, item.name, item.profilePicture, router]);
 
@@ -408,7 +394,7 @@ const PriorityCard = React.memo(
                     }
                 });
             } catch (err) {
-                console.error('Failed to start voice call:', err);
+                // voice call failed silently
             }
         }, [currentUserId, item.id, item.name, item.profilePicture, router]);
 
@@ -417,7 +403,7 @@ const PriorityCard = React.memo(
         const tapGestures = Gesture.Exclusive(doubleTap, singleTap);
 
         const panGesture = Gesture.Pan()
-            .activateAfterLongPress(350)
+            .activateAfterLongPress(100)
             .onStart(() => runOnJS(startRecording)())
             .onUpdate((e) => runOnJS(updateDrag)(e.translationX))
             .onEnd((e) => {
@@ -430,9 +416,10 @@ const PriorityCard = React.memo(
         // ─── Buzz gesture — long-press the CARD BACKGROUND (not the profile picture) ───
         // Profile picture zone uses composedGesture (voice note + tap) — fully separate.
         const callVibrationGesture = Gesture.LongPress()
-            .minDuration(400)
-            .onStart(() => { 'worklet'; runOnJS(startCallVibration)(); })
-            .onFinalize(() => { 'worklet'; runOnJS(stopCallVibration)(); });
+            .minDuration(150)
+            .maxDistance(999)
+            .onStart(() => { 'worklet'; runOnJS(onBuzzStart)(); })
+            .onFinalize(() => { 'worklet'; runOnJS(onBuzzStop)(); });
 
         if (item.isPending) {
             return (
@@ -469,7 +456,7 @@ const PriorityCard = React.memo(
             <View style={styles.cardContainer}>
                 {/* ── Buzz zone: the entire card background OUTSIDE the profile picture ── */}
                 <GestureDetector gesture={callVibrationGesture}>
-                    <View style={StyleSheet.absoluteFill} />
+                    <Animated.View pointerEvents="auto" style={StyleSheet.absoluteFill} />
                 </GestureDetector>
 
                 <BlobBackground color={dominantColor} size={LAYOUT.IMAGE_SIZE} isActive={isActive} />
@@ -551,8 +538,7 @@ const PriorityCard = React.memo(
         prev.unreadMedia?.id === next.unreadMedia?.id &&
         prev.sentStatus?.status === next.sentStatus?.status &&
         prev.sentStatus?.timestamp === next.sentStatus?.timestamp &&
-        prev.isBirthday === next.isBirthday &&
-        prev.buzzChannel === next.buzzChannel
+        prev.isBirthday === next.isBirthday
 );
 PriorityCard.displayName = 'PriorityCard';
 
@@ -594,7 +580,7 @@ const PriorityMessageIndicator = React.memo(({ direction, count, onPress, bgColo
 });
 PriorityMessageIndicator.displayName = 'PriorityMessageIndicator';
 
-const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorChange, onActiveUserChange, scrollX }) => {
+const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorChange, onActiveUserChange, scrollX, onBuzzStart, onBuzzStop }) => {
     const scrollHandler = useAnimatedScrollHandler({
         onScroll: (event) => { if (scrollX) scrollX.value = event.contentOffset.x; },
     });
@@ -608,8 +594,6 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const flatListRef = useRef<GHFlatList>(null);
-    const activeBuzzChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-    const [activeBuzzChannel, setActiveBuzzChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
 
     const { unreadMessages, myLastSentStatus } = useMediaInbox();
     const { triggerHaptic } = useHapticFeedback();
@@ -663,28 +647,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         index,
     }), []);
 
-    // FIX #8: Manage subscription for the ACTIVE card user only.
-    const activeUser = displayPriorities[activeIndex];
-    useEffect(() => {
-        if (!activeUser?.id) {
-            setActiveBuzzChannel(null);
-            return;
-        }
 
-        const ch = supabase.channel(`user-signals-${activeUser.id}`);
-        ch.subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                activeBuzzChannelRef.current = ch;
-                setActiveBuzzChannel(ch);
-            }
-        });
-
-        return () => {
-            supabase.removeChannel(ch);
-            activeBuzzChannelRef.current = null;
-            setActiveBuzzChannel(null);
-        };
-    }, [activeUser?.id]);
 
     const openPinSheetForUser = useCallback((user: PriorityUserWithPost, anchor: AnchorPosition) => {
         setSelectedUser(user);
@@ -720,10 +683,11 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
                 sentStatus={sentStatus}
                 currentUserId={currentUserId}
                 isBirthday={isBirthday}
-                buzzChannel={index === activeIndex ? activeBuzzChannel : null}
+                onBuzzStart={onBuzzStart}
+                onBuzzStop={onBuzzStop}
             />
         );
-    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId, activeBuzzChannel]);
+    }, [activeIndex, openPinSheetForUser, unreadMessages, myLastSentStatus, currentUserId, onBuzzStart, onBuzzStop]);
 
     const leftUnread = useMemo(() => {
         let count = 0;
@@ -761,7 +725,7 @@ const PriorityListContent: React.FC<PriorityListProps> = ({ priorities, onColorC
         <View style={styles.container} pointerEvents="box-none">
             <AnimatedGHFlatList
                 ref={flatListRef as any}
-                hitSlop={{ top: -220, bottom: -220 }}
+                hitSlop={{ top: -120, bottom: -120 }}
                 style={{ flexGrow: 0 }}
                 data={displayPriorities}
                 keyExtractor={(item: any) => item.id}
@@ -831,7 +795,7 @@ const styles = StyleSheet.create({
     rootContainer: { flex: 1 },
     container: { flex: 1, justifyContent: 'center', height: '100%', width: '100%', marginVertical: 0 },
     flatListContent: { paddingHorizontal: LAYOUT.SIDE_PADDING, alignItems: 'center', paddingTop: 100, paddingBottom: 80 },
-    cardContainer: { width: LAYOUT.CARD_WIDTH, height: 800, marginHorizontal: LAYOUT.SPACING_PER_SIDE, alignItems: 'center', justifyContent: 'center', overflow: 'visible', backgroundColor: 'transparent' },
+    cardContainer: { width: LAYOUT.CARD_WIDTH, height: 480, marginHorizontal: LAYOUT.SPACING_PER_SIDE, alignItems: 'center', justifyContent: 'center', overflow: 'visible', backgroundColor: 'transparent' },
     blobContainer: { position: 'absolute', zIndex: Z_INDEX.BLOB, justifyContent: 'center', alignItems: 'center' },
     backgroundTextContainer: { position: 'absolute', top: -70, width: '130%', alignItems: 'center', justifyContent: 'center', zIndex: Z_INDEX.BACKGROUND_TEXT },
     backgroundText: { fontSize: 48, fontFamily: 'DancingScript-Bold', color: COLORS.primary, opacity: 0.3, textAlign: 'center', letterSpacing: 1 },

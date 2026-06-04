@@ -1,11 +1,12 @@
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { withLayoutContext } from 'expo-router';
+import { withLayoutContext, useSegments } from 'expo-router';
 import { View, Animated, StyleSheet, Dimensions, Text } from 'react-native';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Header } from '@/components';
 import { COLORS, FONTS } from '@/theme/theme';
 import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import FloatingSearch from '@/components/ui/FloatingSearch';
 
 // Import Contexts
 import { TabBarVisibilityProvider, useTabBarVisibility } from '@/contexts/TabBarVisibilityContext';
@@ -95,6 +96,7 @@ function TabLayoutContent() {
     const { priorities, scrollToUserIndex } = useUserTimeline();
     const { width } = Dimensions.get('window');
     const { tabBarAnim } = useTabBarVisibility();
+    const segments = useSegments();
 
     const TAB_BAR_WIDTH = 200;
     const TAB_BAR_LEFT = (width - TAB_BAR_WIDTH) / 2;
@@ -204,6 +206,7 @@ function TabLayoutContent() {
                     </View>
                 </View>
             </ThemeProvider>
+            {!segments.includes('timelines') && <FloatingSearch />}
         </View>
     );
 }

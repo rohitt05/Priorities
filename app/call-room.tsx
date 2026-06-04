@@ -7,6 +7,7 @@ import {
     VideoTrack,
     useRoomContext,
     TrackReference,
+    AudioSession,
 } from '@livekit/react-native';
 import { VideoPresets } from 'livekit-client';
 import { COLORS, FONTS } from '@/theme/theme';
@@ -45,6 +46,16 @@ export default function CallRoom() {
     }>();
     const router = useRouter();
     const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+    // CRITICAL: AudioSession must be started BEFORE LiveKitRoom connects.
+    // Without this, the WebRTC audio pipeline is uninitialized on RN, causing
+    // trackID: undefined and the toLowerCase crash in livekit-client.
+    useEffect(() => {
+        AudioSession.startAudioSession();
+        return () => {
+            AudioSession.stopAudioSession();
+        };
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -191,11 +202,15 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
     const insets = useSafeAreaInsets();
     const tracks = useTracks([
         { source: 'camera' as any, withPlaceholder: false },
+        { source: 'microphone' as any, withPlaceholder: false },
     ]);
     const room = useRoomContext();
     const localParticipant = room.localParticipant;
-    const localTrack = tracks.find(t => t.participant.isLocal);
-    const remoteTrack = tracks.find(t => !t.participant.isLocal);
+    const localTrack = tracks.find(t => t.participant.isLocal && (t.publication?.source as any) === 'camera');
+    const remoteVideoTrack = tracks.find(t => !t.participant.isLocal && (t.publication?.source as any) === 'camera');
+    // Detect remote participant connection — works for BOTH voice and video calls
+    const remoteParticipantCount = room.remoteParticipants.size;
+    const isRemoteConnected = remoteParticipantCount > 0;
 
     const isMicEnabled = localParticipant?.isMicrophoneEnabled ?? false;
     const isCameraEnabled = localParticipant?.isCameraEnabled ?? false;
@@ -277,19 +292,32 @@ function RoomContent({ callType, onHangup, remoteName, remotePic, remoteId }: {
 
     return (
         <View style={styles.roomContainer}>
-            {/* Background: Remote Video */}
+            {/* Background: Remote Video or Voice-call avatar */}
             <View style={styles.remoteContainer}>
-                {remoteTrack ? (
+                {remoteVideoTrack ? (
                     <VideoTrack
                         // @ts-ignore
-                        trackRef={remoteTrack}
+                        trackRef={remoteVideoTrack}
                         style={styles.remoteVideo}
                         objectFit="cover"
                     />
                 ) : (
                     <View style={styles.remotePlaceholder}>
-                        <Image source={{ uri: remotePic }} style={styles.placeholderPic} />
-                        <Text style={styles.waitingText}>Connecting to {remoteName}...</Text>
+                        <Image
+                            source={{ uri: remotePic }}
+                            style={[
+                                styles.placeholderPic,
+                                isRemoteConnected && styles.placeholderPicConnected
+                            ]}
+                        />
+                        <Text style={styles.waitingText}>
+                            {isRemoteConnected
+                                ? callType === 'voice'
+                                    ? `On call with ${remoteName}`
+                                    : `${remoteName} has camera off`
+                                : `Connecting to ${remoteName}...`
+                            }
+                        </Text>
                     </View>
                 )}
             </View>
@@ -385,6 +413,7 @@ const styles = StyleSheet.create({
     remoteVideo: { flex: 1 },
     remotePlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20 },
     placeholderPic: { width: 120, height: 120, borderRadius: 60, opacity: 0.5 },
+    placeholderPicConnected: { opacity: 1 },
     waitingText: { color: 'rgba(255,255,255,0.4)', fontSize: 16, fontFamily: FONTS.medium },
 
     headerOverlay: {

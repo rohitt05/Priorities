@@ -46,6 +46,13 @@ export default function OutgoingCallScreen() {
     const ringAnim = useSharedValue(1);
 
     useEffect(() => {
+        AudioSession.startAudioSession();
+        return () => {
+            AudioSession.stopAudioSession();
+        };
+    }, []);
+
+    useEffect(() => {
         (async () => {
             const cameraStatus = await Camera.requestCameraPermissionsAsync();
             const audioStatus = await Audio.requestPermissionsAsync();

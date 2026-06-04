@@ -1,37 +1,19 @@
 import { Platform } from 'react-native';
-import Purchases from 'react-native-purchases';
-
-const REVENUECAT_API_KEY = 'test_KkmdpcumllaqHLIgRKdBawqjrva';
 
 export const SubscriptionConfig = {
     // Toggles whether a paid subscription is required to upload media from the camera roll (gallery).
-    // Set to true to enforce premium paywalls (like Locket Gold).
-    requiresPremiumForGallery: true,
+    // Always false since the app is completely free.
+    requiresPremiumForGallery: false,
 
-    // Initialize Purchases if not already done
+    // Disable Purchases initialization (no-op)
     initializePurchases: async () => {
-        try {
-            const isConfigured = await Purchases.isConfigured();
-            if (!isConfigured) {
-                Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-                console.log('RevenueCat Purchases configured successfully');
-            }
-        } catch (e) {
-            console.error('Failed to configure RevenueCat Purchases', e);
-        }
+        // No-op since we do not use RevenueCat anymore
+        console.log('RevenueCat integration disabled (App is free)');
     },
 
-    // Live check from RevenueCat
+    // Always returns true so all premium gates are unlocked
     checkIsPremiumUser: async () => {
-        try {
-            await SubscriptionConfig.initializePurchases();
-            const customerInfo = await Purchases.getCustomerInfo();
-            // Assuming your entitlement identifier in RevenueCat is 'Priorities Pro'
-            return typeof customerInfo.entitlements.active['Priorities Pro'] !== 'undefined';
-        } catch (e) {
-            console.error('Error fetching customer info', e);
-            return false;
-        }
+        return true;
     },
 
     // Premium theme settings

@@ -54,15 +54,6 @@ async function sendExpoPush(params: {
   return json;
 }
 
-// FIX 5 — channelId is Android-only. iOS does not support custom vibration
-// patterns from push notifications — the default system vibration is the only
-// option available without the Critical Alerts entitlement (Apple approval needed).
-// This helper detects iOS tokens so we can safely omit channelId for them.
-function isIosToken(token: string): boolean {
-  const lower = token.toLowerCase();
-  return lower.includes('ios') || lower.includes('apns');
-}
-
 serve(async (req) => {
   try {
     const payload = await req.json();
@@ -83,43 +74,53 @@ serve(async (req) => {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('expo_push_token')
+        .select('expo_push_token, last_buzz_received_at')
         .eq('id', receiverId)
         .single();
 
       if (!profile?.expo_push_token) {
-        console.log(`[Buzz] No push token for ${receiverId}. Skipping.`);
         return new Response(
           JSON.stringify({ message: 'User has no push token.' }),
           { status: 200 }
         );
       }
 
-      const token = profile.expo_push_token as string;
+      // Sane server-side rate limit throttling (5 seconds) per receiver
+      if (profile.last_buzz_received_at) {
+        const lastBuzzTime = new Date(profile.last_buzz_received_at).getTime();
+        const diff = Date.now() - lastBuzzTime;
+        if (diff < 5000) {
+          return new Response(
+            JSON.stringify({ status: 'throttled', message: 'Throttled to prevent push flood.' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+      }
 
-      // FIX 5 — Android gets channelId 'buzz' which triggers the custom
-      // vibration pattern [0,100,50,100,50,100,50,600,100,600] registered
-      // in pushNotificationService.ts, with bypassDnd + MAX importance.
-      // iOS gets no channelId — it is an Android-only field. iOS will fire
-      // the default system vibration, which is all APNs allows here.
-      const isIos = isIosToken(token);
+      // Update the last_buzz_received_at timestamp
+      await supabase
+        .from('profiles')
+        .update({ last_buzz_received_at: new Date().toISOString() })
+        .eq('id', receiverId);
+
+      const token = profile.expo_push_token as string;
 
       const result = await sendExpoPush({
         token,
         title: '📳 Buzz!',
         body: `${senderName} is buzzing you`,
-        channelId: isIos ? undefined : 'buzz',
-        sound: 'default',
+        channelId: 'buzz_v2',
+        sound: 'buzz.wav',
         priority: 'high',
         ttl: 30,
         data: {
           route: ROUTES.MAIN_TABS,
           type: 'buzz',
           senderId: senderId ?? '',
+          senderName: senderName ?? 'Someone',
         },
       });
 
-      console.log(`[Buzz] Push sent to ${receiverId} (${isIos ? 'iOS' : 'Android'})`);
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
