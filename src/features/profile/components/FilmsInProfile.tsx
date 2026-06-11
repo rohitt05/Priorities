@@ -22,9 +22,16 @@ interface FilmsInProfileProps {
     dominantColor: string;
     scrollY?: SharedValue<number>;
     isOwner?: boolean;
+    onFilmsCountChange?: (count: number) => void;
 }
 
-export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, dominantColor, scrollY, isOwner }) => {
+export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({
+    userUUID,
+    dominantColor,
+    scrollY,
+    isOwner,
+    onFilmsCountChange,
+}) => {
     const [films, setFilms] = useState<FilmWithMeta[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewerVisible, setViewerVisible] = useState(false);
@@ -65,6 +72,12 @@ export const FilmsInProfile: React.FC<FilmsInProfileProps> = ({ userUUID, domina
             .catch(() => setFilms([]))
             .finally(() => setLoading(false));
     }, [userUUID]);
+
+    useEffect(() => {
+        if (!loading) {
+            onFilmsCountChange?.(films.length);
+        }
+    }, [films.length, loading, onFilmsCountChange]);
 
     // ── Map to MediaItem for the modal viewer ─────────────────────────────────
     const allMappedMediaParams = useMemo((): MediaItem[] =>

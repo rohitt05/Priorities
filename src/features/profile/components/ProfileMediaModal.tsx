@@ -233,9 +233,10 @@ interface ProfileMediaModalProps {
     onClose: () => void;
     isOwner?: boolean;
     onDeleteSuccess?: (id: string) => void;
+    hideOptions?: boolean;
 }
 
-export default function ProfileMediaModal({ visible, mediaItems, initialIndex, onClose, isOwner, onDeleteSuccess }: ProfileMediaModalProps) {
+export default function ProfileMediaModal({ visible, mediaItems, initialIndex, onClose, isOwner, onDeleteSuccess, hideOptions }: ProfileMediaModalProps) {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [isOptionsVisible, setIsOptionsVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
@@ -312,9 +313,11 @@ export default function ProfileMediaModal({ visible, mediaItems, initialIndex, o
                         </View>
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.optionsButton} onPress={() => setIsOptionsVisible(true)} activeOpacity={0.7}>
-                        <Entypo name="dots-two-horizontal" size={28} color="#FFFFFF" />
-                    </TouchableOpacity>
+                    {!hideOptions && (
+                        <TouchableOpacity style={styles.optionsButton} onPress={() => setIsOptionsVisible(true)} activeOpacity={0.7}>
+                            <Entypo name="dots-two-horizontal" size={28} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* iPhone style Bottom Sheet for Save/Delete */}

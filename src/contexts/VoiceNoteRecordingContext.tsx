@@ -13,6 +13,8 @@ import Animated, {
     withDelay,
     Easing,
     SharedValue,
+    FadeIn,
+    FadeOut,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
@@ -67,6 +69,18 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
 
     const overlayOpacity = useSharedValue(0);
     const dragX = useSharedValue(0);
+
+    // Flash banner state
+    const [flashMessage, setFlashMessage] = useState('');
+    const [showFlash, setShowFlash] = useState(false);
+    const flashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const showFlashBanner = useCallback((message: string) => {
+        setFlashMessage(message);
+        setShowFlash(true);
+        if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+        flashTimeoutRef.current = setTimeout(() => setShowFlash(false), 2800);
+    }, []);
 
     // ==========================================
     // PULSE ANIMATION SHARED VALUES
@@ -276,9 +290,27 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
     }, [dragX]);
 
     const finish = useCallback((result: 'send' | 'delete' | 'cancel') => {
-        if (result === 'send') hapticManager.notification(Haptics.NotificationFeedbackType.Success);
-        else if (result === 'delete') hapticManager.notification(Haptics.NotificationFeedbackType.Error);
-        else hapticManager.impact(Haptics.ImpactFeedbackStyle.Light);
+        const isSend = result === 'send';
+        const duration = recordingSeconds;
+
+        if (isSend) {
+            if (duration < 1) {
+                hapticManager.notification(Haptics.NotificationFeedbackType.Warning);
+                showFlashBanner("oops, the audio is too short to record! 🎙️");
+                stopTimer();
+                stopPulse();
+                overlayOpacity.value = withTiming(0, { duration: 180 });
+                dragX.value = withSpring(0);
+                stopAudioRecording();
+                clearStateAfterHide();
+                return;
+            }
+            hapticManager.notification(Haptics.NotificationFeedbackType.Success);
+        } else if (result === 'delete') {
+            hapticManager.notification(Haptics.NotificationFeedbackType.Error);
+        } else {
+            hapticManager.impact(Haptics.ImpactFeedbackStyle.Light);
+        }
 
         stopTimer();
         stopPulse();
@@ -287,11 +319,15 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
 
         // ── Stop recording and handle result ──────────────────
         const receiverId = activeSourceId; // capture before clearStateAfterHide
-        const duration = recordingSeconds;  // capture current seconds
 
         stopAudioRecording().then((audioResult) => {
-            if (result === 'send' && audioResult && receiverId) {
-                uploadAndSend(audioResult.fileUri, audioResult.durationSec || duration, receiverId);
+            if (isSend && receiverId) {
+                if (!audioResult || audioResult.durationSec < 1) {
+                    hapticManager.notification(Haptics.NotificationFeedbackType.Warning);
+                    showFlashBanner("oops, the audio is too short to record! 🎙️");
+                } else {
+                    uploadAndSend(audioResult.fileUri, audioResult.durationSec, receiverId);
+                }
             }
             // 'delete' and 'cancel' → recording is already stopped and discarded
         });
@@ -299,7 +335,7 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
         clearStateAfterHide();
     },
         [activeSourceId, recordingSeconds, clearStateAfterHide, dragX, overlayOpacity,
-            stopPulse, stopTimer, stopAudioRecording, uploadAndSend]
+            stopPulse, stopTimer, stopAudioRecording, uploadAndSend, showFlashBanner]
     );
 
     const endFromTranslationX = useCallback((x: number) => {
@@ -442,6 +478,19 @@ export const VoiceNoteRecordingProvider = ({ children }: { children: React.React
 
                 </Animated.View>
             )}
+
+            {showFlash && (
+                <Animated.View
+                    entering={FadeIn.duration(250).springify().damping(15)}
+                    exiting={FadeOut.duration(200)}
+                    style={styles.flashBannerContainer}
+                    pointerEvents="none"
+                >
+                    <View style={styles.flashBanner}>
+                        <Text style={styles.flashText}>{flashMessage}</Text>
+                    </View>
+                </Animated.View>
+            )}
         </VoiceNoteRecordingContext.Provider>
     );
 };
@@ -503,5 +552,36 @@ const styles = StyleSheet.create({
         width: 1,
         height: 16,
         backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    flashBannerContainer: {
+        position: 'absolute',
+        top: 60,
+        alignSelf: 'center',
+        left: 20,
+        right: 20,
+        zIndex: 9999999,
+        alignItems: 'center',
+    },
+    flashBanner: {
+        backgroundColor: 'rgba(0,0,0,0.88)',
+        borderRadius: 999,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+    flashText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontFamily: FONTS.bold,
+        fontWeight: '700',
+        textAlign: 'center',
+        letterSpacing: -0.1,
     },
 });

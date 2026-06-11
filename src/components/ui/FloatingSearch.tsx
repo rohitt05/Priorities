@@ -32,11 +32,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { COLORS, FONTS } from '@/theme/theme';
 import { searchUsers, searchDirectoryUsers } from '@/services/profileService';
-import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyPriorities } from '@/services/priorityService';
+import { sendPriorityRequest, getIncomingRequests, acceptPriorityRequest, getMyPriorities, getOutgoingPendingRequests } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { supabase } from '@/lib/supabase';
+import { appRefreshOrchestrator } from '@/services/AppRefreshOrchestrator';
 
 
 
@@ -66,6 +67,7 @@ interface SearchResultCardProps {
     onPress: (userId: string) => void;
     onAddPress: (user: User) => void;
     hasSentRequest: boolean;
+    hasOutgoingRequest: boolean;
     onAcceptPress: (user: User) => void;
     isAlreadyPriority: boolean;
     isDirectoryTab?: boolean;
@@ -80,6 +82,7 @@ const SearchResultCard = ({
     onPress,
     onAddPress,
     hasSentRequest,
+    hasOutgoingRequest,
     onAcceptPress,
     isAlreadyPriority,
     isDirectoryTab,
@@ -162,6 +165,15 @@ const SearchResultCard = ({
                     >
                         <Text style={styles.resultAcceptText}>Accept</Text>
                     </Pressable>
+                ) : hasOutgoingRequest ? (
+                    <View
+                        style={[
+                            styles.resultAcceptButton,
+                            styles.sentButtonDisabled,
+                        ]}
+                    >
+                        <Text style={styles.resultSentText}>Sent</Text>
+                    </View>
                 ) : (
                     <Pressable
                         style={({ pressed }) => [
@@ -219,6 +231,7 @@ const FloatingSearch = () => {
     const [isAcceptFlow, setIsAcceptFlow] = useState(false);
     const [pendingAcceptRequest, setPendingAcceptRequest] = useState<any | null>(null);
     const [existingPriorityIds, setExistingPriorityIds] = useState<Set<string>>(new Set());
+    const [outgoingRequestReceiverIds, setOutgoingRequestReceiverIds] = useState<Set<string>>(new Set());
     const [searchBarHidden, setSearchBarHidden] = useState(false);
     const [activeTab, setActiveTab] = useState<'people' | 'directory'>('people');
 
@@ -265,13 +278,16 @@ const FloatingSearch = () => {
     const loadIncomingRequests = async () => {
         if (!currentUserId) return;
         try {
-            const [requests, myPriorities] = await Promise.all([
+            const [requests, myPriorities, outgoingReqs] = await Promise.all([
                 getIncomingRequests(currentUserId),
                 getMyPriorities(currentUserId),
+                getOutgoingPendingRequests(currentUserId),
             ]);
             setIncomingRequests(requests);
             setHasNewRequests(requests.length > 0);
             setExistingPriorityIds(new Set((myPriorities as any[]).filter(p => p?.id).map(p => p.id)));
+            // userId = actual receiver's user UUID — NOT the request row's id
+            setOutgoingRequestReceiverIds(new Set((outgoingReqs as any[]).map(r => r.userId as string).filter(Boolean)));
         } catch (err) {
             console.error('Error loading requests:', err);
         }
@@ -282,24 +298,12 @@ const FloatingSearch = () => {
         
         loadIncomingRequests();
 
-        const channel = supabase
-            .channel(`realtime_incoming_requests_${currentUserId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'priority_requests',
-                    filter: `receiver_id=eq.${currentUserId}`,
-                },
-                () => {
-                    loadIncomingRequests();
-                }
-            )
-            .subscribe();
+        const unsubscribe = appRefreshOrchestrator.on('priority-requests', () => {
+            loadIncomingRequests();
+        });
 
         return () => {
-            supabase.removeChannel(channel);
+            unsubscribe();
         };
     }, [currentUserId]);
 
@@ -671,6 +675,7 @@ const FloatingSearch = () => {
                                     }}
                                     onAddPress={handleAddPress}
                                     hasSentRequest={incomingRequestSenderIds.has(item.id)}
+                                    hasOutgoingRequest={outgoingRequestReceiverIds.has(item.id)}
                                     onAcceptPress={handleAcceptFromSearch}
                                     isAlreadyPriority={existingPriorityIds.has(item.id)}
                                     isDirectoryTab={activeTab === 'directory'}
@@ -791,6 +796,16 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         borderWidth: 1.5,
         borderColor: COLORS.primary,
+    },
+    sentButtonDisabled: {
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: 'rgba(67, 61, 53, 0.3)',
+    },
+    resultSentText: {
+        color: 'rgba(67, 61, 53, 0.5)',
+        fontFamily: FONTS.bold,
+        fontSize: 13,
     },
     resultAcceptText: {
         color: COLORS.background,

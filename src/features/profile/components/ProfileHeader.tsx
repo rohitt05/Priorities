@@ -1,26 +1,24 @@
 // src/features/profile/components/ProfileHeader.tsx
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     StyleSheet,
     View,
     Text,
     TouchableOpacity,
     ActivityIndicator,
+    Animated,
 } from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics'; // enums only
-import { useHapticFeedback } from '@/hooks/useHapticFeedback';
-
 import { User } from '@/types/domain';
-import { sendPriorityRequest } from '@/services/priorityService';
-import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
+import { BlurView } from 'expo-blur';
 import { UserAvatar } from '@/components/ui/UserAvatar';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { getFilmSource } from '@/utils/getMediaSource';
+import { useProfileVideoUpload } from '@/contexts/ProfileVideoUploadContext';
+import { FONTS } from '@/theme/theme';
 
-// ✅ Type lives here — imported by profile.tsx, no circular deps
 export type HeaderAccessState = 'loading' | 'allowed' | 'pending' | 'locked';
 
 interface ProfileHeaderProps {
@@ -28,7 +26,56 @@ interface ProfileHeaderProps {
     isOwner?: boolean;
     headerAnimatedStyle: any;
     imageScaleStyle: any;
-    initialAccessState?: HeaderAccessState;
+}
+
+// Cycling messages shown while video uploads in background
+const UPLOAD_MESSAGES = [
+    'Uploading your video…',
+    "We're on it…",
+    'Almost there…',
+    'Hang tight…',
+    'Just a moment…',
+    'Making it perfect…',
+    'Nearly done…',
+];
+
+function UploadingOverlay() {
+    const [msgIdx, setMsgIdx] = useState(0);
+    const fadeAnim = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+        const cycle = () => {
+            // Fade out
+            Animated.timing(fadeAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+                setMsgIdx((i) => (i + 1) % UPLOAD_MESSAGES.length);
+                // Fade in
+                Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+            });
+        };
+        const interval = setInterval(cycle, 2400);
+        return () => clearInterval(interval);
+    }, [fadeAnim]);
+
+    return (
+        <View style={uploadStyles.overlay}>
+            {/* Subtle dark scrim */}
+            <View style={uploadStyles.scrim} />
+
+            <View style={uploadStyles.content}>
+                {/* Spinner */}
+                <View style={uploadStyles.spinnerRing}>
+                    <ActivityIndicator size="large" color="rgba(255,255,255,0.9)" />
+                </View>
+
+                {/* Cycling message */}
+                <Animated.Text style={[uploadStyles.message, { opacity: fadeAnim }]}>
+                    {UPLOAD_MESSAGES[msgIdx]}
+                </Animated.Text>
+
+                <Text style={uploadStyles.subMessage}>Your video will appear when ready</Text>
+            </View>
+        </View>
+    );
 }
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
@@ -36,50 +83,39 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     isOwner = false,
     headerAnimatedStyle,
     imageScaleStyle,
-    initialAccessState,
 }) => {
-    const authId = useAuthUser();
-    const { triggerHaptic, triggerNotificationHaptic } = useHapticFeedback();
+    const { uploadStatus } = useProfileVideoUpload();
 
-    const [accessState, setAccessState] = useState<HeaderAccessState>(
-        initialAccessState ?? 'loading'
+    const isUploading = uploadStatus === 'uploading' || uploadStatus === 'compressing';
+
+    const player = useVideoPlayer(
+        (!isUploading && user.profileVideo) ? getFilmSource(user.profileVideo) : null,
+        (p) => { p.loop = true; p.muted = true; p.play(); }
     );
-    const [isSending, setIsSending] = useState(false);
-
-    useEffect(() => {
-        if (initialAccessState) {
-            setAccessState(initialAccessState);
-        }
-    }, [initialAccessState]);
-
-    const handleSendRequest = async () => {
-        if (!authId || !user?.id || isSending) return;
-        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-        setIsSending(true);
-        try {
-            await sendPriorityRequest(authId, user.id);
-            setAccessState('pending');
-            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
-        } catch (e: any) {
-            if (e?.code === '23505') {
-                setAccessState('pending');
-            }
-        } finally {
-            setIsSending(false);
-        }
-    };
-
-    const isLocked = accessState === 'locked' || accessState === 'pending';
 
     return (
         <Reanimated.View style={[styles.imageHeader, headerAnimatedStyle]}>
-            <UserAvatar
-                uri={user.profilePicture}
-                style={styles.profileImage}
-                animatedStyle={imageScaleStyle}
-                isReanimated={true}
-                resizeMode="cover"
-            />
+            {/* Main content: uploading overlay OR video OR avatar */}
+            {isUploading ? (
+                // Show current profile pic as blurred bg while uploading
+                <Reanimated.View style={[styles.profileImageContainer, imageScaleStyle]}>
+                    <UserAvatar uri={user.profilePicture} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} experimentalBlurMethod="dimezisBlurView" />
+                    <UploadingOverlay />
+                </Reanimated.View>
+            ) : user.profileVideo ? (
+                <Reanimated.View style={[styles.profileImageContainer, imageScaleStyle]}>
+                    <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />
+                </Reanimated.View>
+            ) : (
+                <UserAvatar
+                    uri={user.profilePicture}
+                    style={styles.profileImage}
+                    animatedStyle={imageScaleStyle}
+                    isReanimated={true}
+                    resizeMode="cover"
+                />
+            )}
 
             <LinearGradient
                 colors={['rgba(0,0,0,0.65)', 'transparent']}
@@ -87,55 +123,51 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 style={styles.gradientTop}
                 pointerEvents="none"
             />
-
-            {isLocked && (
-                <>
-                    <BlurView
-                        intensity={55}
-                        tint="default"
-                        style={StyleSheet.absoluteFill}
-                        experimentalBlurMethod="dimezisBlurView"
-                    />
-
-                    <View style={styles.blurDimLayer} pointerEvents="none" />
-
-                    <View style={styles.lockOverlay} pointerEvents="box-none">
-                        <TouchableOpacity
-                            style={styles.lockCta}
-                            activeOpacity={0.75}
-                            onPress={accessState === 'locked' ? handleSendRequest : undefined}
-                            disabled={accessState === 'pending' || isSending}
-                        >
-                            {isSending ? (
-                                <ActivityIndicator size="small" color="white" />
-                            ) : accessState === 'pending' ? (
-                                <Ionicons
-                                    name="checkmark-circle-outline"
-                                    size={38}
-                                    color="white"
-                                    style={styles.ctaIcon}
-                                />
-                            ) : (
-                                <Ionicons
-                                    name="add-circle-outline"
-                                    size={38}
-                                    color="white"
-                                    style={styles.ctaIcon}
-                                />
-                            )}
-
-                            <Text style={styles.lockLabel}>
-                                {accessState === 'pending'
-                                    ? 'Request sent'
-                                    : 'Add them to see more'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                </>
-            )}
         </Reanimated.View>
     );
 };
+
+const uploadStyles = StyleSheet.create({
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    scrim: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+    },
+    content: {
+        alignItems: 'center',
+        gap: 16,
+    },
+    spinnerRing: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    message: {
+        fontSize: 17,
+        fontFamily: FONTS.bold,
+        color: '#fff',
+        letterSpacing: 0.2,
+        textShadowColor: 'rgba(0,0,0,0.5)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 6,
+    },
+    subMessage: {
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        color: 'rgba(255,255,255,0.45)',
+        letterSpacing: 0.2,
+    },
+});
 
 const styles = StyleSheet.create({
     imageHeader: {
@@ -147,15 +179,11 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         backgroundColor: '#000',
     },
-    profileImage: {
-        width: '100%',
-        height: '100%',
-    },
+    profileImage: { width: '100%', height: '100%' },
+    profileImageContainer: { width: '100%', height: '100%' },
     gradientTop: {
         position: 'absolute',
-        left: 0,
-        right: 0,
-        top: 0,
+        left: 0, right: 0, top: 0,
         height: '30%',
         zIndex: 2,
     },
@@ -170,11 +198,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    lockCta: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-    },
+    lockCta: { alignItems: 'center', justifyContent: 'center', gap: 8 },
     ctaIcon: {
         textShadowColor: 'rgba(0,0,0,0.6)',
         textShadowOffset: { width: 0, height: 2 },

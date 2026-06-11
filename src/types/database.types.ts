@@ -557,6 +557,7 @@ export type Database = {
           partner_id: string | null
           phone_number: string | null
           profile_picture: string | null
+          profile_video: string | null
           relationship: string | null
           unique_user_id: string | null
           updated_at: string
@@ -572,6 +573,7 @@ export type Database = {
           partner_id?: string | null
           phone_number?: string | null
           profile_picture?: string | null
+          profile_video?: string | null
           relationship?: string | null
           unique_user_id?: string | null
           updated_at?: string
@@ -587,6 +589,7 @@ export type Database = {
           partner_id?: string | null
           phone_number?: string | null
           profile_picture?: string | null
+          profile_video?: string | null
           relationship?: string | null
           unique_user_id?: string | null
           updated_at?: string

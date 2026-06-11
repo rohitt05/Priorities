@@ -135,7 +135,7 @@ function SettingsScreenContent() {
                 setCurrentUser({
                     id: dbUser.id,
                     name: dbUser.name,
-                    uniqueUserId: dbUser.unique_user_id,
+                    uniqueUserId: dbUser.unique_user_id ?? '',
                     profilePicture: dbUser.profile_picture || '',
                     dominantColor: dbUser.dominant_color || '#44562F',
                     gender: dbUser.gender || 'male',
@@ -144,6 +144,7 @@ function SettingsScreenContent() {
                     relationship: dbUser.relationship || undefined,
                     phoneNumber: dbUser.phone_number || '',
                     email: sessionUser.email,
+                    profileVideo: dbUser.profile_video || null,
                     priorities: [],
                 });
             }

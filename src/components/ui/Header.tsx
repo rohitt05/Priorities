@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
+import { appRefreshOrchestrator } from '@/services/AppRefreshOrchestrator';
 import { getIncomingRequests } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
 
@@ -99,16 +100,13 @@ export default function Header() {
     useEffect(() => {
         if (!currentUserId) return;
         checkRequests();
-        const channel = supabase
-            .channel(`header_notifs_${currentUserId}`)
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'priority_requests', filter: `receiver_id=eq.${currentUserId}` },
-                () => checkRequests()
-            )
-            .subscribe();
+        const unsubscribe = appRefreshOrchestrator.on('priority-requests', (payload?: any) => {
+            if (payload?.eventType === 'INSERT' && payload?.new?.receiver_id === currentUserId) {
+                checkRequests();
+            }
+        });
         return () => {
-            supabase.removeChannel(channel);
+            unsubscribe();
         };
     }, [currentUserId, checkRequests]);
 

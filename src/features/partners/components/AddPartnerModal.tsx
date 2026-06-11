@@ -40,6 +40,7 @@ import {
     PartnerRequest,
 } from '@/services/partnerService';
 import { supabase } from '@/lib/supabase';
+import { appRefreshOrchestrator } from '@/services/AppRefreshOrchestrator';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.7;
@@ -110,7 +111,7 @@ export default function AddPartnerModal({
     useEffect(() => {
         if (!visible) {
             if (realtimeChannel.current) {
-                supabase.removeChannel(realtimeChannel.current);
+                realtimeChannel.current();
                 realtimeChannel.current = null;
             }
             return;
@@ -141,53 +142,36 @@ export default function AddPartnerModal({
                 .catch(() => { setPriorities([]); setIncomingRequests([]); })
                 .finally(() => setIsPrioritiesLoading(false));
 
-            const channel = supabase
-                .channel(`partner_requests_${uuid}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: '*',
-                        schema: 'public',
-                        table: 'partner_requests',
-                        filter: `receiver_id=eq.${uuid}`,
-                    },
-                    (payload: any) => {
-                        const row = payload.new ?? payload.old;
-                        if (!row) return;
-                        if (payload.eventType === 'INSERT' && row.status === 'pending') {
-                            supabase
-                                .from('profiles')
-                                .select('id, name, profile_picture, unique_user_id')
-                                .eq('id', row.sender_id)
-                                .single()
-                                .then(({ data: sender }) => {
-                                    if (!sender) return;
-                                    const newReq: PartnerRequest = {
-                                        id: row.id,
-                                        senderId: row.sender_id,
-                                        receiverId: row.receiver_id,
-                                        status: 'pending',
-                                        createdAt: row.created_at,
-                                        senderName: sender.name,
-                                        senderProfilePicture: sender.profile_picture ?? '',
-                                        senderUniqueUserId: sender.unique_user_id,
-                                    };
-                                    setIncomingRequests((prev) => [newReq, ...prev]);
-                                });
-                        }
+            const unsubscribe = appRefreshOrchestrator.on('partner-requests', (payload: any) => {
+                const row = payload.new ?? payload.old;
+                if (!row) return;
+
+                if (row.receiver_id === uuid) {
+                    if (payload.eventType === 'INSERT' && row.status === 'pending') {
+                        supabase
+                            .from('profiles')
+                            .select('id, name, profile_picture, unique_user_id')
+                            .eq('id', row.sender_id)
+                            .single()
+                            .then(({ data: sender }) => {
+                                if (!sender) return;
+                                const newReq: PartnerRequest = {
+                                    id: row.id,
+                                    senderId: row.sender_id,
+                                    receiverId: row.receiver_id,
+                                    status: 'pending',
+                                    createdAt: row.created_at,
+                                    senderName: sender.name,
+                                    senderProfilePicture: sender.profile_picture ?? '',
+                                    senderUniqueUserId: sender.unique_user_id ?? '',
+                                };
+                                setIncomingRequests((prev) => [newReq, ...prev]);
+                            });
                     }
-                )
-                .on(
-                    'postgres_changes',
-                    {
-                        event: 'UPDATE',
-                        schema: 'public',
-                        table: 'partner_requests',
-                        filter: `sender_id=eq.${uuid}`,
-                    },
-                    (payload: any) => {
-                        const row = payload.new;
-                        if (!row) return;
+                }
+
+                if (row.sender_id === uuid) {
+                    if (payload.eventType === 'UPDATE') {
                         if (row.status === 'accepted') {
                             setSentMap((prev) => ({ ...prev, [row.receiver_id]: 'accepted' }));
                             onPartnerAccepted(row.receiver_id);
@@ -200,10 +184,10 @@ export default function AddPartnerModal({
                             });
                         }
                     }
-                )
-                .subscribe();
+                }
+            });
 
-            realtimeChannel.current = channel;
+            realtimeChannel.current = unsubscribe;
         });
     }, [visible]);
 
@@ -247,7 +231,7 @@ export default function AddPartnerModal({
                         .filter((u) => u.unique_user_id !== currentUserUniqueUserId)
                         .map((u) => ({
                             id: u.id,
-                            uniqueUserId: u.unique_user_id,
+                            uniqueUserId: u.unique_user_id ?? '',
                             name: u.name,
                             profilePicture: u.profile_picture ?? '',
                         }))

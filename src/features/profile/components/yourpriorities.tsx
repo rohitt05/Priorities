@@ -1,13 +1,13 @@
 // src/features/profile/components/yourpriorities.tsx
 
 import React, { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics'; // enums only
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
 
 import { User } from '@/types/domain';
 import { COLORS, SPACING, FONTS, FONT_SIZES } from '@/theme/theme';
@@ -31,10 +31,11 @@ type Priority = {
 
 type YourPrioritiesProps = {
     user: User;
+    hasProfileVideo?: boolean;
     onUnauthorizedAccess?: () => void;
 };
 
-export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthorizedAccess }) => {
+export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, hasProfileVideo = false, onUnauthorizedAccess }) => {
     const router = useRouter();
     const authId = useAuthUser();
     const { triggerHaptic } = useHapticFeedback();
@@ -89,7 +90,7 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
     if (prioritiesList.length === 0) return null;
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, !hasProfileVideo && styles.containerNoVideo]}>
             <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>{title}</Text>
 
@@ -102,15 +103,14 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                     {prioritiesList.slice(0, 9).map((u, index: number) => {
                         const isBeingPressed = activeLongPressId === u.uniqueUserId;
 
-                        // ✅ Blur this avatar if:
-                        // — viewer is NOT the owner AND
-                        // — this priority person is NOT in the viewer's own priority list AND
-                        // — this priority person is not the viewer themselves
-                        const shouldBlur =
-                            !isOwner &&
-                            accessLoaded &&
-                            u.id !== authId &&
-                            !myPriorityIds.has(u.id);
+                        // Determine if this specific item is accessible to the viewer
+                        const canNavigate =
+                            isOwner ||
+                            u.id === authId ||
+                            myPriorityIds.has(u.id);
+                        // Show lock state only when we're viewing someone else's profile
+                        // and access data has finished loading
+                        const isLocked = !isOwner && accessLoaded && !canNavigate;
 
                         return (
                             <View
@@ -139,12 +139,6 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                     ]}
                                     onPress={() => {
                                         if (!accessLoaded) return;
-
-                                        const canNavigate =
-                                            isOwner ||
-                                            u.id === authId ||
-                                            myPriorityIds.has(u.id);
-
                                         if (canNavigate) {
                                             router.push({
                                                 pathname: '/profile',
@@ -155,32 +149,45 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
                                         }
                                     }}
                                     onLongPress={() => {
-                                        triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
-                                        setActiveLongPressId(u.uniqueUserId);
+                                        if (!isLocked) {
+                                            triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+                                            setActiveLongPressId(u.uniqueUserId);
+                                        }
                                     }}
                                     delayLongPress={200}
                                     onPressOut={() => setActiveLongPressId(null)}
                                 >
                                     <View style={styles.cardContent}>
+                                        {/* Avatar — dimmed when locked */}
                                         <UserAvatar
                                             uri={u.profilePicture}
-                                            style={styles.avatarImage}
+                                            style={[
+                                                styles.avatarImage,
+                                                isLocked && styles.avatarLocked,
+                                            ]}
                                         />
-                                        {/* ── Blur overlay on avatar ── */}
-                                        {shouldBlur && (
-                                            <BlurView
-                                                intensity={55}
-                                                tint="default"
-                                                style={[
-                                                    StyleSheet.absoluteFill,
-                                                    styles.avatarBlur,
-                                                ]}
-                                                experimentalBlurMethod="dimezisBlurView"
-                                            />
+
+                                        {/* Lock badge — bottom-left corner, rendered at full opacity */}
+                                        {isLocked && (
+                                            <View style={styles.lockBadge}>
+                                                <Ionicons
+                                                    name="lock-closed"
+                                                    size={8}
+                                                    color="rgba(255,255,255,0.95)"
+                                                />
+                                            </View>
                                         )}
                                     </View>
 
-                                    <Text style={styles.rankNumber}>{index + 1}</Text>
+                                    {/* Rank — dimmed when locked */}
+                                    <Text
+                                        style={[
+                                            styles.rankNumber,
+                                            isLocked && { opacity: 0.35 },
+                                        ]}
+                                    >
+                                        {index + 1}
+                                    </Text>
                                 </Pressable>
                             </View>
                         );
@@ -193,7 +200,10 @@ export const YourPriorities: React.FC<YourPrioritiesProps> = ({ user, onUnauthor
 
 const styles = StyleSheet.create({
     container: {
-        marginTop: SPACING.md,
+        marginTop: 52,
+    },
+    containerNoVideo: {
+        marginTop: 14,
     },
     sectionContainer: {
         gap: SPACING.xs,
@@ -292,8 +302,29 @@ const styles = StyleSheet.create({
         borderRadius: 28,
         backgroundColor: COLORS.surfaceLight,
     },
+    /** Avatar opacity when the viewer doesn't have access to this person */
+    avatarLocked: {
+        opacity: 0.32,
+    },
+    /**
+     * Lock icon badge — sits in the bottom-left of the avatar card.
+     * Rendered as a sibling of the avatar (not a child), so its opacity
+     * is NOT inherited from avatarLocked.
+     */
+    lockBadge: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: 'rgba(30, 20, 40, 0.58)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 20,
+    },
     avatarBlur: {
-        borderRadius: 28,        // ✅ matches avatar shape
+        borderRadius: 28,
         zIndex: 5,
     },
     placeholder: {

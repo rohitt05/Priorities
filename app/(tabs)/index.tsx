@@ -43,7 +43,7 @@ export default function HomeScreen() {
             ]);
 
             const pendingUsers: PriorityUserWithPost[] = pending.map((req: any) => ({
-                id: req.id,
+                id: req.userId,  // actual user UUID — NOT the request row's id
                 uniqueUserId: req.uniqueUserId,
                 name: req.name,
                 profilePicture: req.profilePicture,
@@ -85,31 +85,8 @@ export default function HomeScreen() {
         init();
     }, [refreshKey]);
 
-    useEffect(() => {
-        if (!currentUserId) return;
 
-        const channel = supabase
-            .channel(`realtime_outgoing_requests_${currentUserId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'priority_requests',
-                    filter: `sender_id=eq.${currentUserId}`,
-                },
-                (payload) => {
-                    if (payload.new && payload.new.status === 'accepted') {
-                        loadPrioritiesData(currentUserId);
-                    }
-                }
-            )
-            .subscribe();
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [currentUserId]);
 
     useEffect(() => {
         if (buzzChannelRef.current) {

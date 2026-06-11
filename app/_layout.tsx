@@ -161,8 +161,16 @@ export default function Layout() {
             <GestureHandlerRootView style={{ flex: 1 }}>
                 <BackgroundProvider>
                     <PreferencesProvider>
-                        <PrioritiesRefreshProvider>
-                            <Stack screenOptions={{ headerShown: false }} />
+                        <PrioritiesRefreshProvider userId={session?.user?.id ?? null}>
+                            <Stack screenOptions={{ headerShown: false }}>
+                                <Stack.Screen
+                                    name="notifications"
+                                    options={{
+                                        presentation: 'transparentModal',
+                                        animation: 'fade',
+                                    }}
+                                />
+                            </Stack>
 
                             {/*
                               BuzzToast sits OUTSIDE the Stack so it floats

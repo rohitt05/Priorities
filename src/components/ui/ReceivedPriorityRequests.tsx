@@ -17,9 +17,12 @@ import Animated, {
     interpolate,
     Extrapolate,
     SharedValue,
+    FadeInDown,
+    FadeOut,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { COLORS, FONTS } from '@/theme/theme';
 import { acceptPriorityRequest, declinePriorityRequest } from '@/services/priorityService';
 import { getCurrentUserId } from '@/services/authService';
@@ -71,12 +74,13 @@ const timeAgo = (dateStr: string): string => {
 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const ITEM_HEIGHT = 80;
+const ITEM_HEIGHT = 90;
+const HEADER_HEIGHT = 118;
 
 // ─── Accent colors per notification type ──────────────────
 const ACCENT = {
-    theySent: { bar: '#6C63FF', ring: 'rgba(108, 99, 255, 0.18)', badge: 'rgba(108, 99, 255, 0.1)', badgeText: '#6C63FF' },
-    youSent: { bar: '#3DAA6E', ring: 'rgba(61, 170, 110, 0.18)', badge: 'rgba(61, 170, 110, 0.1)', badgeText: '#2E8A56' },
+    theySent: { bar: COLORS.textSecondary, ring: 'rgba(67, 61, 53, 0.05)', badge: 'rgba(67, 61, 53, 0.05)', badgeText: COLORS.textSecondary },
+    youSent: { bar: COLORS.textSecondary, ring: 'rgba(67, 61, 53, 0.05)', badge: 'rgba(67, 61, 53, 0.05)', badgeText: COLORS.textSecondary },
     pending: { bar: COLORS.primary, ring: 'rgba(61, 42, 71, 0.12)', badge: COLORS.primary, badgeText: '#fff' },
 };
 
@@ -151,20 +155,20 @@ const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProp
 
         const opacity = interpolate(
             relativePosition,
-            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.65, SCREEN_HEIGHT * 0.82],
+            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.75, SCREEN_HEIGHT * 0.9],
             [0, 1, 1, 0],
             Extrapolate.CLAMP
         );
         const scale = interpolate(
             relativePosition,
-            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.30, SCREEN_HEIGHT * 0.48],
+            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.40, SCREEN_HEIGHT * 0.6],
             [0.97, 1, 1, 0.97],
             Extrapolate.CLAMP
         );
         const translateY = interpolate(
             relativePosition,
-            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.35],
-            [14, 0, 12],
+            [-ITEM_HEIGHT, 0, SCREEN_HEIGHT * 0.45],
+            [8, 0, 8],
             Extrapolate.CLAMP
         );
 
@@ -174,7 +178,11 @@ const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProp
     if (!user) return null;
 
     return (
-        <Animated.View style={[styles.cardOuter, animatedStyle]}>
+        <Animated.View
+            entering={FadeInDown.delay(index * 30).duration(180)}
+            exiting={FadeOut.duration(200)}
+            style={[styles.cardOuter, animatedStyle]}
+        >
             {/* Avatar */}
             <UserAvatar uri={user.profile_picture ?? ''} style={styles.avatar} />
 
@@ -197,28 +205,34 @@ const RequestItemCard = ({ item, index, scrollY, onAccept, onDecline }: ItemProp
                 <View style={styles.rightWrap}>
                     <Text style={styles.contextLabel}>
                         {isAcceptedNotificationItem(item)
-                            ? item.isSender ? 'You sent' : 'They sent'
+                            ? item.isSender ? 'you sent' : 'they sent'
                             : ''}
                     </Text>
-                    <View style={[styles.pill, { backgroundColor: accent.badge, borderColor: accent.bar + '30' }]}>
+                    <View style={[styles.pill, { backgroundColor: accent.badge, borderColor: 'rgba(67, 61, 53, 0.08)' }]}>
                         <Text style={[styles.pillText, { color: accent.badgeText }]}>
                             {isAcceptedNotificationItem(item)
-                                ? item.isSender ? 'They accepted ✓' : 'You accepted ✓'
-                                : 'Accepted ✓'}
+                                ? item.isSender ? 'they accepted' : 'you accepted'
+                                : 'accepted'}
                         </Text>
                     </View>
                 </View>
             ) : (
                 <View style={styles.actionsRow}>
                     <Pressable
-                        style={({ pressed }) => [styles.declineBtn, { opacity: pressed ? 0.6 : 1 }]}
+                        style={({ pressed }) => [
+                            styles.declineBtn,
+                            { transform: [{ scale: pressed ? 0.92 : 1 }] }
+                        ]}
                         onPress={() => onDecline(item.id)}
                     >
-                        <Ionicons name="close" size={16} color="rgba(0,0,0,0.45)" />
+                        <Ionicons name="close" size={18} color="rgba(67, 61, 53, 0.7)" />
                     </Pressable>
                     {isPendingRequestItem(item) ? (
                         <Pressable
-                            style={({ pressed }) => [styles.acceptBtn, { opacity: pressed ? 0.75 : 1 }]}
+                            style={({ pressed }) => [
+                                styles.acceptBtn,
+                                { transform: [{ scale: pressed ? 0.95 : 1 }] }
+                            ]}
                             onPress={() => onAccept(item)}
                         >
                             <Text style={styles.acceptBtnText}>Accept</Text>
@@ -238,12 +252,16 @@ const ReceivedPriorityRequests = ({
     onRequestsChange,
     onRelationshipOpen,
     onRelationshipClose,
+    ListHeaderComponent,
+    ListEmptyComponent,
 }: {
     requests: NotificationItem[];
     opacity: SharedValue<number>;
     onRequestsChange: (updated: NotificationItem[]) => void;
     onRelationshipOpen?: () => void;
     onRelationshipClose?: () => void;
+    ListHeaderComponent?: React.ComponentType<any> | React.ReactElement | null;
+    ListEmptyComponent?: React.ComponentType<any> | React.ReactElement | null;
 }) => {
     const { bgColor } = useBackground();
 
@@ -343,6 +361,8 @@ const ReceivedPriorityRequests = ({
             <Animated.FlatList
                 data={currentRequests}
                 keyExtractor={item => item.id}
+                ListHeaderComponent={ListHeaderComponent}
+                ListEmptyComponent={ListEmptyComponent}
                 renderItem={({ item, index }) => (
                     <RequestItemCard
                         item={item}
@@ -374,6 +394,7 @@ const ReceivedPriorityRequests = ({
                                 ? { bottom: keyboardHeight + 12 }
                                 : null,
                         ]}>
+                            <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
                             <Text style={styles.relTitle}>
                                 Who is {pendingItem.profiles?.name} to you?
                             </Text>
@@ -410,16 +431,6 @@ const ReceivedPriorityRequests = ({
                 </View>
             )}
 
-            {/* Bottom fade */}
-            <LinearGradient
-                colors={[
-                    blendedTransparent,
-                    blendedColor.replace('rgb', 'rgba').replace(')', ', 0.92)'),
-                    blendedColor,
-                ]}
-                style={styles.bottomGradient}
-                pointerEvents="none"
-            />
         </Animated.View>
     );
 };
@@ -437,8 +448,8 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     listContent: {
-        paddingTop: 6,
-        paddingBottom: 160,
+        paddingTop: 12,
+        paddingBottom: 32,
         paddingHorizontal: 16,
     },
 
@@ -446,9 +457,14 @@ const styles = StyleSheet.create({
     cardOuter: {
         flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.55)',
+        borderRadius: 22,
+        paddingHorizontal: 16,
         paddingVertical: 14,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(67, 61, 53, 0.05)',
+
     },
     avatar: {
         width: 50,
@@ -528,15 +544,20 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: 'rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(67, 61, 53, 0.06)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     acceptBtn: {
         backgroundColor: COLORS.primary,
-        paddingHorizontal: 14,
+        paddingHorizontal: 16,
         paddingVertical: 8,
-        borderRadius: 20,
+        borderRadius: 16,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        elevation: 2,
     },
     acceptBtnText: {
         color: COLORS.background,
@@ -552,7 +573,7 @@ const styles = StyleSheet.create({
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(0,0,0,0.18)',
     },
     keyboardAvoider: {
         justifyContent: 'flex-end',
@@ -560,16 +581,17 @@ const styles = StyleSheet.create({
     relationshipOverlay: {
         marginHorizontal: 16,
         marginBottom: 20,
-        backgroundColor: COLORS.secondary,
-        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+        borderRadius: 24,
         padding: 24,
+        overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.05)',
-        shadowColor: '#433D35',
-        shadowOffset: { width: 0, height: -8 },
+        borderColor: 'rgba(67, 61, 53, 0.08)',
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.15,
-        shadowRadius: 12,
-        elevation: 10,
+        shadowRadius: 24,
+        elevation: 5,
     },
     relTitle: {
         fontFamily: FONTS.bold,
@@ -581,7 +603,7 @@ const styles = StyleSheet.create({
     },
     relInput: {
         height: 50,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
         borderRadius: 12,
         paddingHorizontal: 16,
         fontSize: 15,
@@ -627,15 +649,6 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
     },
 
-    // ── Bottom fade ──
-    bottomGradient: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 100,
-        zIndex: 2600,
-    },
 });
 
 export default ReceivedPriorityRequests;

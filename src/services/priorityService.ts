@@ -211,7 +211,8 @@ export async function getOutgoingPendingRequests(userId: string) {
         .map((req) => {
             const p = req.profiles as any;
             return {
-                id: req.id,
+                id: req.id,           // priority_requests row ID
+                userId: p.id as string, // actual UUID of the receiver — use this for comparisons
                 uniqueUserId: p.unique_user_id ?? '',
                 name: p.name,
                 profilePicture: p.profile_picture,

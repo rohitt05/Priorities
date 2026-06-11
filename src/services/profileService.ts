@@ -43,6 +43,7 @@ export async function updateProfile(
     updates: Partial<Pick<ProfileRow,
         'name' |
         'profile_picture' |
+        'profile_video' |
         'dominant_color' |
         'phone_number' |
         'birthday' |
@@ -173,4 +174,32 @@ export async function uploadProfilePicture(
         console.error('[uploadProfilePicture] Exception:', err);
         throw err;
     }
+}
+
+// ─── PROFILE VIDEO ─────────────────────────────────────────
+/**
+ * Reads a user's profile video URL.
+ * RLS automatically allows this only if no block exists between you and them.
+ */
+export async function getProfileVideo(targetUserId: string): Promise<string | null> {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('profile_video')
+        .eq('id', targetUserId)
+        .single();
+    if (error) throw error;
+    return data?.profile_video ?? null;
+}
+
+/**
+ * Updates the current user's profile video.
+ * RLS only allows updating your own row (id = auth.uid()).
+ * Trying to update someone else's profile_video is silently blocked.
+ */
+export async function updateProfileVideo(userId: string, videoUrl: string | null): Promise<void> {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ profile_video: videoUrl })
+        .eq('id', userId);
+    if (error) throw error;
 }

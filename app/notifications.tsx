@@ -7,7 +7,6 @@ import {
     Pressable,
     InteractionManager,
     Dimensions,
-    ScrollView,
     Animated as RNAnimated,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -19,14 +18,16 @@ import Animated, {
     interpolate,
     Extrapolation,
     Easing,
+    FadeInDown,
 } from 'react-native-reanimated';
-import { Entypo } from '@expo/vector-icons';
-import { Ionicons } from '@expo/vector-icons';
+import { Entypo, Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { getCurrentUserId } from '@/services/authService';
 import { getIncomingRequests, getAcceptedPriorityNotifications } from '@/services/priorityService';
 import { supabase } from '@/lib/supabase';
 import ReceivedPriorityRequests from '@/components/ui/ReceivedPriorityRequests';
 import { COLORS, FONTS } from '@/theme/theme';
+import { appRefreshOrchestrator } from '@/services/AppRefreshOrchestrator';
 import { BackgroundProvider, useBackground } from '@/contexts/BackgroundContext';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
 
@@ -74,30 +75,16 @@ function NotificationsScreenContent() {
     });
 
     const requestListOpacity = useSharedValue(0);
-    const overlay = useSharedValue(params.flowEntry === '1' ? 0 : 1);
-    const bellTravel = useSharedValue(params.flowEntry === '1' ? 0 : 1);
-    const content = useSharedValue(params.flowEntry === '1' ? 0 : 1);
+    const modalOpacity = useSharedValue(0);
+    const modalScale = useSharedValue(0.95);
 
     useEffect(() => {
-        if (params.flowEntry === '1') {
-            overlay.value = withTiming(1, {
-                duration: OPEN_DURATION,
-                easing: Easing.bezier(0.16, 1, 0.3, 1),
-            });
-
-            bellTravel.value = withTiming(1, {
-                duration: 760,
-                easing: Easing.bezier(0.22, 1, 0.36, 1),
-            });
-
-            setTimeout(() => {
-                content.value = withTiming(1, {
-                    duration: 420,
-                    easing: Easing.out(Easing.cubic),
-                });
-            }, CONTENT_DELAY);
-        }
-    }, [params.flowEntry, overlay, bellTravel, content]);
+        modalOpacity.value = withTiming(1, { duration: 180 });
+        modalScale.value = withTiming(1, {
+            duration: 220,
+            easing: Easing.out(Easing.quad),
+        });
+    }, []);
 
     useEffect(() => {
         const task = InteractionManager.runAfterInteractions(() => {
@@ -116,12 +103,6 @@ function NotificationsScreenContent() {
                             .eq('id', id)
                             .single();
                         if (data?.name) setCurrentUserName(data.name);
-
-                        const BG_OPACITY = 0.35;
-                        const userColor = data?.dominant_color
-                            ? hexToRgba(data.dominant_color, BG_OPACITY)
-                            : COLORS.background;
-                        handleColorChange(userColor);
                     } catch (err) {
                         console.error('Error loading current user name:', err);
                     }
@@ -150,7 +131,7 @@ function NotificationsScreenContent() {
             console.error('Error loading notifications:', err);
         } finally {
             setIsLoading(false);
-            requestListOpacity.value = withTiming(1, { duration: 260 });
+            requestListOpacity.value = withTiming(1, { duration: 180 });
         }
     };
 
@@ -161,118 +142,143 @@ function NotificationsScreenContent() {
             loadNotifications();
         });
 
-        const requestsChannel = supabase
-            .channel(`realtime_incoming_requests_notifications_${currentUserId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'priority_requests',
-                    filter: `receiver_id=eq.${currentUserId}`,
-                },
-                () => {
-                    loadNotifications();
-                }
-            )
-            .subscribe();
-
-        const acceptedChannel = supabase
-            .channel(`realtime_accepted_priority_notifications_${currentUserId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'accepted_priority_notifications',
-                    filter: `receiver_id=eq.${currentUserId}`,
-                },
-                () => {
-                    loadNotifications();
-                }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'accepted_priority_notifications',
-                    filter: `sender_id=eq.${currentUserId}`,
-                },
-                () => {
-                    loadNotifications();
-                }
-            )
-            .subscribe();
+        // Subscribe to the central orchestrator — no duplicate channels.
+        // The orchestrator already owns these table channels globally.
+        const unsubRequests = appRefreshOrchestrator.on('priority-requests', loadNotifications);
+        const unsubNotifs = appRefreshOrchestrator.on('notifications', loadNotifications);
 
         return () => {
             task.cancel();
-            supabase.removeChannel(requestsChannel);
-            supabase.removeChannel(acceptedChannel);
+            unsubRequests();
+            unsubNotifs();
         };
     }, [currentUserId]);
 
     const handleBack = useCallback(() => {
         if (isClosing) return;
         setIsClosing(true);
-        router.back();
+        modalOpacity.value = withTiming(0, { duration: 150 });
+        modalScale.value = withTiming(0.95, { duration: 150 });
+        setTimeout(() => {
+            router.back();
+        }, 150);
     }, [isClosing, router]);
 
-    const ambientStyle = useAnimatedStyle(() => ({
-        opacity: interpolate(overlay.value, [0, 1], [0, 1], Extrapolation.CLAMP),
-    }));
-
-    const washStyle = useAnimatedStyle(() => ({
-        opacity: interpolate(overlay.value, [0, 0.25, 0.72, 1], [0, 0.72, 0.42, 0.18], Extrapolation.CLAMP),
-        transform: [
-            { scale: interpolate(overlay.value, [0, 1], [0.94, 1.06], Extrapolation.CLAMP) },
-        ],
-    }));
-
-    const bellHeroStyle = useAnimatedStyle(() => {
-        const startX = -SCREEN_WIDTH * 0.39;
-        const endX = 0;
-        const startY = -SCREEN_HEIGHT * 0.31;
-        const midLift = -SCREEN_HEIGHT * 0.05;
-        const endY = 0;
-
-        const progress = bellTravel.value;
-        const translateX = interpolate(progress, [0, 1], [startX, endX], Extrapolation.CLAMP);
-        const translateY =
-            progress < 0.5
-                ? interpolate(progress, [0, 0.5], [startY, midLift], Extrapolation.CLAMP)
-                : interpolate(progress, [0.5, 1], [midLift, endY], Extrapolation.CLAMP);
-
-        return {
-            opacity: interpolate(progress, [0, 0.72, 1], [1, 1, 0], Extrapolation.CLAMP),
-            transform: [
-                { translateX },
-                { translateY },
-                { scale: interpolate(progress, [0, 0.55, 1], [1, 2.9, 4.25], Extrapolation.CLAMP) },
-                { rotate: `${interpolate(progress, [0, 1], [-8, 0], Extrapolation.CLAMP)}deg` },
-            ],
-        };
-    });
-
-    const bellGlowStyle = useAnimatedStyle(() => ({
-        opacity: interpolate(bellTravel.value, [0, 0.4, 0.78, 1], [0, 0.3, 0.16, 0], Extrapolation.CLAMP),
-        transform: [
-            { scale: interpolate(bellTravel.value, [0, 1], [0.8, 3.9], Extrapolation.CLAMP) },
-        ],
-    }));
-
-    const contentStyle = useAnimatedStyle(() => ({
-        opacity: interpolate(content.value, [0, 1], [0, 1], Extrapolation.CLAMP),
-        transform: [
-            { translateY: interpolate(content.value, [0, 1], [26, 0], Extrapolation.CLAMP) },
-            { scale: interpolate(content.value, [0, 1], [0.985, 1], Extrapolation.CLAMP) },
-        ],
+    const modalStyle = useAnimatedStyle(() => ({
+        opacity: modalOpacity.value,
+        transform: [{ scale: modalScale.value }],
     }));
 
     const welcomeMessage = useMemo(() => {
         const name = currentUserName?.trim();
         return name ? `Hello, ${name} — welcome to Priorities.` : 'Hello — welcome to Priorities.';
     }, [currentUserName]);
+
+    const [isWelcomeExpanded, setIsWelcomeExpanded] = useState(false);
+    const [loadingText, setLoadingText] = useState("getting your notifications...");
+
+    useEffect(() => {
+        if (!isLoading) return;
+        const texts = [
+            "getting your notifications...",
+            "almost there...",
+            "checking for new priorities...",
+            "loading the latest..."
+        ];
+        let index = 0;
+        const interval = setInterval(() => {
+            index = (index + 1) % texts.length;
+            setLoadingText(texts[index]);
+        }, 1200);
+        return () => clearInterval(interval);
+    }, [isLoading]);
+
+    const renderHeader = () => (
+        <View style={styles.headerPadding}>
+            <Pressable
+                onPress={() => setIsWelcomeExpanded(!isWelcomeExpanded)}
+                style={({ pressed }) => [
+                    styles.welcomeCard,
+                    { opacity: pressed ? 0.85 : 1 }
+                ]}
+            >
+                <View style={styles.welcomeIconWrap}>
+                    <Ionicons name="sparkles" size={16} color={COLORS.primary} />
+                </View>
+                <View style={styles.welcomeTextWrap}>
+                    <View style={styles.welcomeHeaderRow}>
+                        <Text style={styles.welcomeTitle}>{WELCOME_NOTIFICATION.title}</Text>
+                        <Ionicons
+                            name={isWelcomeExpanded ? "chevron-up" : "chevron-down"}
+                            size={16}
+                            color={COLORS.textSecondary}
+                        />
+                    </View>
+                    {isWelcomeExpanded && (
+                        <Animated.View entering={FadeInDown.duration(150)} style={styles.instructionsContainer}>
+                            <Text style={styles.welcomeMessage}>{welcomeMessage}</Text>
+                            
+                            <View style={styles.divider} />
+                            
+                            <View style={styles.instructionItem}>
+                                <Ionicons name="mic-outline" size={14} color={COLORS.primary} style={styles.instructionIcon} />
+                                <Text style={styles.instructionText}>
+                                    Tap and hold your priorities to send them a voice note, tap once to send them a media message
+                                </Text>
+                            </View>
+
+                            <View style={styles.instructionItem}>
+                                <Ionicons name="create-outline" size={14} color={COLORS.primary} style={styles.instructionIcon} />
+                                <Text style={styles.instructionText}>
+                                    In profile screen pull your profile card down to edit or change
+                                </Text>
+                            </View>
+
+                            <View style={styles.instructionItem}>
+                                <Ionicons name="arrow-down-outline" size={14} color={COLORS.primary} style={styles.instructionIcon} />
+                                <Text style={styles.instructionText}>
+                                    Pull down those priorities main header to see your films
+                                </Text>
+                            </View>
+
+                            <View style={styles.instructionItem}>
+                                <Ionicons name="arrow-up-outline" size={14} color={COLORS.primary} style={styles.instructionIcon} />
+                                <Text style={styles.instructionText}>
+                                    And pull up this watch films below the priorities to view their films
+                                </Text>
+                            </View>
+
+                            <View style={styles.instructionItem}>
+                                <Ionicons name="heart-outline" size={14} color={COLORS.primary} style={styles.instructionIcon} />
+                                <Text style={styles.instructionText}>
+                                    In the search you can find and add people; you can also check who's dating whom if you have a crush on someone
+                                </Text>
+                            </View>
+                        </Animated.View>
+                    )}
+                </View>
+            </Pressable>
+            {isLoading && (
+                <View style={styles.centerLoading}>
+                    <ActivityIndicator size="small" color={COLORS.primary} style={{ marginBottom: 10 }} />
+                    <Text style={styles.loadingProgressText}>{loadingText}</Text>
+                </View>
+            )}
+        </View>
+    );
+
+    const renderEmpty = () => {
+        if (isLoading) return null;
+        return (
+            <View style={styles.emptyFullState}>
+                <View style={styles.emptyIconContainer}>
+                    <Entypo name="bell" size={32} color={COLORS.primary} style={styles.emptyIcon} />
+                </View>
+                <Text style={styles.emptyText}>No new notifications</Text>
+                <Text style={styles.emptySubtext}>You're all caught up!</Text>
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -284,71 +290,30 @@ function NotificationsScreenContent() {
                 }}
             />
 
-            <RNAnimated.View style={[StyleSheet.absoluteFill, { backgroundColor: animatedBgColor }]} />
+            <Pressable style={StyleSheet.absoluteFill} onPress={handleBack}>
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.04)' }]} />
+            </Pressable>
 
-            {params.flowEntry === '1' && (
-                <View pointerEvents="none" style={styles.heroBellLayer}>
-                    <Animated.View style={[styles.heroBellGlow, bellGlowStyle]} />
-                    <Animated.View style={[styles.heroBellWrap, bellHeroStyle]}>
-                        <Entypo name="bell" size={34} color={COLORS.primary} />
-                    </Animated.View>
-                </View>
-            )}
-
-            <Animated.View style={[StyleSheet.absoluteFill, contentStyle]}>
-                <View style={styles.header} pointerEvents="box-none">
-                    <LinearGradient
-                        colors={['rgba(0, 0, 0, 0.45)', 'rgba(0, 0, 0, 0.15)', 'transparent']}
-                        locations={[0, 0.6, 1]}
-                        style={styles.headerLinearGradient}
-                        pointerEvents="none"
-                    />
-                    <Pressable onPress={handleBack} style={styles.backButton}>
-                        <Entypo name="cross" size={30} color="#ffffff" />
-                    </Pressable>
-                    <Text style={styles.headerTitle}>Notifications</Text>
-                    <View style={styles.headerSpacer} />
-                </View>
-
-                <ScrollView
-                    style={styles.body}
-                    contentInsetAdjustmentBehavior="never"
-                    contentContainerStyle={styles.bodyContent}
-                    showsVerticalScrollIndicator={false}
-                    bounces
-                >
-                    <View style={styles.fullListArea}>
-                        <View style={styles.welcomeCard}>
-                            <View style={styles.welcomeIconWrap}>
-                                <Ionicons name="sparkles-sharp" size={24} color={COLORS.primary} />
-                            </View>
-                            <View style={styles.welcomeTextWrap}>
-                                <Text style={styles.welcomeTitle}>{WELCOME_NOTIFICATION.title}</Text>
-                                <Text style={styles.welcomeMessage}>{welcomeMessage}</Text>
-                            </View>
-                        </View>
-
-                        {isLoading ? (
-                            <View style={styles.centerLoading}>
-                                <ActivityIndicator size="large" color={COLORS.primary} />
-                            </View>
-                        ) : incomingRequests.length > 0 ? (
-                            <View style={styles.requestsBlock}>
-                                <ReceivedPriorityRequests
-                                    requests={incomingRequests}
-                                    opacity={requestListOpacity}
-                                    onRequestsChange={setIncomingRequests}
-                                />
-                            </View>
-                        ) : (
-                            <View style={styles.emptyFullState}>
-                                <Entypo name="bell" size={44} color={COLORS.textSecondary} style={styles.emptyIcon} />
-                                <Text style={styles.emptyText}>No new notifications</Text>
-                                <Text style={styles.emptySubtext}>You're all caught up!</Text>
-                            </View>
-                        )}
+            <Animated.View style={[styles.modalCard, modalStyle]}>
+                <View style={styles.panelCaret} />
+                <View style={styles.innerContainer}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Notifications</Text>
+                        <Pressable onPress={handleBack} style={styles.closeButton}>
+                            <Ionicons name="close" size={18} color={COLORS.primary} />
+                        </Pressable>
                     </View>
-                </ScrollView>
+
+                    <View style={styles.listWrapper}>
+                        <ReceivedPriorityRequests
+                            requests={isLoading ? [] : incomingRequests}
+                            opacity={requestListOpacity}
+                            onRequestsChange={setIncomingRequests}
+                            ListHeaderComponent={renderHeader}
+                            ListEmptyComponent={renderEmpty}
+                        />
+                    </View>
+                </View>
             </Animated.View>
         </View>
     );
@@ -365,187 +330,187 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: COLORS.background,
-        overflow: 'hidden',
-    },
-    baseBg: {
-        backgroundColor: COLORS.background,
-    },
-    gradientWashPrimary: {
-        position: 'absolute',
-        top: -SCREEN_HEIGHT * 0.08,
-        left: -SCREEN_WIDTH * 0.22,
-        width: SCREEN_WIDTH * 1.14,
-        height: SCREEN_HEIGHT * 0.44,
-        backgroundColor: COLORS.PALETTE.peachPuff,
-        borderBottomLeftRadius: 220,
-        borderBottomRightRadius: 200,
-        borderTopRightRadius: 180,
-        opacity: 0.22,
-    },
-    gradientWashSecondary: {
-        position: 'absolute',
-        top: SCREEN_HEIGHT * 0.16,
-        right: -SCREEN_WIDTH * 0.16,
-        width: SCREEN_WIDTH * 0.86,
-        height: SCREEN_HEIGHT * 0.34,
-        backgroundColor: COLORS.PALETTE.warmSand,
-        borderTopLeftRadius: 220,
-        borderBottomLeftRadius: 220,
-        borderTopRightRadius: 140,
-        borderBottomRightRadius: 150,
-        opacity: 0.18,
-    },
-    gradientWashTertiary: {
-        position: 'absolute',
-        bottom: -SCREEN_HEIGHT * 0.04,
-        left: -SCREEN_WIDTH * 0.1,
-        width: SCREEN_WIDTH * 1.02,
-        height: SCREEN_HEIGHT * 0.26,
-        backgroundColor: COLORS.PALETTE.blushPetal,
-        borderTopLeftRadius: 170,
-        borderTopRightRadius: 170,
-        opacity: 0.12,
-    },
-    heroBellLayer: {
-        ...StyleSheet.absoluteFillObject,
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 15,
-    },
-    heroBellGlow: {
-        position: 'absolute',
-        width: 110,
-        height: 110,
-        borderRadius: 55,
-        backgroundColor: COLORS.PALETTE.peachPuff,
-    },
-    heroBellWrap: {
-        width: 72,
-        height: 72,
-        borderRadius: 36,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(253, 252, 240, 0.7)',
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-    },
-    header: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: HEADER_HEIGHT,
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingTop: 58,
-        paddingBottom: 16,
         backgroundColor: 'transparent',
-        overflow: 'hidden',
+    },
+    modalCard: {
+        position: 'absolute',
+        top: 104,
+        left: SCREEN_WIDTH * 0.04,
+        width: SCREEN_WIDTH * 0.92,
+        maxHeight: SCREEN_HEIGHT * 0.75,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 18,
+        overflow: 'visible',
+        borderWidth: 1,
+        borderColor: 'rgba(67, 61, 53, 0.08)',
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
+        elevation: 16,
         zIndex: 20,
     },
-    headerLinearGradient: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        justifyContent: 'center',
-        alignItems: 'flex-start',
-    },
-    headerSpacer: {
-        width: 44,
-        height: 44,
-    },
-    headerTitle: {
-        fontFamily: FONTS.bold,
-        fontSize: 18,
-        color: '#ffffff',
-    },
-    body: {
+    innerContainer: {
         flex: 1,
-        backgroundColor: 'transparent',
+        borderRadius: 18,
+        overflow: 'hidden',
+        backgroundColor: '#FFFFFF',
     },
-    bodyContent: {
-        flexGrow: 1,
-        paddingTop: HEADER_HEIGHT,
-        paddingBottom: 36,
+    panelCaret: {
+        position: 'absolute',
+        top: -8,
+        left: 32,
+        width: 0,
+        height: 0,
+        borderLeftWidth: 8,
+        borderRightWidth: 8,
+        borderBottomWidth: 8,
+        borderLeftColor: 'transparent',
+        borderRightColor: 'transparent',
+        borderBottomColor: '#FFFFFF',
+        zIndex: 21,
     },
-    fullListArea: {
-        flex: 1,
-        minHeight: SCREEN_HEIGHT - HEADER_HEIGHT,
+    modalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 16,
-        paddingTop: 18,
+        paddingTop: 14,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(67, 61, 53, 0.06)',
+    },
+    modalTitle: {
+        fontFamily: FONTS.bold,
+        fontSize: 14,
+        color: '#1C1C1E',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
+    },
+    closeButton: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(67, 61, 53, 0.06)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    listWrapper: {
+        flex: 1,
+    },
+    headerPadding: {
+        paddingTop: 4,
+        paddingBottom: 4,
     },
     welcomeCard: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: 'rgba(255,255,255,0.58)',
-        borderRadius: 26,
-        paddingHorizontal: 18,
-        paddingVertical: 16,
-        marginBottom: 18,
+        backgroundColor: 'rgba(255, 255, 255, 0.65)',
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginBottom: 10,
         borderWidth: 1,
-        borderColor: 'rgba(67, 61, 53, 0.06)',
+        borderColor: 'rgba(67, 61, 53, 0.05)',
     },
     welcomeIconWrap: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(212, 163, 115, 0.16)',
-        marginTop: 2,
-        marginRight: 12,
+        backgroundColor: 'rgba(212, 163, 115, 0.14)',
+        marginTop: 1,
+        marginRight: 8,
     },
     welcomeTextWrap: {
         flex: 1,
     },
+    welcomeHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        paddingRight: 4,
+    },
     welcomeTitle: {
         fontFamily: FONTS.bold,
-        fontSize: 17,
+        fontSize: 15,
         color: COLORS.primary,
-        marginBottom: 4,
+        marginBottom: 1,
     },
     welcomeMessage: {
         fontFamily: FONTS.medium,
-        fontSize: 14,
-        lineHeight: 20,
+        fontSize: 12,
+        lineHeight: 16,
         color: COLORS.textSecondary,
     },
-    requestsBlock: {
-        flex: 1,
-    },
     centerLoading: {
-        flex: 1,
-        minHeight: 220,
+        minHeight: 100,
         justifyContent: 'center',
         alignItems: 'center',
     },
+    loadingProgressText: {
+        fontFamily: FONTS.medium,
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        opacity: 0.8,
+        textAlign: 'center',
+    },
     emptyFullState: {
-        flex: 1,
-        minHeight: SCREEN_HEIGHT * 0.55,
+        minHeight: 180,
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 24,
+        paddingTop: 16,
+        paddingBottom: 16,
+    },
+    emptyIconContainer: {
+        width: 54,
+        height: 54,
+        borderRadius: 27,
+        backgroundColor: 'rgba(212, 163, 115, 0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
     },
     emptyIcon: {
-        marginBottom: 16,
-        opacity: 0.5,
+        opacity: 0.85,
     },
     emptyText: {
         fontFamily: FONTS.bold,
-        fontSize: 18,
+        fontSize: 15,
         color: COLORS.primary,
-        marginBottom: 8,
+        marginBottom: 4,
     },
     emptySubtext: {
         fontFamily: FONTS.medium,
-        fontSize: 14,
+        fontSize: 12,
         color: COLORS.textSecondary,
+    },
+    instructionsContainer: {
+        marginTop: 8,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(67, 61, 53, 0.08)',
+        marginVertical: 10,
+    },
+    instructionItem: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginVertical: 5,
+        paddingRight: 10,
+    },
+    instructionIcon: {
+        marginRight: 10,
+        marginTop: 1,
+    },
+    instructionText: {
+        fontFamily: FONTS.medium,
+        fontSize: 11,
+        lineHeight: 15,
+        color: COLORS.textSecondary,
+        flex: 1,
     },
 });

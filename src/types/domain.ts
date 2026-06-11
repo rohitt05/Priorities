@@ -17,6 +17,7 @@ export interface Profile {
     relationship?: string; // Relationship label (e.g., "GF", "Wife") - STRICTLY for couples/dating only
     phoneNumber?: string; // User's phone number for security/recovery
     email?: string;
+    profileVideo?: string | null;
 }
 
 

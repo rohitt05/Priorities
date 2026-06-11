@@ -8,6 +8,8 @@ import {
     BackHandler,
     Dimensions,
     InteractionManager,
+    ActivityIndicator,
+    TouchableOpacity,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -22,18 +24,20 @@ import Reanimated, {
     withTiming,
     Easing,
 } from 'react-native-reanimated';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Entypo } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Entypo, Ionicons } from '@expo/vector-icons';
 
 import { useLocalSearchParams, useFocusEffect, useRouter, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useBackground, BackgroundProvider } from '@/contexts/BackgroundContext';
+import { ProfileVideoUploadProvider, useProfileVideoUpload } from '@/contexts/ProfileVideoUploadContext';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { User } from '@/types/userTypes';
 import { supabase } from '@/lib/supabase';
+import { appRefreshOrchestrator } from '@/services/AppRefreshOrchestrator';
 import EditProfileScreen from '@/features/profile/components/EditProfileScreen';
 import AddPartnerModal from '@/features/partners/components/AddPartnerModal';
 import FloatingPartnerIcon from '@/features/partners/components/FloatingPartnerIcon';
+import FloatingProfilePic from '@/features/profile/components/FloatingProfilePic';
 import { BG_OPACITY, HEADER_HEIGHT } from '@/features/profile/utils/profileConstants';
 import { useAuthUser } from '@/features/profile/hooks/useAuthUser';
 import { hexToRgba } from '@/features/profile/utils/profileUtils';
@@ -45,8 +49,9 @@ import { ProfileStickyBar } from '@/features/profile/components/ProfileStickyBar
 import ProfileActionModal from '@/features/profile/components/ProfileActionModal';
 import { usePrioritiesRefresh } from '@/contexts/PrioritiesRefreshContext';
 import { removePartner } from '@/services/partnerService';
+import { sendPriorityRequest } from '@/services/priorityService';
 import { ProfileHeader, HeaderAccessState } from '@/features/profile/components/ProfileHeader';
-import { COLORS } from '@/theme/theme';
+import { COLORS, FONTS } from '@/theme/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const OVERLAY_DURATION = 1260;
@@ -63,6 +68,7 @@ function ProfileScreenContent() {
     const authId = useAuthUser();
     const router = useRouter();
     const { triggerRefresh } = usePrioritiesRefresh();
+    const { onVideoReadyRef } = useProfileVideoUpload();
 
     const isOwner = !userId;
     const effectiveUserId = userId || authId || '';
@@ -76,7 +82,30 @@ function ProfileScreenContent() {
     const bannerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
     const [headerAccessState, setHeaderAccessState] = useState<HeaderAccessState>('loading');
-    const { triggerNotificationHaptic } = useHapticFeedback();
+    const [filmsCount, setFilmsCount] = useState<number | null>(null);
+    const [isSendingRequest, setIsSendingRequest] = useState(false);
+    const { triggerNotificationHaptic, triggerHaptic } = useHapticFeedback();
+
+    const handleSendRequest = async () => {
+        if (!authId || !currentUser?.id || isSendingRequest) return;
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        setIsSendingRequest(true);
+        try {
+            await sendPriorityRequest(authId, currentUser.id);
+            setHeaderAccessState('pending');
+            triggerNotificationHaptic(Haptics.NotificationFeedbackType.Success);
+        } catch (e: any) {
+            if (e?.code === '23505') setHeaderAccessState('pending');
+        } finally {
+            setIsSendingRequest(false);
+        }
+    };
+
+    const isScrollEnabled = useMemo(() => {
+        if (headerAccessState !== 'allowed') return false;
+        if (filmsCount === null) return true;
+        return filmsCount > 0;
+    }, [headerAccessState, filmsCount]);
 
     const scrollY = useSharedValue(0);
     const triggerEditMode = () => setIsEditing(true);
@@ -183,6 +212,14 @@ function ProfileScreenContent() {
     const [partnerUser, setPartnerUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Register callback so background video uploads can update currentUser
+    useEffect(() => {
+        onVideoReadyRef.current = (url: string | null) => {
+            setCurrentUser((prev) => prev ? { ...prev, profileVideo: url ?? undefined } : prev);
+        };
+        return () => { onVideoReadyRef.current = null; };
+    }, [onVideoReadyRef]);
+
     const fetchAndSetPartner = React.useCallback(async (partnerId: string) => {
         const { data } = await supabase
             .from('profiles')
@@ -201,6 +238,7 @@ function ProfileScreenContent() {
                 birthday: data.birthday || undefined,
                 partnerId: data.partner_id || undefined,
                 relationship: data.relationship || undefined,
+                profileVideo: data.profile_video || null,
                 priorities: [],
             });
         }
@@ -236,6 +274,7 @@ function ProfileScreenContent() {
                             birthday: dbUser.birthday || undefined,
                             partnerId: dbUser.partner_id || undefined,
                             relationship: dbUser.relationship || undefined,
+                            profileVideo: dbUser.profile_video || null,
                             priorities: [],
                         };
                         setCurrentUser(userObj);
@@ -298,46 +337,28 @@ function ProfileScreenContent() {
     useEffect(() => {
         if (!authId || !isActuallyOwner) return;
 
-        const channel = supabase
-            .channel(`profile_partner_watch_${authId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'partner_requests',
-                    filter: `sender_id=eq.${authId}`,
-                },
-                async (payload: any) => {
-                    const row = payload.new;
-                    if (!row) return;
-                    if (row.status === 'accepted') {
-                        await fetchAndSetPartner(row.receiver_id);
-                    }
+        const offPartner = appRefreshOrchestrator.on('partner-requests', async (payload: any) => {
+            if (payload?.eventType === 'UPDATE') {
+                const row = payload.new;
+                if (row && row.sender_id === authId && row.status === 'accepted') {
+                    await fetchAndSetPartner(row.receiver_id);
                 }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                    filter: `id=eq.${authId}`,
-                },
-                async (payload: any) => {
-                    const row = payload.new;
-                    if (!row) return;
-                    if (row.partner_id) {
-                        await fetchAndSetPartner(row.partner_id);
-                    } else {
-                        setPartnerUser(null);
-                    }
-                }
-            )
-            .subscribe();
+            }
+        });
+
+        const offProfile = appRefreshOrchestrator.on('profile', async (payload: any) => {
+            const row = payload?.new;
+            if (!row) return;
+            if (row.partner_id) {
+                await fetchAndSetPartner(row.partner_id);
+            } else {
+                setPartnerUser(null);
+            }
+        });
 
         return () => {
-            supabase.removeChannel(channel);
+            offPartner();
+            offProfile();
         };
     }, [authId, isActuallyOwner, fetchAndSetPartner]);
 
@@ -557,6 +578,7 @@ function ProfileScreenContent() {
                     bounces
                     scrollEventThrottle={16}
                     onScroll={scrollHandler}
+                    scrollEnabled={isScrollEnabled}
                 >
                     <GestureDetector gesture={panGesture}>
                         <View>
@@ -565,8 +587,15 @@ function ProfileScreenContent() {
                                 isOwner={isOwner}
                                 headerAnimatedStyle={headerAnimatedStyle}
                                 imageScaleStyle={imageScaleStyle}
-                                initialAccessState={headerAccessState}
                             />
+                            {!!currentUser.profileVideo && (
+                                <FloatingProfilePic
+                                    profilePicture={currentUser.profilePicture}
+                                    pullY={pullY}
+                                    scrollY={scrollY}
+                                    capsuleFadeStyle={capsuleFadeStyle}
+                                />
+                            )}
                         </View>
                     </GestureDetector>
 
@@ -592,10 +621,45 @@ function ProfileScreenContent() {
                         </Reanimated.View>
                     )}
 
+                    {/* Add to Priorities Below Area Card */}
+                    {(headerAccessState === 'locked' || headerAccessState === 'pending') && (
+                        <View style={styles.lockedBelowContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.lockedBelowButton,
+                                    headerAccessState === 'pending' && styles.lockedBelowButtonPending,
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={headerAccessState === 'locked' ? handleSendRequest : undefined}
+                                disabled={headerAccessState === 'pending' || isSendingRequest}
+                            >
+                                {isSendingRequest ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : headerAccessState === 'pending' ? (
+                                    <>
+                                        <Ionicons name="checkmark-circle" size={20} color="rgba(67, 61, 53, 0.6)" />
+                                        <Text style={styles.lockedBelowButtonTextPending}>Request sent</Text>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Ionicons name="add" size={20} color="#fff" />
+                                        <Text style={styles.lockedBelowButtonText}>Add to Priorities</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                            <Text style={styles.lockedBelowSubtitle}>
+                                {headerAccessState === 'pending'
+                                    ? "Waiting for them to accept your request"
+                                    : `Add ${currentUser.name} to see their priorities and films`}
+                            </Text>
+                        </View>
+                    )}
+
                     <Reanimated.View style={prioritiesFadeStyle} animatedProps={prioritiesPointerProps}>
                         {headerAccessState === 'allowed' && (
                             <YourPriorities
                                 user={currentUser}
+                                hasProfileVideo={!!currentUser.profileVideo}
                                 onUnauthorizedAccess={() => {
                                     triggerNotificationHaptic(Haptics.NotificationFeedbackType.Warning);
                                     if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
@@ -613,6 +677,7 @@ function ProfileScreenContent() {
                                 dominantColor={currentUser.dominantColor}
                                 isOwner={isActuallyOwner}
                                 scrollY={scrollY}
+                                onFilmsCountChange={setFilmsCount}
                             />
                         )}
                         <View style={styles.bottomPad} />
@@ -671,9 +736,11 @@ function ProfileScreenContent() {
 
 export default function ProfileScreen() {
     return (
-        <BackgroundProvider>
-            <ProfileScreenContent />
-        </BackgroundProvider>
+        <ProfileVideoUploadProvider>
+            <BackgroundProvider>
+                <ProfileScreenContent />
+            </BackgroundProvider>
+        </ProfileVideoUploadProvider>
     );
 }
 
@@ -689,6 +756,54 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
     },
     bottomPad: { height: 60 },
+    lockedBelowContainer: {
+        marginTop: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+    },
+    lockedBelowButton: {
+        backgroundColor: COLORS.primary,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 28,
+        borderRadius: 25,
+        gap: 8,
+        shadowColor: COLORS.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 10,
+        elevation: 4,
+    },
+    lockedBelowButtonPending: {
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: 'rgba(67, 61, 53, 0.3)',
+        shadowOpacity: 0,
+        elevation: 0,
+    },
+    lockedBelowButtonText: {
+        color: '#fff',
+        fontSize: 15,
+        fontFamily: FONTS.bold,
+        letterSpacing: 0.2,
+    },
+    lockedBelowButtonTextPending: {
+        color: 'rgba(67, 61, 53, 0.6)',
+        fontSize: 15,
+        fontFamily: FONTS.bold,
+        letterSpacing: 0.2,
+    },
+    lockedBelowSubtitle: {
+        marginTop: 12,
+        color: 'rgba(67, 61, 53, 0.5)',
+        fontSize: 12,
+        fontFamily: FONTS.medium,
+        textAlign: 'center',
+        lineHeight: 18,
+    },
     gradientWashPrimary: {
         position: 'absolute',
         top: -SCREEN_HEIGHT * 0.1,

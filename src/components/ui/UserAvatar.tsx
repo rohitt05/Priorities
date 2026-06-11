@@ -11,7 +11,7 @@ const AnimatedExpoImage = Reanimated.createAnimatedComponent(ExpoImage);
 interface UserAvatarProps {
     uri?: string | null;
     style?: ImageStyle | any;
-    resizeMode?: 'cover' | 'contain' | 'stretch' | 'repeat' | 'center';
+    resizeMode?: 'cover' | 'contain' | 'stretch' | 'center' | 'none' | 'scale-down';
     isReanimated?: boolean;
     animatedStyle?: any;
     fallbackColor?: string;
@@ -82,7 +82,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
         <ImageComponent
             source={source}
             style={[style, animatedStyle]}
-            contentFit={resizeMode}
+            contentFit={resizeMode as any}
             cachePolicy="disk"
         />
     );
